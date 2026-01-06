@@ -1,0 +1,152 @@
+/* Global app styles */
+#root {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.App {
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Ensure no default margins/padding */
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Custom scrollbar styles for dark theme */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 5px;
+  transition: background 0.2s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Prevent text selection during resize */
+.user-select-none {
+  user-select: none;
+}
+
+/* Smooth transitions for theme changes */
+* {
+  transition-property: background-color, border-color, color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Override transitions for interactive elements */
+button, input, select, textarea {
+  transition-property: all;
+}
+
+/* Resize handle visual feedback */
+.resize-handle {
+  position: relative;
+  background: transparent;
+  transition: background-color 0.2s;
+}
+
+.resize-handle:hover {
+  background: hsl(var(--primary) / 0.1);
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  background: hsl(var(--primary) / 0.3);
+  transition: all 0.2s;
+}
+
+.resize-handle:hover::after {
+  background: hsl(var(--primary));
+}
+
+/* Panel animations */
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Mobile overlay backdrop */
+@media (max-width: 768px) {
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 20;
+    animation: fadeIn 0.2s;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+/* Video player container enhancements */
+.video-player-container {
+  position: relative;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Timeline section enhancements */
+.timeline-section {
+  background: linear-gradient(to bottom, hsl(var(--card)), hsl(var(--background)));
+}
+
+/* Improve focus states for accessibility */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* Print styles */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+}

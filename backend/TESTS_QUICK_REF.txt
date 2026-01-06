@@ -1,0 +1,79 @@
+╔══════════════════════════════════════════════════════════════╗
+║         Backend Test Suite - Quick Reference                 ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  STATUS:  ✅ 38/38 tests passing | 📊 95% coverage          ║
+║                                                              ║
+╠══════════════════════════════════════════════════════════════╣
+║  QUICK COMMANDS                                              ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  Run all tests:                                              ║
+║    python run_tests.py                                       ║
+║    pytest tests/ -v                                          ║
+║                                                              ║
+║  Run with coverage:                                          ║
+║    pytest tests/ --cov=services --cov-report=html            ║
+║                                                              ║
+║  Run specific service:                                       ║
+║    pytest tests/test_media_service.py -v                     ║
+║    pytest tests/test_audio_service.py -v                     ║
+║                                                              ║
+║  View coverage report:                                       ║
+║    start htmlcov/index.html                                  ║
+║                                                              ║
+╠══════════════════════════════════════════════════════════════╣
+║  TEST COVERAGE                                               ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  MediaService (20 tests - 96% coverage)                      ║
+║    ✅ File upload & storage                                  ║
+║    ✅ Video metadata extraction                              ║
+║    ✅ Audio metadata extraction                              ║
+║    ✅ Image metadata extraction                              ║
+║    ✅ Thumbnail generation                                   ║
+║    ✅ Waveform visualization                                 ║
+║    ✅ Media deletion                                         ║
+║                                                              ║
+║  AudioService (18 tests - 94% coverage)                      ║
+║    ✅ Waveform data generation                               ║
+║    ✅ Audio extraction from video                            ║
+║    ✅ Audio duration retrieval                               ║
+║    ✅ Temporary file cleanup                                 ║
+║    ✅ Integration workflows                                  ║
+║                                                              ║
+╠══════════════════════════════════════════════════════════════╣
+║  FILES                                                       ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  tests/test_media_service.py    - MediaService tests         ║
+║  tests/test_audio_service.py    - AudioService tests         ║
+║  tests/conftest.py              - pytest configuration       ║
+║  tests/README.md                - Test documentation         ║
+║  tests/TEST_SUMMARY.md          - Detailed summary           ║
+║  run_tests.py                   - Quick test runner          ║
+║  TESTING.md                     - Complete overview          ║
+║  htmlcov/                       - Coverage reports           ║
+║                                                              ║
+╠══════════════════════════════════════════════════════════════╣
+║  REQUIREMENTS                                                ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  pytest                         - Test framework             ║
+║  pytest-cov                     - Coverage reporting         ║
+║  moviepy                        - Video/audio processing     ║
+║  opencv-python                  - Video operations           ║
+║  pillow                         - Image processing           ║
+║  numpy                          - Numerical operations       ║
+║                                                              ║
+╠══════════════════════════════════════════════════════════════╣
+║  BEST PRACTICES                                              ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                              ║
+║  ✓ Run tests before committing                              ║
+║  ✓ Keep coverage above 90%                                   ║
+║  ✓ Add tests for new features                               ║
+║  ✓ Test error cases thoroughly                              ║
+║  ✓ Use fixtures for setup/teardown                          ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝

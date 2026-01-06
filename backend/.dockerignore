@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+env/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.cover
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+uploads/*
+!uploads/.gitkeep
+thumbnails/*
+!thumbnails/.gitkeep
+temp_audio/*
+!temp_audio/.gitkeep
+temp_video/*
+!temp_video/.gitkeep
+exports/*
+!exports/.gitkeep
+
+# Environment
+.env
+.env.local
+
+# Documentation
+*.md
+!README.md
+
+# Git
+.git/
+.gitignore
