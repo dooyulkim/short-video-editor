@@ -23,6 +23,43 @@ export interface UploadMediaResponse {
   createdAt: string;
 }
 
+export interface ListMediaResponse {
+	count: number;
+	media: BackendMediaResource[];
+}
+
+// Backend media resource structure (as returned by backend)
+export interface BackendMediaResource {
+	id: string;
+	filename: string;
+	file_path: string;
+	file_size: number;
+	media_type: "video" | "audio" | "image";
+	thumbnail_path?: string | null;
+	created_at: string;
+	video_metadata?: {
+		duration?: number;
+		width?: number;
+		height?: number;
+		fps?: number;
+		codec?: string;
+		format?: string;
+		bitrate?: number;
+	} | null;
+	audio_metadata?: {
+		duration?: number;
+		sample_rate?: number;
+		channels?: number;
+		format?: string;
+	} | null;
+	image_metadata?: {
+		width?: number;
+		height?: number;
+		format?: string;
+		color_mode?: string;
+	} | null;
+}
+
 export interface MediaMetadataResponse {
   id: string;
   type: string;

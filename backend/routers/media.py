@@ -126,6 +126,64 @@ async def upload_media(file: UploadFile = File(...)) -> MediaResource:
         )
 
 
+@router.get("/{media_id}/file")
+async def get_media_file(media_id: str):
+    """
+    Get media file for playback/download
+    
+    Returns the actual media file
+    """
+    # Check if media exists
+    if media_id not in media_store:
+        raise HTTPException(status_code=404, detail="Media not found")
+    
+    media = media_store[media_id]
+    
+    # Check if file exists
+    if not os.path.exists(media.file_path):
+        raise HTTPException(status_code=404, detail="Media file not found")
+    
+    # Determine media type based on file extension
+    ext = Path(media.file_path).suffix.lower()
+    
+    # Map file extensions to MIME types
+    mime_type_map = {
+        # Video formats
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.ogv': 'video/ogg',
+        '.mov': 'video/quicktime',
+        '.avi': 'video/x-msvideo',
+        '.mkv': 'video/x-matroska',
+        '.flv': 'video/x-flv',
+        '.wmv': 'video/x-ms-wmv',
+        # Audio formats
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.ogg': 'audio/ogg',
+        '.m4a': 'audio/mp4',
+        '.aac': 'audio/aac',
+        '.flac': 'audio/flac',
+        # Image formats
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.bmp': 'image/bmp',
+        '.svg': 'image/svg+xml',
+    }
+    
+    media_type = mime_type_map.get(ext, "application/octet-stream")
+    
+    # Return media file
+    return FileResponse(
+        media.file_path,
+        media_type=media_type,
+        filename=media.filename
+    )
+
+
 @router.get("/{media_id}/thumbnail")
 async def get_thumbnail(media_id: str):
     """

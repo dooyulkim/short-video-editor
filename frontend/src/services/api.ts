@@ -1,112 +1,114 @@
 import axios, { AxiosError, type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import type { ExportSettings, ExportResponse, ExportStatusResponse } from '@/types/export';
 import type { Timeline } from '@/types/timeline';
+import type { MediaResource } from "@/types/media";
 import type {
-  UploadMediaResponse,
-  MediaMetadataResponse,
-  WaveformResponse,
-  CutVideoResponse,
-  TrimVideoResponse,
-  MergeVideosResponse,
-  ApiError,
-  UploadProgressEvent,
-} from '@/types/api';
+	MediaMetadataResponse,
+	WaveformResponse,
+	CutVideoResponse,
+	TrimVideoResponse,
+	MergeVideosResponse,
+	ApiError,
+	UploadProgressEvent,
+	ListMediaResponse,
+	BackendMediaResource,
+} from "@/types/api";
 
 // API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = "/api";
 const API_TIMEOUT = 30000; // 30 seconds default timeout
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: API_TIMEOUT,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+	baseURL: API_BASE_URL,
+	timeout: API_TIMEOUT,
+	headers: {
+		"Content-Type": "application/json",
+	},
 });
 
 // Request Interceptor - Add auth tokens, logging, etc.
 api.interceptors.request.use(
-  (config) => {
-    // Add timestamp for request tracking
-    config.metadata = { startTime: new Date().getTime() };
-    
-    // Add auth token if available
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    // Log request in development
-    if (import.meta.env.DEV) {
-      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`, config.data);
-    }
-    
-    return config;
-  },
-  (error) => {
-    console.error('[API Request Error]', error);
-    return Promise.reject(error);
-  }
+	(config) => {
+		// Add timestamp for request tracking
+		config.metadata = { startTime: new Date().getTime() };
+
+		// Add auth token if available
+		const token = localStorage.getItem("auth_token");
+		if (token) {
+			config.headers.Authorization = `Bearer ${token}`;
+		}
+
+		// Log request in development
+		if (import.meta.env.DEV) {
+			console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`, config.data);
+		}
+
+		return config;
+	},
+	(error) => {
+		console.error("[API Request Error]", error);
+		return Promise.reject(error);
+	}
 );
 
 // Response Interceptor - Handle errors, logging, etc.
 api.interceptors.response.use(
-  (response: AxiosResponse) => {
-    // Calculate request duration
-    const duration = new Date().getTime() - (response.config.metadata?.startTime || 0);
-    
-    // Log response in development
-    if (import.meta.env.DEV) {
-      console.log(
-        `[API Response] ${response.config.method?.toUpperCase()} ${response.config.url} (${duration}ms)`,
-        response.data
-      );
-    }
-    
-    return response;
-  },
-  (error: AxiosError<ApiError>) => {
-    // Format error message
-    const apiError: ApiError = {
-      message: error.response?.data?.message || error.message || 'An unexpected error occurred',
-      code: error.code,
-      details: error.response?.data?.details,
-      timestamp: new Date().toISOString(),
-    };
-    
-    // Log error
-    console.error('[API Error]', {
-      url: error.config?.url,
-      method: error.config?.method,
-      status: error.response?.status,
-      error: apiError,
-    });
-    
-    // Handle specific error codes
-    if (error.response?.status === 401) {
-      // Unauthorized - clear auth and redirect to login
-      localStorage.removeItem('auth_token');
-      // You can dispatch a global auth action here
-    } else if (error.response?.status === 403) {
-      // Forbidden
-      apiError.message = 'You do not have permission to perform this action';
-    } else if (error.response?.status === 404) {
-      // Not found
-      apiError.message = 'The requested resource was not found';
-    } else if (error.response?.status === 500) {
-      // Server error
-      apiError.message = 'An internal server error occurred. Please try again later.';
-    } else if (error.code === 'ECONNABORTED') {
-      // Timeout
-      apiError.message = 'The request timed out. Please try again.';
-    } else if (!error.response) {
-      // Network error
-      apiError.message = 'Unable to connect to the server. Please check your internet connection.';
-    }
-    
-    return Promise.reject(apiError);
-  }
+	(response: AxiosResponse) => {
+		// Calculate request duration
+		const duration = new Date().getTime() - (response.config.metadata?.startTime || 0);
+
+		// Log response in development
+		if (import.meta.env.DEV) {
+			console.log(
+				`[API Response] ${response.config.method?.toUpperCase()} ${response.config.url} (${duration}ms)`,
+				response.data
+			);
+		}
+
+		return response;
+	},
+	(error: AxiosError<ApiError>) => {
+		// Format error message
+		const apiError: ApiError = {
+			message: error.response?.data?.message || error.message || "An unexpected error occurred",
+			code: error.code,
+			details: error.response?.data?.details,
+			timestamp: new Date().toISOString(),
+		};
+
+		// Log error
+		console.error("[API Error]", {
+			url: error.config?.url,
+			method: error.config?.method,
+			status: error.response?.status,
+			error: apiError,
+		});
+
+		// Handle specific error codes
+		if (error.response?.status === 401) {
+			// Unauthorized - clear auth and redirect to login
+			localStorage.removeItem("auth_token");
+			// You can dispatch a global auth action here
+		} else if (error.response?.status === 403) {
+			// Forbidden
+			apiError.message = "You do not have permission to perform this action";
+		} else if (error.response?.status === 404) {
+			// Not found
+			apiError.message = "The requested resource was not found";
+		} else if (error.response?.status === 500) {
+			// Server error
+			apiError.message = "An internal server error occurred. Please try again later.";
+		} else if (error.code === "ECONNABORTED") {
+			// Timeout
+			apiError.message = "The request timed out. Please try again.";
+		} else if (!error.response) {
+			// Network error
+			apiError.message = "Unable to connect to the server. Please check your internet connection.";
+		}
+
+		return Promise.reject(apiError);
+	}
 );
 
 // ===========================
@@ -114,40 +116,90 @@ api.interceptors.response.use(
 // ===========================
 
 /**
+ * Transform backend media resource to frontend format
+ */
+const transformMediaResource = (backend: BackendMediaResource): MediaResource => {
+	const baseUrl = API_BASE_URL;
+
+	// Flatten metadata from nested structure
+	const metadata: MediaResource["metadata"] = {};
+
+	if (backend.video_metadata) {
+		metadata.width = backend.video_metadata.width;
+		metadata.height = backend.video_metadata.height;
+		metadata.fps = backend.video_metadata.fps;
+		metadata.codec = backend.video_metadata.codec;
+		metadata.format = backend.video_metadata.format;
+		metadata.bitrate = backend.video_metadata.bitrate;
+	} else if (backend.audio_metadata) {
+		metadata.sampleRate = backend.audio_metadata.sample_rate;
+		metadata.channels = backend.audio_metadata.channels;
+		metadata.format = backend.audio_metadata.format;
+	} else if (backend.image_metadata) {
+		metadata.width = backend.image_metadata.width;
+		metadata.height = backend.image_metadata.height;
+		metadata.format = backend.image_metadata.format;
+	}
+
+	// Extract duration from metadata
+	const duration = backend.video_metadata?.duration || backend.audio_metadata?.duration;
+
+	return {
+		id: backend.id,
+		type: backend.media_type,
+		name: backend.filename,
+		url: `${baseUrl}/media/${backend.id}/file`,
+		thumbnail: backend.thumbnail_path ? `${baseUrl}/media/${backend.id}/thumbnail` : undefined,
+		duration,
+		metadata,
+		createdAt: new Date(backend.created_at),
+		fileSize: backend.file_size,
+	};
+};
+
+/**
  * Upload media file (video, audio, or image)
  * @param file - The file to upload
  * @param onProgress - Optional callback for upload progress
  */
 export const uploadMedia = async (
-  file: File,
-  onProgress?: (progress: UploadProgressEvent) => void
-): Promise<UploadMediaResponse> => {
-  const formData = new FormData();
-  formData.append('file', file);
+	file: File,
+	onProgress?: (progress: UploadProgressEvent) => void
+): Promise<{ media: MediaResource }> => {
+	const formData = new FormData();
+	formData.append("file", file);
 
-  const config: AxiosRequestConfig = {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-    timeout: 300000, // 5 minutes for large files
-  };
+	const config: AxiosRequestConfig = {
+		headers: {
+			"Content-Type": "multipart/form-data",
+		},
+		timeout: 300000, // 5 minutes for large files
+	};
 
-  // Add progress tracking if callback provided
-  if (onProgress) {
-    config.onUploadProgress = (progressEvent) => {
-      if (progressEvent.total) {
-        const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-        onProgress({
-          loaded: progressEvent.loaded,
-          total: progressEvent.total,
-          progress,
-        });
-      }
-    };
-  }
+	// Add progress tracking if callback provided
+	if (onProgress) {
+		config.onUploadProgress = (progressEvent) => {
+			if (progressEvent.total) {
+				const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+				onProgress({
+					loaded: progressEvent.loaded,
+					total: progressEvent.total,
+					progress,
+				});
+			}
+		};
+	}
 
-  const response = await api.post<UploadMediaResponse>('/media/upload', formData, config);
-  return response.data;
+	const response = await api.post<BackendMediaResource>("/media/upload", formData, config);
+	return { media: transformMediaResource(response.data) };
+};
+
+/**
+ * List all uploaded media resources
+ */
+export const listMedia = async (): Promise<MediaResource[]> => {
+	const response = await api.get<ListMediaResponse>("/media/");
+	return response.data.media.map(transformMediaResource);
 };
 
 /**

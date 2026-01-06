@@ -90,12 +90,13 @@ export function EditTools({ className }: EditToolsProps) {
 	};
 
 	return (
-		<div className={`flex gap-2 ${className}`}>
+		<div className={`flex gap-1.5 ${className}`}>
 			<Button
 				variant="outline"
 				size="sm"
 				onClick={handleCut}
 				disabled={!canCut}
+				className="h-7 px-2 text-xs"
 				title={
 					!hasSelection
 						? "Select a clip first"
@@ -103,7 +104,7 @@ export function EditTools({ className }: EditToolsProps) {
 						? "Position playhead over the clip"
 						: "Cut clip at playhead (splits into two clips)"
 				}>
-				<Scissors className="h-4 w-4 mr-2" />
+				<Scissors className="h-3 w-3 mr-1.5" />
 				Cut
 			</Button>
 
@@ -112,8 +113,9 @@ export function EditTools({ className }: EditToolsProps) {
 				size="sm"
 				onClick={handleTrim}
 				disabled={!hasSelection}
+				className="h-7 px-2 text-xs"
 				title={!hasSelection ? "Select a clip first" : "Enable trim mode to adjust clip start/end"}>
-				<Minimize2 className="h-4 w-4 mr-2" />
+				<Minimize2 className="h-3 w-3 mr-1.5" />
 				Trim
 			</Button>
 
@@ -122,8 +124,9 @@ export function EditTools({ className }: EditToolsProps) {
 				size="sm"
 				onClick={handleDelete}
 				disabled={!hasSelection}
+				className="h-7 px-2 text-xs"
 				title={!hasSelection ? "Select a clip first" : "Delete selected clip"}>
-				<Trash2 className="h-4 w-4 mr-2" />
+				<Trash2 className="h-3 w-3 mr-1.5" />
 				Delete
 			</Button>
 
@@ -132,8 +135,9 @@ export function EditTools({ className }: EditToolsProps) {
 				size="sm"
 				onClick={handleDuplicate}
 				disabled={!hasSelection}
+				className="h-7 px-2 text-xs"
 				title={!hasSelection ? "Select a clip first" : "Duplicate clip (places copy after original)"}>
-				<Copy className="h-4 w-4 mr-2" />
+				<Copy className="h-3 w-3 mr-1.5" />
 				Duplicate
 			</Button>
 		</div>

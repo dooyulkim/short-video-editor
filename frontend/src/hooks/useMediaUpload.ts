@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import axios, { type AxiosProgressEvent } from 'axios';
+import { uploadMedia } from '@/services/api';
 import type { MediaResource } from '@/types/media';
 
 interface UseMediaUploadReturn {
@@ -19,34 +19,17 @@ export const useMediaUpload = (): UseMediaUploadReturn => {
     setProgress(0);
     setError(null);
 
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
-      const response = await axios.post<MediaResource>(
-        '/media/upload',
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-          onUploadProgress: (progressEvent: AxiosProgressEvent) => {
-            if (progressEvent.total) {
-              const percentCompleted = Math.round(
-                (progressEvent.loaded * 100) / progressEvent.total
-              );
-              setProgress(percentCompleted);
-            }
-          },
-        }
-      );
+      const response = await uploadMedia(file, (progressEvent) => {
+        setProgress(progressEvent.progress);
+      });
 
       setIsUploading(false);
       setProgress(100);
-      return response.data;
+      return response.media;
     } catch (err) {
-      const errorMessage = axios.isAxiosError(err)
-        ? err.response?.data?.message || err.message
+      const errorMessage = err instanceof Error
+        ? err.message
         : 'An unknown error occurred';
       
       setError(errorMessage);

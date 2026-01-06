@@ -282,18 +282,29 @@ export function VideoPlayer({ width = 1920, height = 1080, className = '' }: Vid
   }, [isReady, renderFrame]);
 
   return (
-    <div className={`relative ${className}`}>
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height}
-        className="w-full h-full object-contain bg-black"
-      />
-      {!isReady && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75">
-          <div className="text-white">Loading preview...</div>
-        </div>
-      )}
-    </div>
-  );
+		<div className={`relative ${className}`}>
+			<canvas ref={canvasRef} width={width} height={height} className="w-full h-full object-contain bg-black" />
+			{!isReady && (
+				<div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75">
+					<div className="text-white text-sm">Loading preview...</div>
+				</div>
+			)}
+			{isReady && layers.length === 0 && (
+				<div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75">
+					<div className="text-center text-gray-400 space-y-2 p-4">
+						<p className="text-sm font-medium">Timeline Preview</p>
+						<p className="text-xs">Drag resources to the timeline to see them here</p>
+					</div>
+				</div>
+			)}
+			{isReady && layers.length > 0 && layers.every((layer) => layer.clips.length === 0) && (
+				<div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75">
+					<div className="text-center text-gray-400 space-y-2 p-4">
+						<p className="text-sm font-medium">Timeline Preview</p>
+						<p className="text-xs">No clips on timeline yet</p>
+					</div>
+				</div>
+			)}
+		</div>
+	);
 }

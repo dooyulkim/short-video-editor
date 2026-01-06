@@ -26,9 +26,9 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(media.router, prefix="/media", tags=["media"])
-app.include_router(timeline.router, prefix="/timeline", tags=["timeline"])
-app.include_router(export.router, tags=["export"])
+app.include_router(media.router, prefix="/api/media", tags=["media"])
+app.include_router(timeline.router, prefix="/api/timeline", tags=["timeline"])
+app.include_router(export.router, prefix="/api/export", tags=["export"])
 
 
 @app.get("/")

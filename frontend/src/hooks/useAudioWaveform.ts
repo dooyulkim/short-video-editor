@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import { getWaveform } from "@/services/api";
 
 interface UseAudioWaveformReturn {
   waveformData: number[] | null;
@@ -55,7 +55,7 @@ const useAudioWaveform = (audioId: string | null): UseAudioWaveformReturn => {
       setError(null);
 
       try {
-        const response = await axios.get(`/media/${audioId}/waveform`);
+        const response = await getWaveform(audioId);
         
         if (!isMountedRef.current) return;
 
