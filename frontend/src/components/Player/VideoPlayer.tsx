@@ -1,289 +1,490 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { useTimeline } from '@/context/TimelineContext';
-import type { Clip, TimelineLayer } from '@/types/timeline';
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useTimeline } from "@/context/TimelineContext";
+import type { Clip, TimelineLayer } from "@/types/timeline";
 
 interface VideoPlayerProps {
-  width?: number;
-  height?: number;
-  className?: string;
+	width?: number;
+	height?: number;
+	className?: string;
 }
 
 /**
  * VideoPlayer component for rendering composite video preview
  * Renders all visible clips at current time with proper layering
  */
-export function VideoPlayer({ width = 1920, height = 1080, className = '' }: VideoPlayerProps) {
-  const { state } = useTimeline();
-  const { layers, currentTime } = state;
-  
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
-  const [isReady, setIsReady] = useState(false);
+export function VideoPlayer({ width: initialWidth, height: initialHeight, className = "" }: VideoPlayerProps) {
+	const { state } = useTimeline();
+	const { layers, currentTime, isPlaying } = state;
 
-  /**
-   * Load video elements for all video clips
-   */
-  useEffect(() => {
-    const loadVideoElements = async () => {
-      const videoClips = layers
-        .flatMap(layer => layer.clips)
-        .filter(clip => clip.data?.type === 'video');
+	const canvasRef = useRef<HTMLCanvasElement>(null);
+	const containerRef = useRef<HTMLDivElement>(null);
+	const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+	const imageElementsRef = useRef<Map<string, HTMLImageElement>>(new Map());
+	const animationFrameRef = useRef<number | undefined>(undefined);
+	const [isReady, setIsReady] = useState(false);
+	const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 });
+	const [canvasSize, setCanvasSize] = useState({ width: initialWidth || 1080, height: initialHeight || 1920 });
 
-      // Create video elements for clips that don't have them
-      for (const clip of videoClips) {
-        if (!videoElementsRef.current.has(clip.resourceId)) {
-          const video = document.createElement('video');
-          video.crossOrigin = 'anonymous';
-          video.preload = 'auto';
-          video.muted = true;
-          
-          // Set video source (assuming resourceId is the URL or needs to be fetched)
-          // TODO: Replace with actual media URL from resource
-          video.src = `/api/media/${clip.resourceId}/file`;
-          
-          videoElementsRef.current.set(clip.resourceId, video);
-          
-          // Wait for video to be ready
-          await new Promise<void>((resolve) => {
-            video.addEventListener('loadeddata', () => resolve(), { once: true });
-          });
-        }
-      }
-      
-      setIsReady(true);
-    };
+	/**
+	 * Detect canvas size based on the first video's dimensions
+	 */
+	useEffect(() => {
+		const detectCanvasSize = async () => {
+			// If dimensions are explicitly provided, use them
+			if (initialWidth && initialHeight) {
+				setCanvasSize({ width: initialWidth, height: initialHeight });
+				return;
+			}
 
-    loadVideoElements();
-  }, [layers]);
+			// Find the first video clip
+			const firstVideoClip = layers.flatMap((layer) => layer.clips).find((clip) => clip.data?.type === "video");
 
-  /**
-   * Get clips that should be visible at the current time
-   */
-  const getVisibleClips = (currentTime: number): Array<{ clip: Clip; layer: TimelineLayer }> => {
-    const visibleClips: Array<{ clip: Clip; layer: TimelineLayer }> = [];
+			if (firstVideoClip && videoElementsRef.current.has(firstVideoClip.resourceId)) {
+				const video = videoElementsRef.current.get(firstVideoClip.resourceId);
+				if (video && video.videoWidth && video.videoHeight) {
+					setCanvasSize({ width: video.videoWidth, height: video.videoHeight });
+				}
+			}
+		};
 
-    for (const layer of layers) {
-      if (!layer.visible) continue;
+		if (isReady) {
+			detectCanvasSize();
+		}
+	}, [isReady, layers, initialWidth, initialHeight]);
 
-      for (const clip of layer.clips) {
-        const clipEndTime = clip.startTime + clip.duration;
-        
-        // Check if current time falls within clip's time range
-        if (currentTime >= clip.startTime && currentTime < clipEndTime) {
-          visibleClips.push({ clip, layer });
-        }
-      }
-    }
+	/**
+	 * Update display size based on container dimensions while maintaining aspect ratio
+	 */
+	useEffect(() => {
+		const updateDisplaySize = () => {
+			if (!containerRef.current) return;
 
-    // Sort by layer order (bottom to top)
-    visibleClips.sort((a, b) => {
-      const layerIndexA = layers.indexOf(a.layer);
-      const layerIndexB = layers.indexOf(b.layer);
-      return layerIndexA - layerIndexB;
-    });
+			const containerWidth = containerRef.current.clientWidth;
+			const containerHeight = containerRef.current.clientHeight;
+			const aspectRatio = canvasSize.width / canvasSize.height;
+			const containerAspectRatio = containerWidth / containerHeight;
 
-    return visibleClips;
-  };
+			let displayWidth, displayHeight;
 
-  /**
-   * Calculate opacity for transition effects
-   */
-  const calculateTransitionOpacity = (clip: Clip, localTime: number): number => {
-    let opacity = clip.opacity ?? 1.0;
+			if (containerAspectRatio > aspectRatio) {
+				// Container is wider than video aspect ratio
+				displayHeight = containerHeight;
+				displayWidth = displayHeight * aspectRatio;
+			} else {
+				// Container is taller than video aspect ratio
+				displayWidth = containerWidth;
+				displayHeight = displayWidth / aspectRatio;
+			}
 
-    // Apply fade in transition
-    if (clip.transitions?.in) {
-      const transition = clip.transitions.in;
-      if (localTime < transition.duration) {
-        const fadeProgress = localTime / transition.duration;
-        
-        if (transition.type === 'fade') {
-          opacity *= fadeProgress;
-        }
-      }
-    }
+			setDisplaySize({ width: displayWidth, height: displayHeight });
+		};
 
-    // Apply fade out transition
-    if (clip.transitions?.out) {
-      const transition = clip.transitions.out;
-      const fadeOutStart = clip.duration - transition.duration;
-      
-      if (localTime > fadeOutStart) {
-        const fadeProgress = (clip.duration - localTime) / transition.duration;
-        
-        if (transition.type === 'fade') {
-          opacity *= fadeProgress;
-        }
-      }
-    }
+		updateDisplaySize();
+		window.addEventListener("resize", updateDisplaySize);
+		return () => window.removeEventListener("resize", updateDisplaySize);
+	}, [canvasSize]);
 
-    return opacity;
-  };
+	/**
+	 * Load video and image elements for all clips
+	 */
+	useEffect(() => {
+		const loadMediaElements = async () => {
+			const videoClips = layers.flatMap((layer) => layer.clips).filter((clip) => clip.data?.type === "video");
+			const imageClips = layers.flatMap((layer) => layer.clips).filter((clip) => clip.data?.type === "image");
 
-  /**
-   * Draw video frame to canvas
-   */
-  const drawVideoClip = (
-    ctx: CanvasRenderingContext2D,
-    clip: Clip,
-    localTime: number
-  ) => {
-    const video = videoElementsRef.current.get(clip.resourceId);
-    if (!video || video.readyState < 2) return; // Not ready
+			// Create video elements for clips that don't have them
+			for (const clip of videoClips) {
+				if (!videoElementsRef.current.has(clip.resourceId)) {
+					const video = document.createElement("video");
+					video.crossOrigin = "anonymous";
+					video.preload = "auto";
+					video.muted = true;
 
-    // Calculate video time with trim offset
-    const videoTime = localTime + clip.trimStart;
-    
-    // Seek video to correct time if needed
-    if (Math.abs(video.currentTime - videoTime) > 0.1) {
-      video.currentTime = videoTime;
-    }
+					// Set video source (assuming resourceId is the URL or needs to be fetched)
+					// TODO: Replace with actual media URL from resource
+					video.src = `/api/media/${clip.resourceId}/file`;
 
-    // Calculate position and scale
-    const x = clip.position?.x ?? 0;
-    const y = clip.position?.y ?? 0;
-    const scale = clip.scale ?? 1.0;
-    const rotation = clip.rotation ?? 0;
+					videoElementsRef.current.set(clip.resourceId, video);
 
-    // Calculate transition opacity
-    const opacity = calculateTransitionOpacity(clip, localTime);
+					// Wait for video to be ready
+					await new Promise<void>((resolve) => {
+						video.addEventListener("loadeddata", () => resolve(), { once: true });
+					});
+				}
+			}
 
-    // Save canvas state
-    ctx.save();
+			// Create image elements for clips that don't have them
+			for (const clip of imageClips) {
+				if (!imageElementsRef.current.has(clip.resourceId)) {
+					const img = new Image();
+					img.crossOrigin = "anonymous";
+					img.src = `/api/media/${clip.resourceId}/file`;
 
-    // Apply transformations
-    ctx.globalAlpha = opacity;
-    ctx.translate(x + (width * scale) / 2, y + (height * scale) / 2);
-    ctx.rotate((rotation * Math.PI) / 180);
-    ctx.translate(-(width * scale) / 2, -(height * scale) / 2);
+					imageElementsRef.current.set(clip.resourceId, img);
 
-    // Draw video frame
-    ctx.drawImage(video, 0, 0, width * scale, height * scale);
+					// Wait for image to load
+					await new Promise<void>((resolve, reject) => {
+						img.addEventListener("load", () => resolve(), { once: true });
+						img.addEventListener("error", () => reject(new Error("Failed to load image")), { once: true });
+					}).catch((err) => console.error("Image load error:", err));
+				}
+			}
 
-    // Restore canvas state
-    ctx.restore();
-  };
+			setIsReady(true);
+		};
 
-  /**
-   * Draw image clip to canvas
-   */
-  const drawImageClip = (
-    ctx: CanvasRenderingContext2D,
-    clip: Clip,
-    localTime: number
-  ) => {
-    // TODO: Load and cache image elements similar to video
-    const opacity = calculateTransitionOpacity(clip, localTime);
+		loadMediaElements();
+	}, [layers]);
 
-    ctx.save();
-    ctx.globalAlpha = opacity;
-    
-    // Draw image (placeholder - need to load image first)
-    // const x = clip.position?.x ?? 0;
-    // const y = clip.position?.y ?? 0;
-    // const scale = clip.scale ?? 1.0;
-    // ctx.drawImage(image, x, y, width * scale, height * scale);
-    
-    ctx.restore();
-  };
+	/**
+	 * Get clips that should be visible at the current time
+	 */
+	const getVisibleClips = useCallback(
+		(currentTime: number): Array<{ clip: Clip; layer: TimelineLayer }> => {
+			const visibleClips: Array<{ clip: Clip; layer: TimelineLayer }> = [];
 
-  /**
-   * Draw text clip to canvas
-   */
-  const drawTextClip = (
-    ctx: CanvasRenderingContext2D,
-    clip: Clip,
-    localTime: number
-  ) => {
-    if (!clip.data) return;
+			for (const layer of layers) {
+				if (!layer.visible) continue;
 
-    const {
-      text = '',
-      fontFamily = 'Arial',
-      fontSize = 48,
-      color = '#ffffff',
-      textAlign = 'center',
-      textBaseline = 'middle',
-    } = clip.data;
+				for (const clip of layer.clips) {
+					const clipEndTime = clip.startTime + clip.duration;
 
-    const x = clip.position?.x ?? width / 2;
-    const y = clip.position?.y ?? height / 2;
-    const opacity = calculateTransitionOpacity(clip, localTime);
+					// Check if current time falls within clip's time range
+					if (currentTime >= clip.startTime && currentTime < clipEndTime) {
+						visibleClips.push({ clip, layer });
+					}
+				}
+			}
 
-    ctx.save();
-    ctx.globalAlpha = opacity;
-    ctx.font = `${fontSize}px ${fontFamily}`;
-    ctx.fillStyle = color;
-    ctx.textAlign = textAlign as CanvasTextAlign;
-    ctx.textBaseline = textBaseline as CanvasTextBaseline;
+			// Sort by layer order (bottom to top)
+			visibleClips.sort((a, b) => {
+				const layerIndexA = layers.indexOf(a.layer);
+				const layerIndexB = layers.indexOf(b.layer);
+				return layerIndexA - layerIndexB;
+			});
 
-    // Draw text with optional stroke
-    if (clip.data.strokeColor) {
-      ctx.strokeStyle = clip.data.strokeColor;
-      ctx.lineWidth = clip.data.strokeWidth || 2;
-      ctx.strokeText(text, x, y);
-    }
-    
-    ctx.fillText(text, x, y);
-    ctx.restore();
-  };
+			return visibleClips;
+		},
+		[layers]
+	);
 
-  /**
-   * Render all visible clips to canvas
-   */
-  const renderFrame = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+	/**
+	 * Calculate opacity for transition effects
+	 */
+	const calculateTransitionOpacity = (clip: Clip, localTime: number): number => {
+		let opacity = clip.opacity ?? 1.0;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+		// Apply fade in transition
+		if (clip.transitions?.in) {
+			const transition = clip.transitions.in;
+			if (localTime < transition.duration) {
+				const fadeProgress = localTime / transition.duration;
 
-    // Clear canvas
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, width, height);
+				if (transition.type === "fade") {
+					opacity *= fadeProgress;
+				}
+			}
+		}
 
-    // Get all visible clips at current time
-    const visibleClips = getVisibleClips(currentTime);
+		// Apply fade out transition
+		if (clip.transitions?.out) {
+			const transition = clip.transitions.out;
+			const fadeOutStart = clip.duration - transition.duration;
 
-    // Render clips from bottom to top
-    for (const { clip, layer } of visibleClips) {
-      const localTime = currentTime - clip.startTime;
+			if (localTime > fadeOutStart) {
+				const fadeProgress = (clip.duration - localTime) / transition.duration;
 
-      // Skip if outside clip duration (shouldn't happen due to getVisibleClips filter)
-      if (localTime < 0 || localTime > clip.duration) continue;
+				if (transition.type === "fade") {
+					opacity *= fadeProgress;
+				}
+			}
+		}
 
-      // Render based on clip type
-      if (layer.type === 'video' || clip.data?.type === 'video') {
-        drawVideoClip(ctx, clip, localTime);
-      } else if (layer.type === 'image' || clip.data?.type === 'image') {
-        drawImageClip(ctx, clip, localTime);
-      } else if (layer.type === 'text' || clip.data?.type === 'text') {
-        drawTextClip(ctx, clip, localTime);
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTime, layers, width, height]);
+		return opacity;
+	};
 
-  /**
-   * Redraw canvas when currentTime changes
-   */
-  useEffect(() => {
-    if (!isReady) return;
-    renderFrame();
-  }, [renderFrame, isReady]);
+	/**
+	 * Draw video frame to canvas
+	 */
+	const drawVideoClip = (ctx: CanvasRenderingContext2D, clip: Clip, localTime: number) => {
+		const video = videoElementsRef.current.get(clip.resourceId);
+		if (!video || video.readyState < 2) return; // Not ready
 
-  /**
-   * Set up canvas and render first frame
-   */
-  useEffect(() => {
-    if (isReady) {
-      renderFrame();
-    }
-  }, [isReady, renderFrame]);
+		// Calculate video time with trim offset
+		const videoTime = localTime + clip.trimStart;
 
-  return (
-		<div className={`relative ${className}`}>
-			<canvas ref={canvasRef} width={width} height={height} className="w-full h-full object-contain bg-black" />
+		// Only seek if significantly out of sync (avoid constant seeking during playback)
+		// During playback, videos should naturally stay in sync
+		if (Math.abs(video.currentTime - videoTime) > 0.3) {
+			video.currentTime = videoTime;
+		}
+
+		// Use video's original dimensions
+		const videoWidth = video.videoWidth || canvasSize.width;
+		const videoHeight = video.videoHeight || canvasSize.height;
+
+		// Calculate position and scale
+		const x = clip.position?.x ?? (canvasSize.width - videoWidth) / 2;
+		const y = clip.position?.y ?? (canvasSize.height - videoHeight) / 2;
+		const scale = clip.scale ?? 1.0;
+		const rotation = clip.rotation ?? 0;
+
+		// Calculate transition opacity
+		const opacity = calculateTransitionOpacity(clip, localTime);
+
+		// Save canvas state
+		ctx.save();
+
+		// Apply transformations
+		ctx.globalAlpha = opacity;
+		ctx.translate(x + (videoWidth * scale) / 2, y + (videoHeight * scale) / 2);
+		ctx.rotate((rotation * Math.PI) / 180);
+		ctx.translate(-(videoWidth * scale) / 2, -(videoHeight * scale) / 2);
+
+		// Draw video frame using its original dimensions
+		ctx.drawImage(video, 0, 0, videoWidth * scale, videoHeight * scale);
+
+		// Restore canvas state
+		ctx.restore();
+	};
+
+	/**
+	 * Draw image clip to canvas
+	 */
+	const drawImageClip = (ctx: CanvasRenderingContext2D, clip: Clip, localTime: number) => {
+		const img = imageElementsRef.current.get(clip.resourceId);
+		if (!img || !img.complete) return; // Not ready or not loaded
+
+		// Use image's original dimensions
+		const imgWidth = img.naturalWidth || canvasSize.width;
+		const imgHeight = img.naturalHeight || canvasSize.height;
+
+		// Calculate position and scale
+		const x = clip.position?.x ?? (canvasSize.width - imgWidth) / 2;
+		const y = clip.position?.y ?? (canvasSize.height - imgHeight) / 2;
+		const scale = clip.scale ?? 1.0;
+		const rotation = clip.rotation ?? 0;
+
+		// Calculate transition opacity
+		const opacity = calculateTransitionOpacity(clip, localTime);
+
+		// Save canvas state
+		ctx.save();
+
+		// Apply transformations
+		ctx.globalAlpha = opacity;
+		ctx.translate(x + (imgWidth * scale) / 2, y + (imgHeight * scale) / 2);
+		ctx.rotate((rotation * Math.PI) / 180);
+		ctx.translate(-(imgWidth * scale) / 2, -(imgHeight * scale) / 2);
+
+		// Draw image frame using its original dimensions
+		ctx.drawImage(img, 0, 0, imgWidth * scale, imgHeight * scale);
+
+		// Restore canvas state
+		ctx.restore();
+	};
+
+	/**
+	 * Draw text clip to canvas
+	 */
+	const drawTextClip = (ctx: CanvasRenderingContext2D, clip: Clip, localTime: number) => {
+		if (!clip.data) return;
+
+		const {
+			text = "",
+			fontFamily = "Arial",
+			fontSize = 48,
+			color = "#ffffff",
+			textAlign = "center",
+			textBaseline = "middle",
+		} = clip.data;
+
+		const x = clip.position?.x ?? canvasSize.width / 2;
+		const y = clip.position?.y ?? canvasSize.height / 2;
+		const opacity = calculateTransitionOpacity(clip, localTime);
+
+		ctx.save();
+		ctx.globalAlpha = opacity;
+		ctx.font = `${fontSize}px ${fontFamily}`;
+		ctx.fillStyle = color;
+		ctx.textAlign = textAlign as CanvasTextAlign;
+		ctx.textBaseline = textBaseline as CanvasTextBaseline;
+
+		// Draw text with optional stroke
+		if (clip.data.strokeColor) {
+			ctx.strokeStyle = clip.data.strokeColor;
+			ctx.lineWidth = clip.data.strokeWidth || 2;
+			ctx.strokeText(text, x, y);
+		}
+
+		ctx.fillText(text, x, y);
+		ctx.restore();
+	};
+
+	/**
+	 * Render all visible clips to canvas
+	 */
+	const renderFrame = useCallback(() => {
+		const canvas = canvasRef.current;
+		if (!canvas) return;
+
+		const ctx = canvas.getContext("2d");
+		if (!ctx) return;
+
+		// Clear canvas
+		ctx.fillStyle = "#000000";
+		ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+
+		// Get all visible clips at current time - directly access state
+		const visibleClips: Array<{ clip: Clip; layer: TimelineLayer }> = [];
+
+		for (const layer of layers) {
+			if (!layer.visible) continue;
+
+			for (const clip of layer.clips) {
+				const clipEndTime = clip.startTime + clip.duration;
+
+				// Check if current time falls within clip's time range
+				if (currentTime >= clip.startTime && currentTime < clipEndTime) {
+					visibleClips.push({ clip, layer });
+				}
+			}
+		}
+
+		// Sort by layer order (bottom to top)
+		visibleClips.sort((a, b) => {
+			const layerIndexA = layers.indexOf(a.layer);
+			const layerIndexB = layers.indexOf(b.layer);
+			return layerIndexA - layerIndexB;
+		});
+
+		// Render clips from bottom to top
+		for (const { clip, layer } of visibleClips) {
+			const localTime = currentTime - clip.startTime;
+
+			// Skip if outside clip duration (shouldn't happen due to filter above)
+			if (localTime < 0 || localTime > clip.duration) continue;
+
+			// Render based on clip type
+			if (layer.type === "video" || clip.data?.type === "video") {
+				drawVideoClip(ctx, clip, localTime);
+			} else if (layer.type === "image" || clip.data?.type === "image") {
+				drawImageClip(ctx, clip, localTime);
+			} else if (layer.type === "text" || clip.data?.type === "text") {
+				drawTextClip(ctx, clip, localTime);
+			}
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [currentTime, canvasSize.width, canvasSize.height]);
+
+	/**
+	 * Redraw canvas when currentTime changes (using requestAnimationFrame for smooth rendering)
+	 */
+	useEffect(() => {
+		if (!isReady) return;
+
+		// Cancel any pending animation frame
+		if (animationFrameRef.current) {
+			cancelAnimationFrame(animationFrameRef.current);
+		}
+
+		// Use requestAnimationFrame for smooth, non-flickering rendering
+		animationFrameRef.current = requestAnimationFrame(() => {
+			renderFrame();
+		});
+
+		return () => {
+			if (animationFrameRef.current) {
+				cancelAnimationFrame(animationFrameRef.current);
+			}
+		};
+	}, [renderFrame, isReady]);
+
+	/**
+	 * Set up canvas and render first frame
+	 */
+	useEffect(() => {
+		if (isReady) {
+			renderFrame();
+		}
+	}, [isReady, renderFrame]);
+
+	/**
+	 * Synchronize video playback with timeline
+	 * Play/pause video elements based on isPlaying state
+	 */
+	useEffect(() => {
+		if (!isReady) return;
+
+		// If not playing, pause all videos immediately
+		if (!isPlaying) {
+			videoElementsRef.current.forEach((video) => {
+				if (!video.paused) {
+					video.pause();
+				}
+				video.muted = true;
+			});
+			return;
+		}
+
+		// If playing, handle visible clips
+		const visibleClips = getVisibleClips(currentTime);
+		const videoClips = visibleClips.filter(({ clip, layer }) => layer.type === "video" || clip.data?.type === "video");
+
+		// Play or pause all visible video clips
+		videoClips.forEach(({ clip }) => {
+			const video = videoElementsRef.current.get(clip.resourceId);
+			if (!video || video.readyState < 2) return;
+
+			const localTime = currentTime - clip.startTime;
+			const videoTime = localTime + clip.trimStart;
+
+			// Sync video time with timeline position (less aggressive during playback)
+			// Only seek if significantly out of sync to avoid stuttering
+			if (Math.abs(video.currentTime - videoTime) > 0.2) {
+				video.currentTime = videoTime;
+			}
+
+			// Unmute video during playback if it's on a video layer
+			// (audio layers would handle audio separately)
+			video.muted = false;
+
+			// Only play if video is paused to avoid repeated play() calls
+			if (video.paused) {
+				video.play().catch((err) => {
+					console.warn("Failed to play video:", err);
+				});
+			}
+		});
+
+		// Pause and mute all videos not currently visible
+		videoElementsRef.current.forEach((video, resourceId) => {
+			const isVisible = videoClips.some(({ clip }) => clip.resourceId === resourceId);
+			if (!isVisible) {
+				if (!video.paused) {
+					video.pause();
+				}
+				video.muted = true;
+			}
+		});
+	}, [isPlaying, currentTime, isReady, layers, getVisibleClips]);
+
+	return (
+		<div
+			ref={containerRef}
+			className={`relative ${className}`}
+			style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+			<canvas
+				ref={canvasRef}
+				width={canvasSize.width}
+				height={canvasSize.height}
+				style={{
+					width: displaySize.width ? `${displaySize.width}px` : "100%",
+					height: displaySize.height ? `${displaySize.height}px` : "100%",
+					display: "block",
+				}}
+				className="bg-black"
+			/>
 			{!isReady && (
 				<div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75">
 					<div className="text-white text-sm">Loading preview...</div>

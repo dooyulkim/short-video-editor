@@ -3,7 +3,7 @@ import { useDropzone } from "react-dropzone";
 import type { MediaResource } from "@/types/media";
 import { useMediaUpload } from "@/hooks/useMediaUpload";
 import { listMedia, deleteMedia } from "@/services/api";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Upload, Video, Music, Image as ImageIcon, Clock, Maximize2, X } from "lucide-react";
+import { Upload, Video, Music, Image as ImageIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ResourcePanelProps {
@@ -37,7 +37,6 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 }) => {
 	const [resources, setResources] = useState<MediaResource[]>([]);
 	const [filter, setFilter] = useState<FilterType>("all");
-	const [hoveredResource, setHoveredResource] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 	const [resourceToDelete, setResourceToDelete] = useState<MediaResource | null>(null);
@@ -232,11 +231,21 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 									key={resource.id}
 									draggable
 									onDragStart={(e: React.DragEvent) => handleDragStart(e, resource)}
-									onMouseEnter={() => setHoveredResource(resource.id)}
-									onMouseLeave={() => setHoveredResource(null)}
 									onClick={() => onResourceSelect?.(resource)}
+									title={[
+										resource.name,
+										resource.duration && `Duration: ${formatDuration(resource.duration)}`,
+										resource.metadata.width &&
+											resource.metadata.height &&
+											`Resolution: ${resource.metadata.width} × ${resource.metadata.height}`,
+										`Size: ${formatFileSize(resource.fileSize)}`,
+										resource.metadata.fps && `FPS: ${resource.metadata.fps}`,
+										resource.metadata.codec && `Codec: ${resource.metadata.codec}`,
+									]
+										.filter(Boolean)
+										.join("\n")}
 									className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary">
-									<CardHeader className="p-3">
+									<CardHeader className="p-1">
 										<div className="flex items-start justify-between gap-2">
 											<div className="flex items-center gap-2 flex-1 min-w-0">
 												{getResourceIcon(resource.type)}
@@ -251,7 +260,7 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 											</Button>
 										</div>
 									</CardHeader>
-									<CardContent className="p-3 pt-0">
+									<CardContent className="p-2 pt-0">
 										{/* Thumbnail */}
 										<div className="relative aspect-video bg-muted rounded-md overflow-hidden mb-2">
 											{resource.thumbnail ? (
@@ -262,29 +271,6 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 												</div>
 											)}
 										</div>
-
-										{/* Metadata - shown on hover */}
-										{hoveredResource === resource.id && (
-											<CardDescription className="space-y-1 text-xs animate-in fade-in duration-200">
-												{resource.duration && (
-													<div className="flex items-center gap-1">
-														<Clock className="w-3 h-3" />
-														<span>Duration: {formatDuration(resource.duration)}</span>
-													</div>
-												)}
-												{resource.metadata.width && resource.metadata.height && (
-													<div className="flex items-center gap-1">
-														<Maximize2 className="w-3 h-3" />
-														<span>
-															{resource.metadata.width} × {resource.metadata.height}
-														</span>
-													</div>
-												)}
-												<div>Size: {formatFileSize(resource.fileSize)}</div>
-												{resource.metadata.fps && <div>FPS: {resource.metadata.fps}</div>}
-												{resource.metadata.codec && <div className="truncate">Codec: {resource.metadata.codec}</div>}
-											</CardDescription>
-										)}
 									</CardContent>
 								</Card>
 							))}

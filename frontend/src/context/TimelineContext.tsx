@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useEffect } from "react";
 import type { ReactNode } from "react";
 import type { TimelineLayer, Clip } from "@/types/timeline";
 import { useUndoRedo } from "@/hooks/useUndoRedo";
@@ -23,6 +23,8 @@ export type TimelineAction =
 	| { type: "TRIM_CLIP"; payload: { clipId: string; newDuration: number } }
 	| { type: "ADD_LAYER"; payload: { layerType: TimelineLayer["type"] } }
 	| { type: "REMOVE_LAYER"; payload: { layerId: string } }
+	| { type: "REORDER_LAYER"; payload: { layerId: string; newIndex: number } }
+	| { type: "TOGGLE_LAYER_VISIBILITY"; payload: { layerId: string } }
 	| { type: "SET_CURRENT_TIME"; payload: { time: number } }
 	| { type: "SET_ZOOM"; payload: { zoom: number } }
 	| { type: "PLAY" }
@@ -192,12 +194,33 @@ function timelineReducer(state: TimelineState, action: TimelineAction): Timeline
 				duration: Math.max(0, duration),
 			};
 		}
-case "RESTORE_STATE": {
-			const { state: restoredState } = action.payload;
-			return restoredState;
+
+		case "REORDER_LAYER": {
+			const { layerId, newIndex } = action.payload;
+			const newLayers = [...state.layers];
+			const currentIndex = newLayers.findIndex((l) => l.id === layerId);
+
+			if (currentIndex === -1 || newIndex < 0 || newIndex >= newLayers.length) {
+				return state;
+			}
+
+			// Remove layer from current position
+			const [layer] = newLayers.splice(currentIndex, 1);
+			// Insert at new position
+			newLayers.splice(newIndex, 0, layer);
+
+			return { ...state, layers: newLayers };
 		}
 
-		
+		case "TOGGLE_LAYER_VISIBILITY": {
+			const { layerId } = action.payload;
+			const newLayers = state.layers.map((layer) =>
+				layer.id === layerId ? { ...layer, visible: !layer.visible } : layer
+			);
+
+			return { ...state, layers: newLayers };
+		}
+
 		default:
 			return state;
 	}
@@ -214,6 +237,8 @@ interface TimelineContextType {
 	trimClip: (clipId: string, newDuration: number) => void;
 	addLayer: (layerType: TimelineLayer["type"]) => void;
 	removeLayer: (layerId: string) => void;
+	reorderLayer: (layerId: string, newIndex: number) => void;
+	toggleLayerVisibility: (layerId: string) => void;
 	setCurrentTime: (time: number) => void;
 	undo: () => void;
 	redo: () => void;
@@ -243,7 +268,7 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 		customInitialState ? { ...initialState, ...customInitialState } : initialState
 	);
 
-	// Restore state function for undo/redo 
+	// Restore state function for undo/redo
 	const restoreState = useCallback((restoredState: TimelineState) => {
 		dispatch({ type: "RESTORE_STATE", payload: { state: restoredState } });
 	}, []);
@@ -291,6 +316,14 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 		dispatch({ type: "REMOVE_LAYER", payload: { layerId } });
 	}, []);
 
+	const reorderLayer = useCallback((layerId: string, newIndex: number) => {
+		dispatch({ type: "REORDER_LAYER", payload: { layerId, newIndex } });
+	}, []);
+
+	const toggleLayerVisibility = useCallback((layerId: string) => {
+		dispatch({ type: "TOGGLE_LAYER_VISIBILITY", payload: { layerId } });
+	}, []);
+
 	const setCurrentTime = useCallback((time: number) => {
 		dispatch({ type: "SET_CURRENT_TIME", payload: { time } });
 	}, []);
@@ -333,6 +366,8 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 		trimClip,
 		addLayer,
 		removeLayer,
+		reorderLayer,
+		toggleLayerVisibility,
 		setCurrentTime,
 		setZoom,
 		play,
@@ -354,7 +389,7 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 export function useTimeline(): TimelineContextType {
 	const context = useContext(TimelineContext);
 	if (context === undefined) {
-		throw new Error('useTimeline must be used within a TimelineProvider');
+		throw new Error("useTimeline must be used within a TimelineProvider");
 	}
 	return context;
 }
