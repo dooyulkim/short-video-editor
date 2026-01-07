@@ -31,7 +31,7 @@ function AppContent() {
 	const isPlaying = timeline?.state.isPlaying || false;
 	const [leftSidebarWidth, setLeftSidebarWidth] = useState(280);
 	const [rightSidebarWidth, setRightSidebarWidth] = useState(280);
-	const [timelineHeight, setTimelineHeight] = useState(350);
+	const [timelineHeight, setTimelineHeight] = useState(250);
 	const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
 	const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
 	const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(true);

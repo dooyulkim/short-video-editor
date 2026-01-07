@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useTimeline } from "@/context/TimelineContext";
 import type { Clip, TimelineLayer } from "@/types/timeline";
+import { getInterpolatedProperties } from "@/utils/keyframeInterpolation";
+import { ImageResizeOverlay } from "./ImageResizeOverlay";
 
 interface VideoPlayerProps {
 	width?: number;
@@ -13,8 +15,8 @@ interface VideoPlayerProps {
  * Renders all visible clips at current time with proper layering
  */
 export function VideoPlayer({ width: initialWidth, height: initialHeight, className = "" }: VideoPlayerProps) {
-	const { state } = useTimeline();
-	const { layers, currentTime, isPlaying } = state;
+	const { state, updateClip, setSelectedClip } = useTimeline();
+	const { layers, currentTime, isPlaying, selectedClipId } = state;
 
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -24,6 +26,26 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	const [isReady, setIsReady] = useState(false);
 	const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 });
 	const [canvasSize, setCanvasSize] = useState({ width: initialWidth || 1080, height: initialHeight || 1920 });
+
+	// Handler for resizing images
+	const handleResize = useCallback(
+		(clipId: string, scale: { x: number; y: number }, position?: { x: number; y: number }, rotation?: number) => {
+			const updates: Partial<Clip> = { scale };
+			if (position) {
+				updates.position = position;
+			}
+			if (rotation !== undefined) {
+				updates.rotation = rotation;
+			}
+			updateClip(clipId, updates);
+		},
+		[updateClip]
+	);
+
+	// Get selected clip for resize overlay
+	const selectedClip = selectedClipId
+		? layers.flatMap((layer) => layer.clips).find((clip) => clip.id === selectedClipId)
+		: null;
 
 	/**
 	 * Detect canvas size based on the first video's dimensions
@@ -59,8 +81,11 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		const updateDisplaySize = () => {
 			if (!containerRef.current) return;
 
-			const containerWidth = containerRef.current.clientWidth;
-			const containerHeight = containerRef.current.clientHeight;
+			// Account for border (2px * 2), padding (8px * 2), and outer padding (12px * 2)
+			const borderAndPadding = (2 + 8 + 12) * 2; // Total: 44px on each axis
+
+			const containerWidth = containerRef.current.clientWidth - borderAndPadding;
+			const containerHeight = containerRef.current.clientHeight - borderAndPadding;
 			const aspectRatio = canvasSize.width / canvasSize.height;
 			const containerAspectRatio = containerWidth / containerHeight;
 
@@ -223,26 +248,35 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		const videoWidth = video.videoWidth || canvasSize.width;
 		const videoHeight = video.videoHeight || canvasSize.height;
 
-		// Calculate position and scale
-		const x = clip.position?.x ?? (canvasSize.width - videoWidth) / 2;
-		const y = clip.position?.y ?? (canvasSize.height - videoHeight) / 2;
-		const scale = clip.scale ?? 1.0;
-		const rotation = clip.rotation ?? 0;
+		// Get interpolated properties (supports keyframe animation)
+		const interpolated = getInterpolatedProperties(clip, localTime);
+		const scale = interpolated.scale;
+		const position = interpolated.position;
+		const rotation = interpolated.rotation;
 
-		// Calculate transition opacity
-		const opacity = calculateTransitionOpacity(clip, localTime);
+		// Calculate position (center video if not specified)
+		const x = position.x !== 0 ? position.x : (canvasSize.width - videoWidth) / 2;
+		const y = position.y !== 0 ? position.y : (canvasSize.height - videoHeight) / 2;
+
+		// Handle both uniform and non-uniform scaling
+		const scaleX = typeof scale === "number" ? scale : scale.x;
+		const scaleY = typeof scale === "number" ? scale : scale.y;
+
+		// Calculate transition opacity and combine with keyframe opacity
+		const transitionOpacity = calculateTransitionOpacity(clip, localTime);
+		const opacity = transitionOpacity * interpolated.opacity;
 
 		// Save canvas state
 		ctx.save();
 
 		// Apply transformations
 		ctx.globalAlpha = opacity;
-		ctx.translate(x + (videoWidth * scale) / 2, y + (videoHeight * scale) / 2);
+		ctx.translate(x + (videoWidth * scaleX) / 2, y + (videoHeight * scaleY) / 2);
 		ctx.rotate((rotation * Math.PI) / 180);
-		ctx.translate(-(videoWidth * scale) / 2, -(videoHeight * scale) / 2);
+		ctx.translate(-(videoWidth * scaleX) / 2, -(videoHeight * scaleY) / 2);
 
-		// Draw video frame using its original dimensions
-		ctx.drawImage(video, 0, 0, videoWidth * scale, videoHeight * scale);
+		// Draw video frame using its dimensions with scaling
+		ctx.drawImage(video, 0, 0, videoWidth * scaleX, videoHeight * scaleY);
 
 		// Restore canvas state
 		ctx.restore();
@@ -259,26 +293,34 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		const imgWidth = img.naturalWidth || canvasSize.width;
 		const imgHeight = img.naturalHeight || canvasSize.height;
 
-		// Calculate position and scale
-		const x = clip.position?.x ?? (canvasSize.width - imgWidth) / 2;
-		const y = clip.position?.y ?? (canvasSize.height - imgHeight) / 2;
-		const scale = clip.scale ?? 1.0;
-		const rotation = clip.rotation ?? 0;
+		// Get interpolated properties (supports keyframe animation)
+		const interpolated = getInterpolatedProperties(clip, localTime);
+		const scale = interpolated.scale;
+		const position = interpolated.position;
+		const rotation = interpolated.rotation;
 
-		// Calculate transition opacity
-		const opacity = calculateTransitionOpacity(clip, localTime);
+		// Calculate position (center image if not specified)
+		const x = position.x !== 0 ? position.x : (canvasSize.width - imgWidth) / 2;
+		const y = position.y !== 0 ? position.y : (canvasSize.height - imgHeight) / 2;
+		// Handle both uniform and non-uniform scaling
+		const scaleX = typeof scale === "number" ? scale : scale.x;
+		const scaleY = typeof scale === "number" ? scale : scale.y;
+
+		// Calculate transition opacity and combine with keyframe opacity
+		const transitionOpacity = calculateTransitionOpacity(clip, localTime);
+		const opacity = transitionOpacity * interpolated.opacity;
 
 		// Save canvas state
 		ctx.save();
 
 		// Apply transformations
 		ctx.globalAlpha = opacity;
-		ctx.translate(x + (imgWidth * scale) / 2, y + (imgHeight * scale) / 2);
+		ctx.translate(x + (imgWidth * scaleX) / 2, y + (imgHeight * scaleY) / 2);
 		ctx.rotate((rotation * Math.PI) / 180);
-		ctx.translate(-(imgWidth * scale) / 2, -(imgHeight * scale) / 2);
+		ctx.translate(-(imgWidth * scaleX) / 2, -(imgHeight * scaleY) / 2);
 
-		// Draw image frame using its original dimensions
-		ctx.drawImage(img, 0, 0, imgWidth * scale, imgHeight * scale);
+		// Draw image frame using its dimensions with scaling
+		ctx.drawImage(img, 0, 0, imgWidth * scaleX, imgHeight * scaleY);
 
 		// Restore canvas state
 		ctx.restore();
@@ -375,7 +417,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			}
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [currentTime, canvasSize.width, canvasSize.height]);
+	}, [currentTime, canvasSize.width, canvasSize.height, layers]);
 
 	/**
 	 * Redraw canvas when currentTime changes (using requestAnimationFrame for smooth rendering)
@@ -473,18 +515,80 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		<div
 			ref={containerRef}
 			className={`relative ${className}`}
-			style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-			<canvas
-				ref={canvasRef}
-				width={canvasSize.width}
-				height={canvasSize.height}
+			style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "12px" }}>
+			{/* Wrapper for canvas and overlay to ensure they align */}
+			<div
 				style={{
-					width: displaySize.width ? `${displaySize.width}px` : "100%",
-					height: displaySize.height ? `${displaySize.height}px` : "100%",
-					display: "block",
-				}}
-				className="bg-black"
-			/>
+					position: "relative",
+					border: "2px solid rgba(59, 130, 246, 0.4)",
+					borderRadius: "4px",
+					boxShadow: "0 0 20px rgba(0, 0, 0, 0.5)",
+					padding: "8px",
+				}}>
+				<canvas
+					ref={canvasRef}
+					width={canvasSize.width}
+					height={canvasSize.height}
+					style={{
+						width: displaySize.width ? `${displaySize.width}px` : "100%",
+						height: displaySize.height ? `${displaySize.height}px` : "100%",
+						display: "block",
+					}}
+					className="bg-black"
+					onClick={(e) => {
+						const rect = e.currentTarget.getBoundingClientRect();
+						const x = ((e.clientX - rect.left) / rect.width) * canvasSize.width;
+						const y = ((e.clientY - rect.top) / rect.height) * canvasSize.height;
+
+						// Find clicked clip
+						const visibleClips = getVisibleClips(currentTime);
+						for (let i = visibleClips.length - 1; i >= 0; i--) {
+							const { clip, layer } = visibleClips[i];
+							if (layer.type === "image" || clip.data?.type === "image") {
+								const img = imageElementsRef.current.get(clip.resourceId);
+								if (img) {
+									const imgWidth = img.naturalWidth || canvasSize.width;
+									const imgHeight = img.naturalHeight || canvasSize.height;
+									const localTime = currentTime - clip.startTime;
+									const interpolated = getInterpolatedProperties(clip, localTime);
+									const scale = interpolated.scale;
+									const position = interpolated.position;
+
+									const clipX = position.x !== 0 ? position.x : (canvasSize.width - imgWidth) / 2;
+									const clipY = position.y !== 0 ? position.y : (canvasSize.height - imgHeight) / 2;
+									const scaleX = typeof scale === "number" ? scale : scale.x;
+									const scaleY = typeof scale === "number" ? scale : scale.y;
+									const clipWidth = imgWidth * scaleX;
+									const clipHeight = imgHeight * scaleY;
+
+									if (x >= clipX && x <= clipX + clipWidth && y >= clipY && y <= clipY + clipHeight) {
+										setSelectedClip(clip.id);
+										return;
+									}
+								}
+							}
+						}
+						// Click on empty area - deselect
+						setSelectedClip(null);
+					}}
+				/>
+
+				{/* Resize overlay for selected image clip */}
+				{selectedClip && selectedClip.data?.type === "image" && (
+					<ImageResizeOverlay
+						clip={selectedClip}
+						canvasWidth={displaySize.width}
+						canvasHeight={displaySize.height}
+						onResize={handleResize}
+						imageWidth={imageElementsRef.current.get(selectedClip.resourceId)?.naturalWidth || canvasSize.width}
+						imageHeight={imageElementsRef.current.get(selectedClip.resourceId)?.naturalHeight || canvasSize.height}
+						scaleRatio={displaySize.width / canvasSize.width}
+						canvasSizeWidth={canvasSize.width}
+						canvasSizeHeight={canvasSize.height}
+					/>
+				)}
+			</div>
+
 			{!isReady && (
 				<div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-75">
 					<div className="text-white text-sm">Loading preview...</div>

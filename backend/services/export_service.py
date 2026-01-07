@@ -2,7 +2,7 @@
 Export Service for rendering final video from timeline data.
 """
 import uuid
-from typing import Dict, List, Callable, Optional
+from typing import Dict, List, Callable, Optional, Union
 from pathlib import Path
 from moviepy.editor import (
     VideoFileClip,
@@ -10,7 +10,8 @@ from moviepy.editor import (
     AudioFileClip,
     CompositeAudioClip,
     TextClip,
-    ColorClip
+    ColorClip,
+    ImageClip
 )
 from moviepy.video.fx import fadein, fadeout
 
@@ -38,6 +39,224 @@ class ExportService:
             "720p": (1280, 720),
             "480p": (854, 480)
         }
+
+    def _interpolate_keyframes(
+        self, keyframes: List[Dict], time: float, property_name: str
+    ) -> Union[float, Dict[str, float], None]:
+        """
+        Interpolate keyframe values at a specific time.
+        
+        Args:
+            keyframes: List of keyframes with time and properties
+            time: Time within clip to interpolate at
+            property_name: Name of property to interpolate
+            
+        Returns:
+            Interpolated value or None
+        """
+        if not keyframes:
+            return None
+        
+        # Sort keyframes by time
+        sorted_keyframes = sorted(keyframes, key=lambda kf: kf.get("time", 0))
+        
+        # Find surrounding keyframes
+        prev_kf = None
+        next_kf = None
+        
+        for kf in sorted_keyframes:
+            kf_time = kf.get("time", 0)
+            if kf_time <= time:
+                prev_kf = kf
+            if kf_time > time and next_kf is None:
+                next_kf = kf
+                break
+        
+        # Get property from keyframes
+        prev_val = prev_kf.get("properties", {}).get(property_name) if prev_kf else None
+        next_val = next_kf.get("properties", {}).get(property_name) if next_kf else None
+        
+        # If no keyframes with this property, return None
+        if prev_val is None and next_val is None:
+            return None
+        
+        # If only one keyframe or after last keyframe
+        if prev_kf and not next_kf:
+            return prev_val
+        
+        # If before first keyframe
+        if not prev_kf and next_kf:
+            # Interpolate from None to first keyframe (use next value)
+            return next_val
+        
+        # Interpolate between two keyframes
+        if prev_kf and next_kf:
+            prev_time = prev_kf.get("time", 0)
+            next_time = next_kf.get("time", 0)
+            
+            if next_time <= prev_time:
+                return prev_val
+            
+            # Calculate progress between keyframes
+            progress = (time - prev_time) / (next_time - prev_time)
+            progress = max(0, min(1, progress))  # Clamp to [0, 1]
+            
+            # Apply easing (currently only linear)
+            easing = next_kf.get("easing", "linear")
+            if easing == "ease-in":
+                progress = progress * progress
+            elif easing == "ease-out":
+                progress = progress * (2 - progress)
+            elif easing == "ease-in-out":
+                progress = progress * progress * (3 - 2 * progress)
+            
+            # Interpolate based on type
+            if isinstance(prev_val, (int, float)) and isinstance(next_val, (int, float)):
+                return prev_val + (next_val - prev_val) * progress
+            elif isinstance(prev_val, dict) and isinstance(next_val, dict):
+                # Interpolate dict values (for scale, position)
+                result = {}
+                for key in set(list(prev_val.keys()) + list(next_val.keys())):
+                    prev_v = prev_val.get(key, 0)
+                    next_v = next_val.get(key, 0)
+                    result[key] = prev_v + (next_v - prev_v) * progress
+                return result
+            else:
+                # Can't interpolate, return next value
+                return next_val
+        
+        return None
+
+    def _apply_keyframe_transforms(
+        self, clip, clip_data: Dict, original_width: int, original_height: int
+    ):
+        """
+        Apply keyframe-based transformations to a clip.
+        
+        Args:
+            clip: MoviePy clip object
+            clip_data: Clip data containing keyframes
+            original_width: Original width of the clip
+            original_height: Original height of the clip
+            
+        Returns:
+            Transformed clip
+        """
+        keyframes = clip_data.get("keyframes")
+        if not keyframes:
+            # Apply static transforms
+            return self._apply_static_transforms(clip, clip_data, original_width, original_height)
+        
+        def transform_func(get_frame, t):
+            """Transform function applied to each frame."""
+            # Get interpolated properties at time t
+            scale_val = self._interpolate_keyframes(keyframes, t, "scale")
+            position_val = self._interpolate_keyframes(keyframes, t, "position")
+            rotation_val = self._interpolate_keyframes(keyframes, t, "rotation")
+            opacity_val = self._interpolate_keyframes(keyframes, t, "opacity")
+            
+            # Fall back to static values if no keyframes
+            if scale_val is None:
+                scale_val = clip_data.get("scale", 1)
+            if position_val is None:
+                position_val = clip_data.get("position", {"x": 0, "y": 0})
+            if rotation_val is None:
+                rotation_val = clip_data.get("rotation", 0)
+            if opacity_val is None:
+                opacity_val = clip_data.get("opacity", 1)
+            
+            # Get the frame
+            frame = get_frame(t)
+            
+            # Apply opacity
+            if opacity_val != 1:
+                frame = (frame * opacity_val).astype('uint8')
+            
+            return frame
+        
+        # Apply time-varying function
+        clip = clip.fl(transform_func)
+        
+        # Apply time-varying scale and position
+        def make_frame(t):
+            scale_val = self._interpolate_keyframes(keyframes, t, "scale")
+            if scale_val is None:
+                scale_val = clip_data.get("scale", 1)
+            
+            # Handle scale as number or dict
+            if isinstance(scale_val, dict):
+                scale_x = scale_val.get("x", 1)
+                scale_y = scale_val.get("y", 1)
+            else:
+                scale_x = scale_y = scale_val
+            
+            position_val = self._interpolate_keyframes(keyframes, t, "position")
+            if position_val is None:
+                position_val = clip_data.get("position", {"x": 0, "y": 0})
+            
+            return (scale_x, scale_y, position_val.get("x", 0), position_val.get("y", 0))
+        
+        # Create a time-varying resize and position
+        duration = clip.duration
+        
+        # Apply resize based on keyframes
+        def resize_func(t):
+            scale_x, scale_y, _, _ = make_frame(t)
+            new_width = int(original_width * scale_x)
+            new_height = int(original_height * scale_y)
+            return (new_width, new_height)
+        
+        # Apply position based on keyframes
+        def position_func(t):
+            _, _, pos_x, pos_y = make_frame(t)
+            return (pos_x, pos_y)
+        
+        # Apply the transforms
+        clip = clip.resize(lambda t: resize_func(t))
+        clip = clip.set_position(lambda t: position_func(t))
+        
+        return clip
+
+    def _apply_static_transforms(
+        self, clip, clip_data: Dict, original_width: int, original_height: int
+    ):
+        """
+        Apply static (non-keyframed) transformations to a clip.
+        
+        Args:
+            clip: MoviePy clip object
+            clip_data: Clip data
+            original_width: Original width
+            original_height: Original height
+            
+        Returns:
+            Transformed clip
+        """
+        # Apply scale
+        scale = clip_data.get("scale", 1)
+        if isinstance(scale, dict):
+            scale_x = scale.get("x", 1)
+            scale_y = scale.get("y", 1)
+            clip = clip.resize(width=int(original_width * scale_x), height=int(original_height * scale_y))
+        elif scale != 1:
+            clip = clip.resize(scale)
+        
+        # Apply position
+        position = clip_data.get("position")
+        if position:
+            clip = clip.set_position((position.get("x", 0), position.get("y", 0)))
+        
+        # Apply rotation
+        rotation = clip_data.get("rotation")
+        if rotation:
+            clip = clip.rotate(rotation)
+        
+        # Apply opacity
+        opacity = clip_data.get("opacity")
+        if opacity is not None and opacity != 1:
+            clip = clip.set_opacity(opacity)
+        
+        return clip
 
     def export_timeline(
         self,
@@ -179,7 +398,7 @@ class ExportService:
         self, clip_data: Dict, width: int, height: int, fps: int
     ) -> Optional[tuple]:
         """
-        Process a single video clip with trimming and transitions.
+        Process a single video clip with trimming, transitions, and keyframe transforms.
         
         Args:
             clip_data: Clip data from timeline
@@ -193,47 +412,50 @@ class ExportService:
         try:
             resource_id = clip_data.get("resourceId")
             start_time = clip_data.get("startTime", 0)
+            duration = clip_data.get("duration", 0)
             trim_start = clip_data.get("trimStart", 0)
             trim_end = clip_data.get("trimEnd", 0)
-            transitions = clip_data.get("transitions", [])
+            transitions = clip_data.get("transitions", {})
+            data = clip_data.get("data", {})
+            clip_type = data.get("type", "video")
             
-            # Find video file
-            video_path = self._find_media_file(resource_id)
-            if not video_path:
+            # Find media file
+            media_path = self._find_media_file(resource_id)
+            if not media_path:
                 return None
             
-            # Load video clip
-            video = VideoFileClip(str(video_path))
+            # Load clip based on type
+            if clip_type == "image":
+                # Load image as clip
+                clip = ImageClip(str(media_path), duration=duration)
+                original_width = clip.w
+                original_height = clip.h
+            else:
+                # Load video clip
+                clip = VideoFileClip(str(media_path))
+                
+                # Apply trimming
+                if trim_start > 0 or trim_end > 0:
+                    clip = clip.subclip(trim_start, clip.duration - trim_end)
+                
+                original_width = clip.w
+                original_height = clip.h
             
-            # Apply trimming
-            if trim_start > 0 or trim_end > 0:
-                video = video.subclip(trim_start, video.duration - trim_end)
-            
-            # Resize to target resolution
-            video = video.resize(height=height)
-            if video.w > width:
-                video = video.resize(width=width)
-            
-            # Center the video if needed
-            if video.w < width or video.h < height:
-                video = video.on_color(
-                    size=(width, height),
-                    color=(0, 0, 0),
-                    pos='center'
-                )
+            # Apply keyframe transforms or static transforms
+            clip = self._apply_keyframe_transforms(clip, clip_data, original_width, original_height)
             
             # Apply transitions
-            video = self._apply_transitions(video, transitions)
+            clip = self._apply_transitions_dict(clip, transitions)
             
             # Set fps
-            video = video.set_fps(fps)
+            clip = clip.set_fps(fps)
             
-            end_time = start_time + video.duration
+            end_time = start_time + clip.duration
             
-            return (video, start_time, end_time)
+            return (clip, start_time, end_time)
             
         except Exception as e:
-            print(f"Error processing video clip: {str(e)}")
+            print(f"Error processing video/image clip: {str(e)}")
             return None
 
     def _process_audio_clip(self, clip_data: Dict) -> Optional[tuple]:
@@ -325,7 +547,7 @@ class ExportService:
 
     def _apply_transitions(self, clip: VideoFileClip, transitions: List[Dict]) -> VideoFileClip:
         """
-        Apply transitions to a video clip.
+        Apply transitions to a video clip (legacy list format).
         
         Args:
             clip: Video clip
@@ -342,6 +564,37 @@ class ExportService:
             if trans_type == "fadeIn" and position == "start":
                 clip = fadein(clip, trans_duration)
             elif trans_type == "fadeOut" and position == "end":
+                clip = fadeout(clip, trans_duration)
+        
+        return clip
+
+    def _apply_transitions_dict(self, clip, transitions: Dict) -> VideoFileClip:
+        """
+        Apply transitions to a video clip (new dict format with 'in' and 'out').
+        
+        Args:
+            clip: Video clip
+            transitions: Dict with 'in' and 'out' transition objects
+            
+        Returns:
+            Video clip with transitions applied
+        """
+        # Apply fade in transition
+        if transitions.get("in"):
+            trans_in = transitions["in"]
+            trans_type = trans_in.get("type", "")
+            trans_duration = trans_in.get("duration", 1.0)
+            
+            if trans_type == "fade":
+                clip = fadein(clip, trans_duration)
+        
+        # Apply fade out transition
+        if transitions.get("out"):
+            trans_out = transitions["out"]
+            trans_type = trans_out.get("type", "")
+            trans_duration = trans_out.get("duration", 1.0)
+            
+            if trans_type == "fade":
                 clip = fadeout(clip, trans_duration)
         
         return clip
