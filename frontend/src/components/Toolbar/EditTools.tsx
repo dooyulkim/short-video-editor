@@ -1,6 +1,5 @@
-import { Scissors, Minimize2, Trash2, Copy, Undo2, Redo2 } from "lucide-react";
+import { Scissors, Minimize2, Trash2, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { useTimeline } from "@/context/TimelineContext";
 import { cutClipAtTime, duplicateClip, findClipById } from "@/utils/clipOperations";
 
@@ -9,7 +8,7 @@ interface EditToolsProps {
 }
 
 export function EditTools({ className }: EditToolsProps) {
-	const { state, removeClip, addClip, undo, redo, canUndo, canRedo } = useTimeline();
+	const { state, removeClip, addClip } = useTimeline();
 
 	const { selectedClipId, currentTime, layers } = state;
 
@@ -91,85 +90,56 @@ export function EditTools({ className }: EditToolsProps) {
 	};
 
 	return (
-		<div className={`flex items-center justify-between gap-1.5 ${className}`}>
-			{/* Left side - Edit actions */}
-			<div className="flex gap-1.5">
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={handleCut}
-					disabled={!canCut}
-					className="h-7 px-2 text-xs"
-					title={
-						!hasSelection
-							? "Select a clip first"
-							: !canCut
-							? "Position playhead over the clip"
-							: "Cut clip at playhead (splits into two clips)"
-					}>
-					<Scissors className="h-3 w-3 mr-1.5" />
-					Cut
-				</Button>
+		<div className={`flex items-center gap-1.5 ${className}`}>
+			<Button
+				variant="outline"
+				size="sm"
+				onClick={handleCut}
+				disabled={!canCut}
+				className="h-7 px-2 text-xs"
+				title={
+					!hasSelection
+						? "Select a clip first"
+						: !canCut
+						? "Position playhead over the clip"
+						: "Cut clip at playhead (splits into two clips)"
+				}>
+				<Scissors className="h-3 w-3 mr-1.5" />
+				Cut
+			</Button>
 
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={handleTrim}
-					disabled={!hasSelection}
-					className="h-7 px-2 text-xs"
-					title={!hasSelection ? "Select a clip first" : "Enable trim mode to adjust clip start/end"}>
-					<Minimize2 className="h-3 w-3 mr-1.5" />
-					Trim
-				</Button>
+			<Button
+				variant="outline"
+				size="sm"
+				onClick={handleTrim}
+				disabled={!hasSelection}
+				className="h-7 px-2 text-xs"
+				title={!hasSelection ? "Select a clip first" : "Enable trim mode to adjust clip start/end"}>
+				<Minimize2 className="h-3 w-3 mr-1.5" />
+				Trim
+			</Button>
 
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={handleDelete}
-					disabled={!hasSelection}
-					className="h-7 px-2 text-xs"
-					title={!hasSelection ? "Select a clip first" : "Delete selected clip"}>
-					<Trash2 className="h-3 w-3 mr-1.5" />
-					Delete
-				</Button>
+			<Button
+				variant="outline"
+				size="sm"
+				onClick={handleDelete}
+				disabled={!hasSelection}
+				className="h-7 px-2 text-xs"
+				title={!hasSelection ? "Select a clip first" : "Delete selected clip"}>
+				<Trash2 className="h-3 w-3 mr-1.5" />
+				Delete
+			</Button>
 
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={handleDuplicate}
-					disabled={!hasSelection}
-					className="h-7 px-2 text-xs"
-					title={!hasSelection ? "Select a clip first" : "Duplicate clip (places copy after original)"}>
-					<Copy className="h-3 w-3 mr-1.5" />
-					Duplicate
-				</Button>
-			</div>
-
-			{/* Right side - Undo/Redo actions */}
-			<div className="flex items-center gap-1.5">
-				<Separator orientation="vertical" className="h-6" />
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={undo}
-					disabled={!canUndo}
-					className="h-7 px-2 text-xs"
-					title={canUndo ? "Undo last action (Ctrl+Z)" : "Nothing to undo"}>
-					<Undo2 className="h-3 w-3 mr-1.5" />
-					Undo
-				</Button>
-
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={redo}
-					disabled={!canRedo}
-					className="h-7 px-2 text-xs"
-					title={canRedo ? "Redo action (Ctrl+Y)" : "Nothing to redo"}>
-					<Redo2 className="h-3 w-3 mr-1.5" />
-					Redo
-				</Button>
-			</div>
+			<Button
+				variant="outline"
+				size="sm"
+				onClick={handleDuplicate}
+				disabled={!hasSelection}
+				className="h-7 px-2 text-xs"
+				title={!hasSelection ? "Select a clip first" : "Duplicate clip (places copy after original)"}>
+				<Copy className="h-3 w-3 mr-1.5" />
+				Duplicate
+			</Button>
 		</div>
 	);
 }
