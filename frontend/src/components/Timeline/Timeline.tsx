@@ -47,6 +47,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	const layerSidebarRef = useRef<HTMLDivElement>(null);
 	// Ref to store pending clip when a new layer is created
 	const pendingClipRef = useRef<{ clip: Clip; layerType: string } | null>(null);
+	// Ref to store current layers for stable access in effects
+	const layersRef = useRef<TimelineLayer[]>([]);
 
 	const timeline = useTimeline();
 	const [layers, setLayers] = useState<TimelineLayer[]>(initialLayers);
@@ -61,8 +63,29 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	const effectiveZoom = timeline?.state.zoom || zoom;
 	const effectiveCurrentTime = timeline?.state.currentTime !== undefined ? timeline.state.currentTime : currentTime;
 
+	// Keep ref updated with latest layers (in effect to avoid React warning)
+	useEffect(() => {
+		layersRef.current = effectiveLayers;
+	}, [effectiveLayers]);
+
 	// Calculate the actual content duration (end of last resource placed)
 	const contentDuration = useMemo(() => calculateContentDuration(effectiveLayers), [effectiveLayers]);
+
+	/**
+	 * Create a stable key for layers that excludes mute state
+	 * This prevents Timeline canvas re-renders when only mute changes
+	 */
+	const layersRenderKey = useMemo(() => {
+		return JSON.stringify(
+			effectiveLayers.map((layer) => ({
+				id: layer.id,
+				type: layer.type,
+				name: layer.name,
+				visible: layer.visible,
+				clips: layer.clips,
+			}))
+		);
+	}, [effectiveLayers]);
 
 	const [isDragOver, setIsDragOver] = useState<boolean>(false);
 	const [isNewLayerDropZoneActive, setIsNewLayerDropZoneActive] = useState<boolean>(false);
@@ -203,9 +226,12 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		const ctx = canvas.getContext("2d");
 		if (!ctx) return;
 
+		// Use ref to get current layers (for stability)
+		const currentLayers = layersRef.current;
+
 		// Set canvas dimensions
 		canvas.width = timelineWidth;
-		canvas.height = effectiveLayers.length * LAYER_HEIGHT || LAYER_HEIGHT;
+		canvas.height = currentLayers.length * LAYER_HEIGHT || LAYER_HEIGHT;
 
 		// Clear canvas
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -332,11 +358,11 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			}
 		};
 
-		// Draw layers (reversed so top layer in UI is rendered on top)
-		[...effectiveLayers].reverse().forEach((layer, reversedIndex) => {
+		// Draw layers using ref (reversed so top layer in UI is rendered on top)
+		[...currentLayers].reverse().forEach((layer, reversedIndex) => {
 			drawLayer(layer, reversedIndex);
 		});
-	}, [effectiveLayers, effectiveCurrentTime, effectiveZoom, effectiveDuration, timelineWidth, selectedClipId]);
+	}, [layersRenderKey, effectiveCurrentTime, effectiveZoom, effectiveDuration, timelineWidth, selectedClipId]);
 
 	/**
 	 * Find clip at a given position

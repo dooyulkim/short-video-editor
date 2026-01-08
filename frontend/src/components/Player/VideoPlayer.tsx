@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useTimeline } from "@/context/TimelineContext";
 import type { Clip, TimelineLayer } from "@/types/timeline";
 import { getInterpolatedProperties } from "@/utils/keyframeInterpolation";
@@ -26,6 +26,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	const isFrameScheduledRef = useRef<boolean>(false);
 	const layersRef = useRef<TimelineLayer[]>(layers);
 	const currentTimeRef = useRef<number>(currentTime);
+	const isPlayingRef = useRef<boolean>(isPlaying);
 	const lastRenderTimeRef = useRef<number>(0);
 	const isScrubbingRef = useRef<boolean>(false);
 	const scrubTimeoutRef = useRef<number | undefined>(undefined);
@@ -39,6 +40,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	useEffect(() => {
 		layersRef.current = layers;
 		canvasSizeRef.current = canvasSize;
+		isPlayingRef.current = isPlaying;
 		const timeDiff = Math.abs(currentTime - currentTimeRef.current);
 		currentTimeRef.current = currentTime;
 
@@ -57,6 +59,48 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			}, 150);
 		}
 	}, [layers, currentTime, isPlaying, canvasSize]);
+
+	/**
+	 * Create a stable reference for layers that only changes when visual content changes
+	 * This prevents re-renders when only mute/non-visual properties change
+	 */
+	const layersRenderKey = useMemo(() => {
+		return layers.map((layer) => ({
+			id: layer.id,
+			type: layer.type,
+			visible: layer.visible,
+			clips: layer.clips.map((clip) => ({
+				id: clip.id,
+				resourceId: clip.resourceId,
+				startTime: clip.startTime,
+				duration: clip.duration,
+				trimStart: clip.trimStart,
+				position: clip.position,
+				scale: clip.scale,
+				rotation: clip.rotation,
+				opacity: clip.opacity,
+				transitions: clip.transitions,
+				keyframes: clip.keyframes,
+				data: clip.data,
+			})),
+		}));
+	}, [layers]);
+
+	// Stringify for dependency comparison - only changes when visual properties change
+	const layersRenderKeyString = useMemo(() => JSON.stringify(layersRenderKey), [layersRenderKey]);
+
+	/**
+	 * Create a stable key for playback sync that only changes when clips are added/removed
+	 * This prevents re-syncing playback when visibility/mute changes
+	 * Visibility and mute don't require re-seeking videos
+	 */
+	const playbackSyncKey = useMemo(() => {
+		return layers
+			.flatMap((layer) =>
+				layer.clips.map((clip) => `${clip.id}:${clip.resourceId}:${clip.startTime}:${clip.duration}:${clip.trimStart}`)
+			)
+			.join("|");
+	}, [layers]);
 
 	// Handler for resizing images
 	const handleResize = useCallback(
@@ -81,7 +125,19 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		: null;
 
 	/**
+	 * Create a stable key for media loading that only changes when clips are added/removed
+	 * This prevents re-loading when only mute state changes
+	 */
+	const mediaClipsKey = useMemo(() => {
+		return layers
+			.flatMap((layer) => layer.clips)
+			.map((clip) => `${clip.resourceId}:${clip.data?.type}`)
+			.join(",");
+	}, [layers]);
+
+	/**
 	 * Detect canvas size based on the first video's dimensions
+	 * Uses mediaClipsKey to avoid re-running when only mute changes
 	 */
 	useEffect(() => {
 		const detectCanvasSize = async () => {
@@ -91,8 +147,9 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				return;
 			}
 
-			// Find the first video clip
-			const firstVideoClip = layers.flatMap((layer) => layer.clips).find((clip) => clip.data?.type === "video");
+			// Find the first video clip using ref
+			const currentLayers = layersRef.current;
+			const firstVideoClip = currentLayers.flatMap((layer) => layer.clips).find((clip) => clip.data?.type === "video");
 
 			if (firstVideoClip && videoElementsRef.current.has(firstVideoClip.resourceId)) {
 				const video = videoElementsRef.current.get(firstVideoClip.resourceId);
@@ -105,7 +162,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		if (isReady) {
 			detectCanvasSize();
 		}
-	}, [isReady, layers, initialWidth, initialHeight]);
+	}, [isReady, mediaClipsKey, initialWidth, initialHeight]); // Use mediaClipsKey instead of layers
 
 	/**
 	 * Update display size based on container dimensions while maintaining aspect ratio
@@ -144,11 +201,14 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 
 	/**
 	 * Load video and image elements for all clips
+	 * Uses mediaClipsKey to avoid re-running when only mute changes
 	 */
 	useEffect(() => {
 		const loadMediaElements = async () => {
-			const videoClips = layers.flatMap((layer) => layer.clips).filter((clip) => clip.data?.type === "video");
-			const imageClips = layers.flatMap((layer) => layer.clips).filter((clip) => clip.data?.type === "image");
+			// Use refs to get current layers without dependency issues
+			const currentLayers = layersRef.current;
+			const videoClips = currentLayers.flatMap((layer) => layer.clips).filter((clip) => clip.data?.type === "video");
+			const imageClips = currentLayers.flatMap((layer) => layer.clips).filter((clip) => clip.data?.type === "image");
 
 			// Create video elements for clips that don't have them
 			for (const clip of videoClips) {
@@ -219,23 +279,25 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		};
 
 		loadMediaElements();
-	}, [layers]);
+	}, [mediaClipsKey]); // Only depend on mediaClipsKey, not full layers
 
 	/**
 	 * Get clips that should be visible at the current time
+	 * Uses ref to avoid recreating callback when mute-only changes happen
 	 */
 	const getVisibleClips = useCallback(
-		(currentTime: number): Array<{ clip: Clip; layer: TimelineLayer }> => {
+		(time: number): Array<{ clip: Clip; layer: TimelineLayer }> => {
 			const visibleClips: Array<{ clip: Clip; layer: TimelineLayer }> = [];
+			const currentLayers = layersRef.current;
 
-			for (const layer of layers) {
+			for (const layer of currentLayers) {
 				if (!layer.visible) continue;
 
 				for (const clip of layer.clips) {
 					const clipEndTime = clip.startTime + clip.duration;
 
 					// Check if current time falls within clip's time range
-					if (currentTime >= clip.startTime && currentTime < clipEndTime) {
+					if (time >= clip.startTime && time < clipEndTime) {
 						visibleClips.push({ clip, layer });
 					}
 				}
@@ -243,14 +305,14 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 
 			// Sort by layer order (bottom to top)
 			visibleClips.sort((a, b) => {
-				const layerIndexA = layers.indexOf(a.layer);
-				const layerIndexB = layers.indexOf(b.layer);
+				const layerIndexA = currentLayers.indexOf(a.layer);
+				const layerIndexB = currentLayers.indexOf(b.layer);
 				return layerIndexA - layerIndexB;
 			});
 
 			return visibleClips;
 		},
-		[layers]
+		[] // Stable callback - uses ref for layers
 	);
 
 	/**
@@ -290,6 +352,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 
 	/**
 	 * Draw video frame to canvas
+	 * IMPORTANT: During playback, do NOT seek - let the video play naturally.
+	 * Only seek when scrubbing/paused to sync with timeline position.
 	 */
 	const drawVideoClip = useCallback(
 		(ctx: CanvasRenderingContext2D, clip: Clip, localTime: number) => {
@@ -299,15 +363,16 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			// Calculate video time with trim offset
 			const videoTime = localTime + clip.trimStart;
 
-			// Adaptive seeking: tighter tolerance for scrubbing, looser for playback
-			const isScrubbing = isScrubbingRef.current;
-			const seekThreshold = isScrubbing ? 0.1 : 0.25; // 100ms when scrubbing, 250ms when playing
-
-			const timeDiff = Math.abs(video.currentTime - videoTime);
-
-			// Only seek if out of sync beyond threshold
-			if (timeDiff > seekThreshold) {
-				video.currentTime = videoTime;
+			// Only seek when NOT playing (scrubbing/paused mode)
+			// During playback, the playback sync effect handles seeking if needed
+			const isCurrentlyPlaying = isPlayingRef.current;
+			if (!isCurrentlyPlaying) {
+				const timeDiff = Math.abs(video.currentTime - videoTime);
+				// Tighter tolerance when scrubbing for accurate preview
+				const seekThreshold = isScrubbingRef.current ? 0.05 : 0.15;
+				if (timeDiff > seekThreshold) {
+					video.currentTime = videoTime;
+				}
 			}
 
 			// Use video's original dimensions
@@ -498,6 +563,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	/**
 	 * Redraw canvas when currentTime changes (using requestAnimationFrame for smooth rendering)
 	 * Only schedule one frame at a time to prevent overlaps
+	 * Uses layersRenderKeyString to avoid re-renders when only mute state changes
 	 */
 	useEffect(() => {
 		if (!isReady) return;
@@ -522,11 +588,61 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				clearTimeout(scrubTimeoutRef.current);
 			}
 		};
-	}, [currentTime, isReady, renderFrame, layers]); // Added layers to trigger re-render on clip updates
+	}, [currentTime, isReady, renderFrame, layersRenderKeyString]); // Use layersRenderKeyString to avoid mute-triggered re-renders
+
+	/**
+	 * Create a stable key that changes when mute OR visibility properties change
+	 * This allows the mute sync effect to run when either changes
+	 * (visibility changes need to restore correct mute state for newly visible layers)
+	 */
+	const layersMuteVisibilityKey = useMemo(() => {
+		return layers.map((layer) => `${layer.id}:${layer.muted}:${layer.visible}`).join(",");
+	}, [layers]);
+
+	/**
+	 * Synchronize video mute state with layer mute/visibility state
+	 * This runs separately from playback sync to avoid triggering video seek/play on mute changes
+	 * Uses refs to avoid triggering re-renders on other layer changes
+	 */
+	useEffect(() => {
+		if (!isReady || !isPlaying) return;
+
+		// Use ref to get current layers without creating dependencies
+		const currentLayers = layersRef.current;
+		const time = currentTimeRef.current;
+
+		// Find visible video clips using refs (no dependency on getVisibleClips)
+		for (const layer of currentLayers) {
+			if (!layer.visible) continue;
+
+			for (const clip of layer.clips) {
+				const clipEndTime = clip.startTime + clip.duration;
+
+				// Check if current time falls within clip's time range
+				if (time >= clip.startTime && time < clipEndTime) {
+					if (layer.type === "video" || clip.data?.type === "video") {
+						const video = videoElementsRef.current.get(clip.resourceId);
+						if (video) {
+							// Restore correct mute state (important when layer becomes visible again)
+							video.muted = layer.muted || false;
+							// Also ensure the video is playing if it was paused when hidden
+							if (video.paused && video.readyState >= 2) {
+								video.play().catch((err) => {
+									console.warn("Failed to resume video after visibility change:", err);
+								});
+							}
+						}
+					}
+				}
+			}
+		}
+	}, [layersMuteVisibilityKey, isReady, isPlaying]); // Depend on mute+visibility key
 
 	/**
 	 * Synchronize video playback with timeline
 	 * Play/pause video elements based on isPlaying state
+	 * Uses layersRenderKeyString to avoid re-triggering on mute changes
+	 * NOTE: Mute state is handled separately by the mute sync effect
 	 */
 	useEffect(() => {
 		if (!isReady) return;
@@ -542,27 +658,40 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			return;
 		}
 
-		// If playing, handle visible clips
-		const visibleClips = getVisibleClips(currentTime);
-		const videoClips = visibleClips.filter(({ clip, layer }) => layer.type === "video" || clip.data?.type === "video");
+		// If playing, handle visible clips using refs for stability
+		const currentLayers = layersRef.current;
+		const time = currentTimeRef.current;
+		const visibleVideoClips: Array<{ clip: Clip; layer: TimelineLayer; resourceId: string }> = [];
 
-		// Play or pause all visible video clips
-		videoClips.forEach(({ clip, layer }) => {
-			const video = videoElementsRef.current.get(clip.resourceId);
+		for (const layer of currentLayers) {
+			if (!layer.visible) continue;
+
+			for (const clip of layer.clips) {
+				const clipEndTime = clip.startTime + clip.duration;
+
+				if (time >= clip.startTime && time < clipEndTime) {
+					if (layer.type === "video" || clip.data?.type === "video") {
+						visibleVideoClips.push({ clip, layer, resourceId: clip.resourceId });
+					}
+				}
+			}
+		}
+
+		// Play all visible video clips (don't touch mute state - handled by mute sync effect)
+		visibleVideoClips.forEach(({ clip, resourceId }) => {
+			const video = videoElementsRef.current.get(resourceId);
 			if (!video || video.readyState < 2) return;
 
-			const localTime = currentTime - clip.startTime;
+			const localTime = time - clip.startTime;
 			const videoTime = localTime + clip.trimStart;
 
-			// Sync video time with timeline position
-			// Use moderate threshold during playback to balance accuracy and smoothness
+			// Only seek if video is significantly out of sync (> 0.5s)
+			// This prevents constant seeking during normal playback
+			// Small drifts are acceptable and less disruptive than seeking
 			const timeDiff = Math.abs(video.currentTime - videoTime);
-			if (timeDiff > 0.2) {
+			if (timeDiff > 0.5) {
 				video.currentTime = videoTime;
 			}
-
-			// Mute video if layer is muted, otherwise unmute during playback
-			video.muted = layer.muted || false;
 
 			// Only play if video is paused to avoid repeated play() calls
 			if (video.paused) {
@@ -574,7 +703,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 
 		// Pause and mute all videos not currently visible
 		videoElementsRef.current.forEach((video, resourceId) => {
-			const isVisible = videoClips.some(({ clip }) => clip.resourceId === resourceId);
+			const isVisible = visibleVideoClips.some((v) => v.resourceId === resourceId);
 			if (!isVisible) {
 				if (!video.paused) {
 					video.pause();
@@ -582,7 +711,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				video.muted = true;
 			}
 		});
-	}, [isPlaying, currentTime, isReady, layers, getVisibleClips]);
+	}, [isPlaying, currentTime, isReady, playbackSyncKey]); // Use playbackSyncKey to avoid visibility/mute triggered re-syncs
 
 	return (
 		<div
