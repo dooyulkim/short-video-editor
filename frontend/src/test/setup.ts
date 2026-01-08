@@ -1,5 +1,8 @@
 import '@testing-library/jest-dom';
 
+// Configure React Testing Library to use React 19's act
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
 // Mock ResizeObserver
 global.ResizeObserver = class ResizeObserver {
   observe() {}

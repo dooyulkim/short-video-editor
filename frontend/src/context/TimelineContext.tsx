@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useReducer, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import type { TimelineLayer, Clip } from "@/types/timeline";
 import { useUndoRedo } from "@/hooks/useUndoRedo";
@@ -23,6 +23,7 @@ export type TimelineAction =
 	| { type: "TRIM_CLIP"; payload: { clipId: string; newDuration: number } }
 	| { type: "ADD_LAYER"; payload: { layerType: TimelineLayer["type"] } }
 	| { type: "REMOVE_LAYER"; payload: { layerId: string } }
+	| { type: "UPDATE_LAYER"; payload: { layerId: string; updates: Partial<TimelineLayer> } }
 	| { type: "REORDER_LAYER"; payload: { layerId: string; newIndex: number } }
 	| { type: "TOGGLE_LAYER_VISIBILITY"; payload: { layerId: string } }
 	| { type: "SET_CURRENT_TIME"; payload: { time: number } }
@@ -37,7 +38,7 @@ export type TimelineAction =
 const initialState: TimelineState = {
 	layers: [],
 	currentTime: 0,
-	duration: 0,
+	duration: 90, // 90 seconds minimum duration
 	zoom: 20, // 20 pixels per second default
 	selectedClipId: null,
 	isPlaying: false,
@@ -60,9 +61,9 @@ function timelineReducer(state: TimelineState, action: TimelineAction): Timeline
 				clips: [...newLayers[layerIndex].clips, clip],
 			};
 
-			// Update duration if clip extends beyond current duration
+			// Update duration if clip extends beyond current duration (minimum 90 seconds)
 			const clipEndTime = clip.startTime + clip.duration;
-			const newDuration = Math.max(state.duration, clipEndTime);
+			const newDuration = Math.max(90, state.duration, clipEndTime);
 
 			return {
 				...state,
@@ -151,6 +152,16 @@ function timelineReducer(state: TimelineState, action: TimelineAction): Timeline
 			};
 		}
 
+		case "UPDATE_LAYER": {
+			const { layerId, updates } = action.payload;
+			const newLayers = state.layers.map((layer) => (layer.id === layerId ? { ...layer, ...updates } : layer));
+
+			return {
+				...state,
+				layers: newLayers,
+			};
+		}
+
 		case "SET_CURRENT_TIME": {
 			const { time } = action.payload;
 			return {
@@ -191,7 +202,7 @@ function timelineReducer(state: TimelineState, action: TimelineAction): Timeline
 			const { duration } = action.payload;
 			return {
 				...state,
-				duration: Math.max(0, duration),
+				duration: Math.max(90, duration), // Minimum 90 seconds
 			};
 		}
 
@@ -199,10 +210,6 @@ function timelineReducer(state: TimelineState, action: TimelineAction): Timeline
 			const { layerId, newIndex } = action.payload;
 			const newLayers = [...state.layers];
 			const currentIndex = newLayers.findIndex((l) => l.id === layerId);
-
-			if (currentIndex === -1 || newIndex < 0 || newIndex >= newLayers.length) {
-				return state;
-			}
 
 			// Remove layer from current position
 			const [layer] = newLayers.splice(currentIndex, 1);
@@ -237,6 +244,7 @@ interface TimelineContextType {
 	trimClip: (clipId: string, newDuration: number) => void;
 	addLayer: (layerType: TimelineLayer["type"]) => void;
 	removeLayer: (layerId: string) => void;
+	updateLayer: (layerId: string, updates: Partial<TimelineLayer>) => void;
 	reorderLayer: (layerId: string, newIndex: number) => void;
 	toggleLayerVisibility: (layerId: string) => void;
 	setCurrentTime: (time: number) => void;
@@ -268,24 +276,113 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 		customInitialState ? { ...initialState, ...customInitialState } : initialState
 	);
 
-	// Restore state function for undo/redo
-	const restoreState = useCallback((restoredState: TimelineState) => {
-		dispatch({ type: "RESTORE_STATE", payload: { state: restoredState } });
-	}, []);
+	// Ref to track current time for playback without triggering re-renders
+	const currentTimeRef = useRef(state.currentTime);
+	const durationRef = useRef(state.duration);
 
-	// Initialize undo/redo
-	const { undo, redo, canUndo, canRedo, addToHistory } = useUndoRedo(state, restoreState);
+	// Update refs when state changes
+	useEffect(() => {
+		currentTimeRef.current = state.currentTime;
+		durationRef.current = state.duration;
+	}, [state.currentTime, state.duration]);
+
+	// Initialize undo/redo first
+	const { undo, redo, canUndo, canRedo, addToHistory } = useUndoRedo(state, (restoredState: TimelineState) => {
+		// Use a flag to prevent adding restored state back to history
+		isRestoringRef.current = true;
+		dispatch({ type: "RESTORE_STATE", payload: { state: restoredState } });
+	});
+
+	// Create a ref to track if we're currently restoring from history
+	const isRestoringRef = useRef(false);
 
 	// Track state changes for history (excluding currentTime, isPlaying, selectedClipId, and zoom)
-	useEffect(() => {
-		// Only add to history for meaningful changes (not playback-related state changes)
-		const timeoutId = setTimeout(() => {
-			addToHistory(state);
-		}, 300); // Debounce to avoid too many history entries
+	// Create a stable reference to the parts of state we want to track
+	const trackableState = useRef<Pick<TimelineState, "layers" | "duration">>({
+		layers: state.layers,
+		duration: state.duration,
+	});
 
-		return () => clearTimeout(timeoutId);
+	useEffect(() => {
+		// If we just restored, reset the flag and don't add to history
+		if (isRestoringRef.current) {
+			isRestoringRef.current = false;
+			trackableState.current = {
+				layers: state.layers,
+				duration: state.duration,
+			};
+			return;
+		}
+
+		const currentTrackable = {
+			layers: state.layers,
+			duration: state.duration,
+		};
+
+		// Check if trackable state has actually changed
+		const hasChanged =
+			JSON.stringify(currentTrackable.layers) !== JSON.stringify(trackableState.current.layers) ||
+			currentTrackable.duration !== trackableState.current.duration;
+
+		if (hasChanged) {
+			// Update the tracked state
+			trackableState.current = currentTrackable;
+
+			// Debounce to avoid too many history entries for rapid changes
+			const timeoutId = setTimeout(() => {
+				addToHistory(state);
+			}, 300);
+
+			return () => clearTimeout(timeoutId);
+		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [state.layers, state.duration]); // Only track structural changes
+	}, [state.layers, state.duration, addToHistory]);
+
+	// Playback loop - update currentTime during playback
+	useEffect(() => {
+		if (!state.isPlaying) return;
+
+		let animationFrameId: number;
+		let lastTimestamp: number | null = null;
+
+		const animate = (timestamp: number) => {
+			if (lastTimestamp === null) {
+				lastTimestamp = timestamp;
+				animationFrameId = requestAnimationFrame(animate);
+				return;
+			}
+
+			// Calculate elapsed time in seconds
+			const deltaTime = (timestamp - lastTimestamp) / 1000;
+			lastTimestamp = timestamp;
+
+			// Update current time using ref to avoid stale state
+			const newTime = currentTimeRef.current + deltaTime;
+
+			// Check if reached end of timeline
+			if (newTime >= durationRef.current) {
+				dispatch({ type: "SET_CURRENT_TIME", payload: { time: durationRef.current } });
+				dispatch({ type: "PAUSE" });
+				return;
+			}
+
+			// Update currentTime
+			dispatch({ type: "SET_CURRENT_TIME", payload: { time: newTime } });
+
+			// Continue animation loop
+			animationFrameId = requestAnimationFrame(animate);
+		};
+
+		// Start animation loop
+		animationFrameId = requestAnimationFrame(animate);
+
+		// Cleanup
+		return () => {
+			if (animationFrameId) {
+				cancelAnimationFrame(animationFrameId);
+			}
+		};
+	}, [state.isPlaying]); // Only depend on isPlaying to avoid restarts
 
 	// Action creators
 	const addClip = useCallback((clip: Clip, layerIndex: number) => {
@@ -314,6 +411,10 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 
 	const removeLayer = useCallback((layerId: string) => {
 		dispatch({ type: "REMOVE_LAYER", payload: { layerId } });
+	}, []);
+
+	const updateLayer = useCallback((layerId: string, updates: Partial<TimelineLayer>) => {
+		dispatch({ type: "UPDATE_LAYER", payload: { layerId, updates } });
 	}, []);
 
 	const reorderLayer = useCallback((layerId: string, newIndex: number) => {
@@ -366,6 +467,7 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 		trimClip,
 		addLayer,
 		removeLayer,
+		updateLayer,
 		reorderLayer,
 		toggleLayerVisibility,
 		setCurrentTime,
@@ -382,7 +484,7 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 		resetTimeline,
 	};
 
-	return <TimelineContext.Provider value={value}>{children}</TimelineContext.Provider>;
+	return <TimelineContext value={value}>{children}</TimelineContext>;
 }
 
 // Custom hook to use timeline context

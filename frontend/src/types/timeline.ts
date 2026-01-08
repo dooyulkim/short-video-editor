@@ -22,6 +22,7 @@ export interface Keyframe {
 export interface Clip {
 	id: string;
 	resourceId: string;
+	resourceName?: string; // Optional resource file name for display
 	startTime: number; // in seconds
 	duration: number; // in seconds
 	trimStart: number; // in seconds

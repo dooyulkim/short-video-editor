@@ -23,13 +23,45 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
 	const imageElementsRef = useRef<Map<string, HTMLImageElement>>(new Map());
 	const animationFrameRef = useRef<number | undefined>(undefined);
+	const isFrameScheduledRef = useRef<boolean>(false);
+	const layersRef = useRef<TimelineLayer[]>(layers);
+	const currentTimeRef = useRef<number>(currentTime);
+	const lastRenderTimeRef = useRef<number>(0);
+	const isScrubbingRef = useRef<boolean>(false);
+	const scrubTimeoutRef = useRef<number | undefined>(undefined);
+	const canvasSizeRef = useRef({ width: initialWidth || 1080, height: initialHeight || 1920 });
 	const [isReady, setIsReady] = useState(false);
 	const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 });
 	const [canvasSize, setCanvasSize] = useState({ width: initialWidth || 1080, height: initialHeight || 1920 });
+	const [imageDimensions, setImageDimensions] = useState<Map<string, { width: number; height: number }>>(new Map());
+
+	// Update refs when state changes and detect scrubbing
+	useEffect(() => {
+		layersRef.current = layers;
+		canvasSizeRef.current = canvasSize;
+		const timeDiff = Math.abs(currentTime - currentTimeRef.current);
+		currentTimeRef.current = currentTime;
+
+		// Detect scrubbing: large time jump or rapid successive changes while not playing
+		if (!isPlaying && timeDiff > 0) {
+			isScrubbingRef.current = true;
+
+			// Clear existing timeout
+			if (scrubTimeoutRef.current) {
+				clearTimeout(scrubTimeoutRef.current);
+			}
+
+			// Reset scrubbing flag after 150ms of no changes
+			scrubTimeoutRef.current = window.setTimeout(() => {
+				isScrubbingRef.current = false;
+			}, 150);
+		}
+	}, [layers, currentTime, isPlaying, canvasSize]);
 
 	// Handler for resizing images
 	const handleResize = useCallback(
 		(clipId: string, scale: { x: number; y: number }, position?: { x: number; y: number }, rotation?: number) => {
+			console.log("handleResize called:", { clipId, scale, position, rotation });
 			const updates: Partial<Clip> = { scale };
 			if (position) {
 				updates.position = position;
@@ -37,6 +69,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			if (rotation !== undefined) {
 				updates.rotation = rotation;
 			}
+			console.log("Calling updateClip with:", clipId, updates);
 			updateClip(clipId, updates);
 		},
 		[updateClip]
@@ -149,9 +182,36 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 
 					// Wait for image to load
 					await new Promise<void>((resolve, reject) => {
-						img.addEventListener("load", () => resolve(), { once: true });
+						img.addEventListener(
+							"load",
+							() => {
+								// Store image dimensions in state
+								setImageDimensions((prev) =>
+									new Map(prev).set(clip.resourceId, {
+										width: img.naturalWidth,
+										height: img.naturalHeight,
+									})
+								);
+								resolve();
+							},
+							{ once: true }
+						);
 						img.addEventListener("error", () => reject(new Error("Failed to load image")), { once: true });
 					}).catch((err) => console.error("Image load error:", err));
+				} else {
+					// Image already loaded, ensure dimensions are in state
+					const img = imageElementsRef.current.get(clip.resourceId);
+					if (img && img.complete && img.naturalWidth > 0) {
+						setImageDimensions((prev) => {
+							if (!prev.has(clip.resourceId)) {
+								return new Map(prev).set(clip.resourceId, {
+									width: img.naturalWidth,
+									height: img.naturalHeight,
+								});
+							}
+							return prev;
+						});
+					}
 				}
 			}
 
@@ -231,137 +291,152 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	/**
 	 * Draw video frame to canvas
 	 */
-	const drawVideoClip = (ctx: CanvasRenderingContext2D, clip: Clip, localTime: number) => {
-		const video = videoElementsRef.current.get(clip.resourceId);
-		if (!video || video.readyState < 2) return; // Not ready
+	const drawVideoClip = useCallback(
+		(ctx: CanvasRenderingContext2D, clip: Clip, localTime: number) => {
+			const video = videoElementsRef.current.get(clip.resourceId);
+			if (!video || video.readyState < 2) return; // Not ready
 
-		// Calculate video time with trim offset
-		const videoTime = localTime + clip.trimStart;
+			// Calculate video time with trim offset
+			const videoTime = localTime + clip.trimStart;
 
-		// Only seek if significantly out of sync (avoid constant seeking during playback)
-		// During playback, videos should naturally stay in sync
-		if (Math.abs(video.currentTime - videoTime) > 0.3) {
-			video.currentTime = videoTime;
-		}
+			// Adaptive seeking: tighter tolerance for scrubbing, looser for playback
+			const isScrubbing = isScrubbingRef.current;
+			const seekThreshold = isScrubbing ? 0.1 : 0.25; // 100ms when scrubbing, 250ms when playing
 
-		// Use video's original dimensions
-		const videoWidth = video.videoWidth || canvasSize.width;
-		const videoHeight = video.videoHeight || canvasSize.height;
+			const timeDiff = Math.abs(video.currentTime - videoTime);
 
-		// Get interpolated properties (supports keyframe animation)
-		const interpolated = getInterpolatedProperties(clip, localTime);
-		const scale = interpolated.scale;
-		const position = interpolated.position;
-		const rotation = interpolated.rotation;
+			// Only seek if out of sync beyond threshold
+			if (timeDiff > seekThreshold) {
+				video.currentTime = videoTime;
+			}
 
-		// Calculate position (center video if not specified)
-		const x = position.x !== 0 ? position.x : (canvasSize.width - videoWidth) / 2;
-		const y = position.y !== 0 ? position.y : (canvasSize.height - videoHeight) / 2;
+			// Use video's original dimensions
+			const videoWidth = video.videoWidth || canvasSizeRef.current.width;
+			const videoHeight = video.videoHeight || canvasSizeRef.current.height;
 
-		// Handle both uniform and non-uniform scaling
-		const scaleX = typeof scale === "number" ? scale : scale.x;
-		const scaleY = typeof scale === "number" ? scale : scale.y;
+			// Get interpolated properties (supports keyframe animation)
+			const interpolated = getInterpolatedProperties(clip, localTime);
+			const scale = interpolated.scale;
+			const position = interpolated.position;
+			const rotation = interpolated.rotation;
 
-		// Calculate transition opacity and combine with keyframe opacity
-		const transitionOpacity = calculateTransitionOpacity(clip, localTime);
-		const opacity = transitionOpacity * interpolated.opacity;
+			// Calculate position (center video if not specified)
+			const x = position.x !== 0 ? position.x : (canvasSizeRef.current.width - videoWidth) / 2;
+			const y = position.y !== 0 ? position.y : (canvasSizeRef.current.height - videoHeight) / 2;
 
-		// Save canvas state
-		ctx.save();
+			// Handle both uniform and non-uniform scaling
+			const scaleX = typeof scale === "number" ? scale : scale.x;
+			const scaleY = typeof scale === "number" ? scale : scale.y;
 
-		// Apply transformations
-		ctx.globalAlpha = opacity;
-		ctx.translate(x + (videoWidth * scaleX) / 2, y + (videoHeight * scaleY) / 2);
-		ctx.rotate((rotation * Math.PI) / 180);
-		ctx.translate(-(videoWidth * scaleX) / 2, -(videoHeight * scaleY) / 2);
+			// Calculate transition opacity and combine with keyframe opacity
+			const transitionOpacity = calculateTransitionOpacity(clip, localTime);
+			const opacity = transitionOpacity * interpolated.opacity;
 
-		// Draw video frame using its dimensions with scaling
-		ctx.drawImage(video, 0, 0, videoWidth * scaleX, videoHeight * scaleY);
+			// Save canvas state
+			ctx.save();
 
-		// Restore canvas state
-		ctx.restore();
-	};
+			// Apply transformations
+			ctx.globalAlpha = opacity;
+			ctx.translate(x + (videoWidth * scaleX) / 2, y + (videoHeight * scaleY) / 2);
+			ctx.rotate((rotation * Math.PI) / 180);
+			ctx.translate(-(videoWidth * scaleX) / 2, -(videoHeight * scaleY) / 2);
+
+			// Draw video frame using its dimensions with scaling
+			ctx.drawImage(video, 0, 0, videoWidth * scaleX, videoHeight * scaleY);
+
+			// Restore canvas state
+			ctx.restore();
+		},
+		[] // Stable callback - uses refs for dynamic values
+	);
 
 	/**
 	 * Draw image clip to canvas
 	 */
-	const drawImageClip = (ctx: CanvasRenderingContext2D, clip: Clip, localTime: number) => {
-		const img = imageElementsRef.current.get(clip.resourceId);
-		if (!img || !img.complete) return; // Not ready or not loaded
+	const drawImageClip = useCallback(
+		(ctx: CanvasRenderingContext2D, clip: Clip, localTime: number) => {
+			const img = imageElementsRef.current.get(clip.resourceId);
+			if (!img || !img.complete) return; // Not ready or not loaded
 
-		// Use image's original dimensions
-		const imgWidth = img.naturalWidth || canvasSize.width;
-		const imgHeight = img.naturalHeight || canvasSize.height;
+			// Use image's original dimensions
+			const imgWidth = img.naturalWidth || canvasSizeRef.current.width;
+			const imgHeight = img.naturalHeight || canvasSizeRef.current.height;
 
-		// Get interpolated properties (supports keyframe animation)
-		const interpolated = getInterpolatedProperties(clip, localTime);
-		const scale = interpolated.scale;
-		const position = interpolated.position;
-		const rotation = interpolated.rotation;
+			// Get interpolated properties (supports keyframe animation)
+			const interpolated = getInterpolatedProperties(clip, localTime);
+			const scale = interpolated.scale;
+			const position = interpolated.position;
+			const rotation = interpolated.rotation;
 
-		// Calculate position (center image if not specified)
-		const x = position.x !== 0 ? position.x : (canvasSize.width - imgWidth) / 2;
-		const y = position.y !== 0 ? position.y : (canvasSize.height - imgHeight) / 2;
-		// Handle both uniform and non-uniform scaling
-		const scaleX = typeof scale === "number" ? scale : scale.x;
-		const scaleY = typeof scale === "number" ? scale : scale.y;
+			console.log(`Drawing clip ${clip.id}:`, {
+				resourceId: clip.resourceId,
+				clipScale: clip.scale,
+				clipPosition: clip.position,
+				clipRotation: clip.rotation,
+				interpolatedScale: scale,
+				interpolatedPosition: position,
+				interpolatedRotation: rotation,
+			});
 
-		// Calculate transition opacity and combine with keyframe opacity
-		const transitionOpacity = calculateTransitionOpacity(clip, localTime);
-		const opacity = transitionOpacity * interpolated.opacity;
+			// Calculate position (center image if not specified)
+			const x = position.x !== 0 ? position.x : (canvasSizeRef.current.width - imgWidth) / 2;
+			const y = position.y !== 0 ? position.y : (canvasSizeRef.current.height - imgHeight) / 2;
+			// Handle both uniform and non-uniform scaling
+			const scaleX = typeof scale === "number" ? scale : scale.x;
+			const scaleY = typeof scale === "number" ? scale : scale.y;
 
-		// Save canvas state
-		ctx.save();
+			// Calculate transition opacity and combine with keyframe opacity
+			const transitionOpacity = calculateTransitionOpacity(clip, localTime);
+			const opacity = transitionOpacity * interpolated.opacity;
 
-		// Apply transformations
-		ctx.globalAlpha = opacity;
-		ctx.translate(x + (imgWidth * scaleX) / 2, y + (imgHeight * scaleY) / 2);
-		ctx.rotate((rotation * Math.PI) / 180);
-		ctx.translate(-(imgWidth * scaleX) / 2, -(imgHeight * scaleY) / 2);
+			// Save canvas state
+			ctx.save();
 
-		// Draw image frame using its dimensions with scaling
-		ctx.drawImage(img, 0, 0, imgWidth * scaleX, imgHeight * scaleY);
+			// Apply transformations
+			ctx.globalAlpha = opacity;
+			ctx.translate(x + (imgWidth * scaleX) / 2, y + (imgHeight * scaleY) / 2);
+			ctx.rotate((rotation * Math.PI) / 180);
+			ctx.translate(-(imgWidth * scaleX) / 2, -(imgHeight * scaleY) / 2);
 
-		// Restore canvas state
-		ctx.restore();
-	};
+			// Draw image frame using its dimensions with scaling
+			ctx.drawImage(img, 0, 0, imgWidth * scaleX, imgHeight * scaleY);
+
+			// Restore canvas state
+			ctx.restore();
+		},
+		[] // Use refs for canvas size, no dependencies needed
+	);
 
 	/**
 	 * Draw text clip to canvas
 	 */
-	const drawTextClip = (ctx: CanvasRenderingContext2D, clip: Clip, localTime: number) => {
-		if (!clip.data) return;
+	const drawTextClip = useCallback(
+		(ctx: CanvasRenderingContext2D, clip: Clip, localTime: number) => {
+			if (!clip.data) return;
 
-		const {
-			text = "",
-			fontFamily = "Arial",
-			fontSize = 48,
-			color = "#ffffff",
-			textAlign = "center",
-			textBaseline = "middle",
-		} = clip.data;
+			const {
+				text = "",
+				fontFamily = "Arial",
+				fontSize = 48,
+				color = "#ffffff",
+				textAlign = "center",
+				textBaseline = "middle",
+			} = clip.data;
 
-		const x = clip.position?.x ?? canvasSize.width / 2;
-		const y = clip.position?.y ?? canvasSize.height / 2;
-		const opacity = calculateTransitionOpacity(clip, localTime);
+			const x = clip.position?.x ?? canvasSizeRef.current.width / 2;
+			const y = clip.position?.y ?? canvasSizeRef.current.height / 2;
+			// Draw text with optional stroke
+			if (clip.data.strokeColor) {
+				ctx.strokeStyle = clip.data.strokeColor;
+				ctx.lineWidth = clip.data.strokeWidth || 2;
+				ctx.strokeText(text, x, y);
+			}
 
-		ctx.save();
-		ctx.globalAlpha = opacity;
-		ctx.font = `${fontSize}px ${fontFamily}`;
-		ctx.fillStyle = color;
-		ctx.textAlign = textAlign as CanvasTextAlign;
-		ctx.textBaseline = textBaseline as CanvasTextBaseline;
-
-		// Draw text with optional stroke
-		if (clip.data.strokeColor) {
-			ctx.strokeStyle = clip.data.strokeColor;
-			ctx.lineWidth = clip.data.strokeWidth || 2;
-			ctx.strokeText(text, x, y);
-		}
-
-		ctx.fillText(text, x, y);
-		ctx.restore();
-	};
+			ctx.fillText(text, x, y);
+			ctx.restore();
+		},
+		[] // Stable callback - uses refs for dynamic values
+	);
 
 	/**
 	 * Render all visible clips to canvas
@@ -373,21 +448,23 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		const ctx = canvas.getContext("2d");
 		if (!ctx) return;
 
-		// Clear canvas
+		// Clear canvas using canvas dimensions (always current)
 		ctx.fillStyle = "#000000";
-		ctx.fillRect(0, 0, canvasSize.width, canvasSize.height);
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-		// Get all visible clips at current time - directly access state
+		// Get all visible clips at current time - use refs for latest state
+		const currentLayers = layersRef.current;
+		const currentTimeValue = currentTimeRef.current;
 		const visibleClips: Array<{ clip: Clip; layer: TimelineLayer }> = [];
 
-		for (const layer of layers) {
+		for (const layer of currentLayers) {
 			if (!layer.visible) continue;
 
 			for (const clip of layer.clips) {
 				const clipEndTime = clip.startTime + clip.duration;
 
 				// Check if current time falls within clip's time range
-				if (currentTime >= clip.startTime && currentTime < clipEndTime) {
+				if (currentTimeValue >= clip.startTime && currentTimeValue < clipEndTime) {
 					visibleClips.push({ clip, layer });
 				}
 			}
@@ -395,14 +472,14 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 
 		// Sort by layer order (bottom to top)
 		visibleClips.sort((a, b) => {
-			const layerIndexA = layers.indexOf(a.layer);
-			const layerIndexB = layers.indexOf(b.layer);
+			const layerIndexA = currentLayers.indexOf(a.layer);
+			const layerIndexB = currentLayers.indexOf(b.layer);
 			return layerIndexA - layerIndexB;
 		});
 
 		// Render clips from bottom to top
 		for (const { clip, layer } of visibleClips) {
-			const localTime = currentTime - clip.startTime;
+			const localTime = currentTimeValue - clip.startTime;
 
 			// Skip if outside clip duration (shouldn't happen due to filter above)
 			if (localTime < 0 || localTime > clip.duration) continue;
@@ -416,40 +493,36 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				drawTextClip(ctx, clip, localTime);
 			}
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [currentTime, canvasSize.width, canvasSize.height, layers]);
+	}, [drawVideoClip, drawImageClip, drawTextClip]);
 
 	/**
 	 * Redraw canvas when currentTime changes (using requestAnimationFrame for smooth rendering)
+	 * Only schedule one frame at a time to prevent overlaps
 	 */
 	useEffect(() => {
 		if (!isReady) return;
 
-		// Cancel any pending animation frame
-		if (animationFrameRef.current) {
-			cancelAnimationFrame(animationFrameRef.current);
-		}
+		// If a frame is already scheduled, don't schedule another one
+		if (isFrameScheduledRef.current) return;
+
+		isFrameScheduledRef.current = true;
 
 		// Use requestAnimationFrame for smooth, non-flickering rendering
 		animationFrameRef.current = requestAnimationFrame(() => {
 			renderFrame();
+			isFrameScheduledRef.current = false;
 		});
 
 		return () => {
 			if (animationFrameRef.current) {
 				cancelAnimationFrame(animationFrameRef.current);
+				isFrameScheduledRef.current = false;
+			}
+			if (scrubTimeoutRef.current) {
+				clearTimeout(scrubTimeoutRef.current);
 			}
 		};
-	}, [renderFrame, isReady]);
-
-	/**
-	 * Set up canvas and render first frame
-	 */
-	useEffect(() => {
-		if (isReady) {
-			renderFrame();
-		}
-	}, [isReady, renderFrame]);
+	}, [currentTime, isReady, renderFrame, layers]); // Added layers to trigger re-render on clip updates
 
 	/**
 	 * Synchronize video playback with timeline
@@ -481,9 +554,10 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			const localTime = currentTime - clip.startTime;
 			const videoTime = localTime + clip.trimStart;
 
-			// Sync video time with timeline position (less aggressive during playback)
-			// Only seek if significantly out of sync to avoid stuttering
-			if (Math.abs(video.currentTime - videoTime) > 0.2) {
+			// Sync video time with timeline position
+			// Use moderate threshold during playback to balance accuracy and smoothness
+			const timeDiff = Math.abs(video.currentTime - videoTime);
+			if (timeDiff > 0.2) {
 				video.currentTime = videoTime;
 			}
 
@@ -520,7 +594,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			<div
 				style={{
 					position: "relative",
-					border: "2px solid rgba(59, 130, 246, 0.4)",
+					border: "2px solid rgba(134, 165, 217, 0.4)",
 					borderRadius: "4px",
 					boxShadow: "0 0 20px rgba(0, 0, 0, 0.5)",
 					padding: "8px",
@@ -580,8 +654,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 						canvasWidth={displaySize.width}
 						canvasHeight={displaySize.height}
 						onResize={handleResize}
-						imageWidth={imageElementsRef.current.get(selectedClip.resourceId)?.naturalWidth || canvasSize.width}
-						imageHeight={imageElementsRef.current.get(selectedClip.resourceId)?.naturalHeight || canvasSize.height}
+						imageWidth={imageDimensions.get(selectedClip.resourceId)?.width || canvasSize.width}
+						imageHeight={imageDimensions.get(selectedClip.resourceId)?.height || canvasSize.height}
 						scaleRatio={displaySize.width / canvasSize.width}
 						canvasSizeWidth={canvasSize.width}
 						canvasSizeHeight={canvasSize.height}

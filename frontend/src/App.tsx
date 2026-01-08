@@ -238,7 +238,7 @@ function AppContent() {
 					{/* Top Section - Preview and Properties side by side */}
 					<div className="flex-1 flex overflow-hidden">
 						{/* Preview Section - Left */}
-						<div className="flex-1 flex flex-col overflow-hidden bg-gradient-to-b from-zinc-950 to-zinc-900 border-r border-border">
+						<div className="flex-1 flex flex-col overflow-hidden bg-linear-to-b from-zinc-950 to-zinc-900 border-r border-border">
 							<div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/30">
 								<h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Preview</h2>{" "}
 								{!isPropertiesPanelOpen && (

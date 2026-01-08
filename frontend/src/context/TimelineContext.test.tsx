@@ -47,7 +47,7 @@ describe('TimelineContext', () => {
 
       expect(result.current.state.layers).toEqual([]);
       expect(result.current.state.currentTime).toBe(0);
-      expect(result.current.state.duration).toBe(0);
+      expect(result.current.state.duration).toBe(90); // Default minimum duration
       expect(result.current.state.zoom).toBe(20);
       expect(result.current.state.selectedClipId).toBeNull();
       expect(result.current.state.isPlaying).toBe(false);
@@ -158,21 +158,21 @@ describe('TimelineContext', () => {
 
     it('should update duration when adding clip that extends beyond current duration', () => {
       const { result } = renderHook(() => useTimeline(), {
-        wrapper: createWrapper({ layers: [mockLayer], duration: 5 }),
+        wrapper: createWrapper({ layers: [mockLayer], duration: 100 }),
       });
 
-      const clip = createMockClip({ startTime: 10, duration: 5 });
+      const clip = createMockClip({ startTime: 105, duration: 10 });
 
       act(() => {
         result.current.addClip(clip, 0);
       });
 
-      expect(result.current.state.duration).toBe(15); // 10 + 5
+      expect(result.current.state.duration).toBe(115); // 105 + 10
     });
 
     it('should not update duration when clip does not extend beyond current duration', () => {
       const { result } = renderHook(() => useTimeline(), {
-        wrapper: createWrapper({ layers: [mockLayer], duration: 20 }),
+        wrapper: createWrapper({ layers: [mockLayer], duration: 120 }),
       });
 
       const clip = createMockClip({ startTime: 0, duration: 5 });
@@ -181,7 +181,7 @@ describe('TimelineContext', () => {
         result.current.addClip(clip, 0);
       });
 
-      expect(result.current.state.duration).toBe(20);
+      expect(result.current.state.duration).toBe(120);
     });
 
     it('should remove a clip', () => {
@@ -384,7 +384,7 @@ describe('TimelineContext', () => {
         result.current.setDuration(-10);
       });
 
-      expect(result.current.state.duration).toBe(0);
+      expect(result.current.state.duration).toBe(90); // Minimum duration is 90
     });
   });
 
@@ -506,7 +506,7 @@ describe('TimelineContext', () => {
 
       expect(result.current.state.layers[0].clips).toHaveLength(2);
       expect(result.current.state.layers[1].clips).toHaveLength(1);
-      expect(result.current.state.duration).toBe(10);
+      expect(result.current.state.duration).toBe(90); // Minimum duration is 90
     });
 
     it('should maintain consistency when performing multiple operations', () => {
@@ -537,9 +537,9 @@ describe('TimelineContext', () => {
       expect(state.isPlaying).toBe(true);
       expect(state.currentTime).toBe(7);
       expect(state.zoom).toBe(40);
-      // Duration was initially set to 10 when clip was added at position 0 with duration 10
+      // Duration was initially set to 90 (minimum) when clip was added
       // Moving and trimming doesn't auto-recalculate duration (this is correct behavior)
-      expect(state.duration).toBe(10);
+      expect(state.duration).toBe(90);
     });
   });
 });

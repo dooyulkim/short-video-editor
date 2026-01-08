@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import axios from 'axios';
-import useAudioWaveform, { clearWaveformCache } from './useAudioWaveform';
 
-// Mock axios
-vi.mock('axios');
-const mockedAxios = vi.mocked(axios);
+// Mock the api service's getWaveform function
+vi.mock('@/services/api', () => ({
+  getWaveform: vi.fn(),
+}));
+
+import useAudioWaveform, { clearWaveformCache } from './useAudioWaveform';
+import { getWaveform } from '@/services/api';
+
+const mockedGetWaveform = vi.mocked(getWaveform);
 
 describe('useAudioWaveform', () => {
   beforeEach(() => {
@@ -30,7 +34,12 @@ describe('useAudioWaveform', () => {
     const audioId = 'audio-123';
     const mockWaveformData = [0.5, -0.3, 0.8, -0.2, 0.1];
     
-    mockedAxios.get.mockResolvedValueOnce({ data: mockWaveformData });
+    mockedGetWaveform.mockResolvedValueOnce({ 
+      id: audioId,
+      waveform: mockWaveformData,
+      duration: 5.0,
+      sampleRate: 44100
+    });
     
     const { result } = renderHook(() => useAudioWaveform(audioId));
     
@@ -43,14 +52,14 @@ describe('useAudioWaveform', () => {
     
     expect(result.current.waveformData).toEqual(mockWaveformData);
     expect(result.current.error).toBeNull();
-    expect(mockedAxios.get).toHaveBeenCalledWith(`/media/${audioId}/waveform`);
+    expect(mockedGetWaveform).toHaveBeenCalledWith(audioId);
   });
 
   it('should set error state when fetch fails', async () => {
     const audioId = 'audio-123';
     const errorMessage = 'Network error';
     
-    mockedAxios.get.mockRejectedValueOnce(new Error(errorMessage));
+    mockedGetWaveform.mockRejectedValueOnce(new Error(errorMessage));
     
     const { result } = renderHook(() => useAudioWaveform(audioId));
     
@@ -66,7 +75,7 @@ describe('useAudioWaveform', () => {
     const audioId = 'audio-123';
     const mockWaveformData = [0.5, -0.3, 0.8];
     
-    mockedAxios.get.mockResolvedValueOnce({ data: mockWaveformData });
+    mockedGetWaveform.mockResolvedValueOnce({ id: "test-id", waveform: mockWaveformData, duration: 5.0, sampleRate: 44100 });
     
     // First render
     const { result: result1 } = renderHook(() => useAudioWaveform(audioId));
@@ -76,7 +85,7 @@ describe('useAudioWaveform', () => {
     });
     
     expect(result1.current.waveformData).toEqual(mockWaveformData);
-    expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    expect(mockedGetWaveform).toHaveBeenCalledTimes(1);
     
     // Second render with same audioId - should use cache
     const { result: result2 } = renderHook(() => useAudioWaveform(audioId));
@@ -86,7 +95,7 @@ describe('useAudioWaveform', () => {
     expect(result2.current.isLoading).toBe(false);
     
     // Should not make another API call
-    expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    expect(mockedGetWaveform).toHaveBeenCalledTimes(1);
   });
 
   it('should refetch when audioId changes', async () => {
@@ -95,9 +104,9 @@ describe('useAudioWaveform', () => {
     const mockData1 = [0.5, -0.3];
     const mockData2 = [0.8, -0.2];
     
-    mockedAxios.get
-      .mockResolvedValueOnce({ data: mockData1 })
-      .mockResolvedValueOnce({ data: mockData2 });
+    mockedGetWaveform
+      .mockResolvedValueOnce({ id: "test-id", waveform: mockData1, duration: 5.0, sampleRate: 44100 })
+      .mockResolvedValueOnce({ id: "test-id", waveform: mockData2, duration: 5.0, sampleRate: 44100 });
     
     const { result, rerender } = renderHook(
       ({ audioId }) => useAudioWaveform(audioId),
@@ -115,16 +124,16 @@ describe('useAudioWaveform', () => {
       expect(result.current.waveformData).toEqual(mockData2);
     });
     
-    expect(mockedAxios.get).toHaveBeenCalledTimes(2);
-    expect(mockedAxios.get).toHaveBeenCalledWith(`/media/${audioId1}/waveform`);
-    expect(mockedAxios.get).toHaveBeenCalledWith(`/media/${audioId2}/waveform`);
+    expect(mockedGetWaveform).toHaveBeenCalledTimes(2);
+    expect(mockedGetWaveform).toHaveBeenCalledWith(audioId1);
+    expect(mockedGetWaveform).toHaveBeenCalledWith(audioId2);
   });
 
   it('should reset state when audioId becomes null', async () => {
     const audioId = 'audio-123';
     const mockWaveformData = [0.5, -0.3];
     
-    mockedAxios.get.mockResolvedValueOnce({ data: mockWaveformData });
+    mockedGetWaveform.mockResolvedValueOnce({ id: "test-id", waveform: mockWaveformData, duration: 5.0, sampleRate: 44100 });
     
     const { result, rerender } = renderHook(
       ({ audioId }) => useAudioWaveform(audioId),
@@ -147,7 +156,7 @@ describe('useAudioWaveform', () => {
     const audioId = 'audio-123';
     const invalidData = { invalid: 'format' }; // Not an array
     
-    mockedAxios.get.mockResolvedValueOnce({ data: invalidData });
+    mockedGetWaveform.mockResolvedValueOnce({ id: "test-id", waveform: invalidData, duration: 5.0, sampleRate: 44100 });
     
     const { result } = renderHook(() => useAudioWaveform(audioId));
     
@@ -162,7 +171,7 @@ describe('useAudioWaveform', () => {
   it('should handle non-Error exceptions', async () => {
     const audioId = 'audio-123';
     
-    mockedAxios.get.mockRejectedValueOnce('String error');
+    mockedGetWaveform.mockRejectedValueOnce('String error');
     
     const { result } = renderHook(() => useAudioWaveform(audioId));
     
@@ -178,7 +187,7 @@ describe('useAudioWaveform', () => {
     const mockWaveformData = [0.5, -0.3];
     
     // Delay the response
-    mockedAxios.get.mockImplementation(() => 
+    mockedGetWaveform.mockImplementation(() => 
       new Promise(resolve => 
         setTimeout(() => resolve({ data: mockWaveformData }), 100)
       )
@@ -202,7 +211,7 @@ describe('useAudioWaveform', () => {
     const audioId = 'audio-123';
     const mockWaveformData = [0.5, -0.3, 0.8, -0.2, 0.1];
     
-    mockedAxios.get.mockResolvedValueOnce({ data: mockWaveformData });
+    mockedGetWaveform.mockResolvedValueOnce({ id: "test-id", waveform: mockWaveformData, duration: 5.0, sampleRate: 44100 });
     
     const { result } = renderHook(() => useAudioWaveform(audioId));
     
@@ -221,7 +230,7 @@ describe('useAudioWaveform', () => {
     const audioId = 'audio-123';
     const emptyWaveformData: number[] = [];
     
-    mockedAxios.get.mockResolvedValueOnce({ data: emptyWaveformData });
+    mockedGetWaveform.mockResolvedValueOnce({ id: "test-id", waveform: emptyWaveformData, duration: 5.0, sampleRate: 44100 });
     
     const { result } = renderHook(() => useAudioWaveform(audioId));
     
@@ -239,9 +248,9 @@ describe('useAudioWaveform', () => {
     const mockData1 = [0.5, -0.3];
     const mockData2 = [0.8, -0.2];
     
-    mockedAxios.get
-      .mockResolvedValueOnce({ data: mockData1 })
-      .mockResolvedValueOnce({ data: mockData2 });
+    mockedGetWaveform
+      .mockResolvedValueOnce({ id: "test-id", waveform: mockData1, duration: 5.0, sampleRate: 44100 })
+      .mockResolvedValueOnce({ id: "test-id", waveform: mockData2, duration: 5.0, sampleRate: 44100 });
     
     // Fetch first audio
     const { result: result1 } = renderHook(() => useAudioWaveform(audioId1));
@@ -259,6 +268,9 @@ describe('useAudioWaveform', () => {
     expect(result3.current.waveformData).toEqual(mockData1);
     
     // Should only make 2 API calls (one for each unique audioId)
-    expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+    expect(mockedGetWaveform).toHaveBeenCalledTimes(2);
   });
 });
+
+
+

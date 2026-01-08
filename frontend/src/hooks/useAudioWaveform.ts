@@ -59,7 +59,7 @@ const useAudioWaveform = (audioId: string | null): UseAudioWaveformReturn => {
         
         if (!isMountedRef.current) return;
 
-        const data = response.data;
+        const data = response.waveform;
         
         // Validate that we received an array
         if (Array.isArray(data)) {

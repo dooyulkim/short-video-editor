@@ -17,8 +17,7 @@ interface TimelineProps {
 	initialDuration?: number;
 }
 
-const TIMELINE_HEIGHT = 400;
-const LAYER_HEIGHT = 60;
+const LAYER_HEIGHT = 40;
 const MIN_ZOOM = 5; // pixels per second
 const MAX_ZOOM = 200; // pixels per second
 const DEFAULT_ZOOM = 50; // pixels per second
@@ -27,10 +26,11 @@ const DEFAULT_ZOOM = 50; // pixels per second
  * Timeline component - Canvas-based timeline visualization
  * Displays multiple layers with clips, time ruler, and playhead
  */
-export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialDuration = 120 }) => {
+export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialDuration = 90 }) => {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const rulerScrollRef = useRef<HTMLDivElement>(null);
+	const layerSidebarRef = useRef<HTMLDivElement>(null);
 
 	const timeline = useTimeline();
 	const [layers, setLayers] = useState<TimelineLayer[]>(initialLayers);
@@ -38,6 +38,12 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	const isPlaying = timeline?.state.isPlaying || false;
 	const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
 	const [duration, setDuration] = useState<number>(initialDuration);
+
+	// Derive state from timeline context when available
+	const effectiveLayers = timeline?.state.layers.length > 0 ? timeline.state.layers : layers;
+	const effectiveDuration = timeline?.state.duration > 0 ? timeline.state.duration : duration;
+	const effectiveZoom = timeline?.state.zoom || zoom;
+	const effectiveCurrentTime = timeline?.state.currentTime !== undefined ? timeline.state.currentTime : currentTime;
 	const [isDragOver, setIsDragOver] = useState<boolean>(false);
 	const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
 	const [isDraggingClip, setIsDraggingClip] = useState<boolean>(false);
@@ -53,37 +59,39 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	} | null>(null);
 	const [resizeStartTime, setResizeStartTime] = useState<number>(0);
 	const [resizeStartDuration, setResizeStartDuration] = useState<number>(0);
+	const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
+	const [editingLayerName, setEditingLayerName] = useState<string>("");
+	const [layerSidebarWidth, setLayerSidebarWidth] = useState<number>(150);
+	const [isResizingSidebar, setIsResizingSidebar] = useState<boolean>(false);
+	const [resizeStartX, setResizeStartX] = useState<number>(0);
+	const [resizeStartWidth, setResizeStartWidth] = useState<number>(150);
 
-	const timelineWidth = duration * zoom;
+	const timelineWidth = effectiveDuration * effectiveZoom;
 
-	// Sync with timeline context if available
+	// Handle sidebar resize
 	useEffect(() => {
-		if (timeline?.state.layers.length > 0) {
-			setLayers(timeline.state.layers);
-		}
-	}, [timeline?.state.layers]);
+		if (!isResizingSidebar) return;
 
-	useEffect(() => {
-		if (timeline?.state.duration > 0) {
-			setDuration(timeline.state.duration);
-		}
-	}, [timeline?.state.duration]);
+		const handleMouseMove = (e: MouseEvent) => {
+			const delta = e.clientX - resizeStartX;
+			const newWidth = Math.max(100, Math.min(300, resizeStartWidth + delta));
+			setLayerSidebarWidth(newWidth);
+		};
 
-	// Sync zoom with timeline context
-	useEffect(() => {
-		if (timeline?.state.zoom) {
-			setZoom(timeline.state.zoom);
-		}
-	}, [timeline?.state.zoom]);
+		const handleMouseUp = () => {
+			setIsResizingSidebar(false);
+		};
 
-	// Sync currentTime with timeline context
-	useEffect(() => {
-		if (timeline?.state.currentTime !== undefined) {
-			setCurrentTime(timeline.state.currentTime);
-		}
-	}, [timeline?.state.currentTime]);
+		document.addEventListener("mousemove", handleMouseMove);
+		document.addEventListener("mouseup", handleMouseUp);
 
-	// Sync ruler scroll with canvas scroll
+		return () => {
+			document.removeEventListener("mousemove", handleMouseMove);
+			document.removeEventListener("mouseup", handleMouseUp);
+		};
+	}, [isResizingSidebar, resizeStartX, resizeStartWidth]);
+
+	// Sync ruler scroll with canvas scroll (horizontal only)
 	useEffect(() => {
 		const canvasScroll = scrollContainerRef.current;
 		const rulerScroll = rulerScrollRef.current;
@@ -95,7 +103,10 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		};
 
 		canvasScroll.addEventListener("scroll", handleCanvasScroll);
-		return () => canvasScroll.removeEventListener("scroll", handleCanvasScroll);
+
+		return () => {
+			canvasScroll.removeEventListener("scroll", handleCanvasScroll);
+		};
 	}, []);
 
 	// Auto-scroll timeline during playback
@@ -108,7 +119,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		if (!canvasScroll || !rulerScroll) return;
 
 		// Calculate playhead position in pixels
-		const playheadX = currentTime * zoom;
+		const playheadX = effectiveCurrentTime * effectiveZoom;
 
 		// Get container width
 		const containerWidth = canvasScroll.clientWidth;
@@ -128,67 +139,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			canvasScroll.scrollLeft = playheadX - containerWidth * 0.3;
 			rulerScroll.scrollLeft = playheadX - containerWidth * 0.3;
 		}
-	}, [isPlaying, currentTime, zoom]);
-
-	// Playback loop - update currentTime during playback
-	useEffect(() => {
-		if (!isPlaying) return;
-
-		let animationFrameId: number;
-		let lastTimestamp: number | null = null;
-		let currentPlaybackTime = currentTime;
-		let lastUpdateTime = currentTime;
-		const playbackSpeed = 1.0; // Playback speed multiplier (1.0 = normal speed)
-		const updateInterval = 1 / 60; // Update at 60fps for smooth playback (~16ms)
-
-		const animate = (timestamp: number) => {
-			if (lastTimestamp === null) {
-				lastTimestamp = timestamp;
-				animationFrameId = requestAnimationFrame(animate);
-				return;
-			}
-
-			// Calculate elapsed time in seconds with playback speed
-			const deltaTime = ((timestamp - lastTimestamp) / 1000) * playbackSpeed;
-			lastTimestamp = timestamp;
-
-			// Update current time
-			currentPlaybackTime += deltaTime;
-
-			// Check if reached end of timeline
-			if (currentPlaybackTime >= duration) {
-				setCurrentTime(duration);
-				if (timeline) {
-					timeline.setCurrentTime(duration);
-					timeline.pause();
-				}
-				return;
-			}
-
-			// Only update state at defined intervals to reduce re-renders
-			if (currentPlaybackTime - lastUpdateTime >= updateInterval) {
-				setCurrentTime(currentPlaybackTime);
-				if (timeline) {
-					timeline.setCurrentTime(currentPlaybackTime);
-				}
-				lastUpdateTime = currentPlaybackTime;
-			}
-
-			// Continue animation loop
-			animationFrameId = requestAnimationFrame(animate);
-		};
-
-		// Start animation loop
-		animationFrameId = requestAnimationFrame(animate);
-
-		// Cleanup
-		return () => {
-			if (animationFrameId) {
-				cancelAnimationFrame(animationFrameId);
-			}
-		};
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [isPlaying, duration, timeline]);
+	}, [isPlaying, effectiveCurrentTime, effectiveZoom]);
 
 	// Handle keyboard events for clip deletion
 	useEffect(() => {
@@ -213,7 +164,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 
 		// Set canvas dimensions
 		canvas.width = timelineWidth;
-		canvas.height = layers.length * LAYER_HEIGHT || LAYER_HEIGHT;
+		canvas.height = effectiveLayers.length * LAYER_HEIGHT || LAYER_HEIGHT;
 
 		// Clear canvas
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -233,8 +184,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		 * Draw a single clip as a rectangle
 		 */
 		const drawClip = (clip: Clip, layerY: number) => {
-			const x = clip.startTime * zoom;
-			const width = clip.duration * zoom;
+			const x = clip.startTime * effectiveZoom;
+			const width = clip.duration * effectiveZoom;
 			const height = LAYER_HEIGHT - 10;
 			const y = layerY + 5;
 
@@ -264,7 +215,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			ctx.fillStyle = "#fff";
 			ctx.font = "12px sans-serif";
 			ctx.textAlign = "left";
-			const clipName = clip.resourceId.substring(0, 20) + "...";
+			const displayName = clip.resourceName || clip.resourceId;
+			const clipName = displayName.length > 25 ? displayName.substring(0, 25) + "..." : displayName;
 			ctx.fillText(clipName, x + 5, y + height / 2 + 4);
 
 			// Draw trim indicators if clip is trimmed
@@ -311,23 +263,23 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		};
 
 		// Draw layers (reversed so top layer in UI is rendered on top)
-		[...layers].reverse().forEach((layer, reversedIndex) => {
+		[...effectiveLayers].reverse().forEach((layer, reversedIndex) => {
 			drawLayer(layer, reversedIndex);
 		});
-	}, [layers, currentTime, zoom, duration, timelineWidth, selectedClipId]);
+	}, [effectiveLayers, effectiveCurrentTime, effectiveZoom, effectiveDuration, timelineWidth, selectedClipId]);
 
 	/**
 	 * Find clip at a given position
 	 */
 	const findClipAtPosition = (x: number, y: number): { clip: Clip; layerIndex: number } | null => {
-		const reversedLayers = [...layers].reverse();
+		const reversedLayers = [...effectiveLayers].reverse();
 		const layerIndex = Math.floor(y / LAYER_HEIGHT);
 		if (layerIndex < 0 || layerIndex >= reversedLayers.length) return null;
 
 		const layer = reversedLayers[layerIndex];
 		// Get the actual index in the original array
-		const actualLayerIndex = layers.length - 1 - layerIndex;
-		const time = x / zoom;
+		const actualLayerIndex = effectiveLayers.length - 1 - layerIndex;
+		const time = x / effectiveZoom;
 
 		for (const clip of layer.clips) {
 			const clipStart = clip.startTime;
@@ -346,19 +298,19 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	 */
 	const getClipEdge = (x: number, y: number): { clip: Clip; edge: "left" | "right"; layerIndex: number } | null => {
 		const EDGE_THRESHOLD = 8; // pixels
-		const reversedLayers = [...layers].reverse();
+		const reversedLayers = [...effectiveLayers].reverse();
 		const layerIndex = Math.floor(y / LAYER_HEIGHT);
 		if (layerIndex < 0 || layerIndex >= reversedLayers.length) return null;
 
 		const layer = reversedLayers[layerIndex];
-		const actualLayerIndex = layers.length - 1 - layerIndex;
-		const time = x / zoom;
+		const actualLayerIndex = effectiveLayers.length - 1 - layerIndex;
+		const time = x / effectiveZoom;
 
 		for (const clip of layer.clips) {
 			const clipStart = clip.startTime;
 			const clipEnd = clip.startTime + clip.duration;
-			const clipStartX = clipStart * zoom;
-			const clipEndX = clipEnd * zoom;
+			const clipStartX = clipStart * effectiveZoom;
+			const clipEndX = clipEnd * effectiveZoom;
 
 			// Check left edge
 			if (Math.abs(x - clipStartX) < EDGE_THRESHOLD && time >= clipStart - 0.1 && time <= clipEnd) {
@@ -433,7 +385,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		if (resizingClip) {
 			// Resize the clip
 			const deltaX = x - dragStartX;
-			const deltaTime = deltaX / zoom;
+			const deltaTime = deltaX / effectiveZoom;
 
 			if (resizingClip.edge === "left") {
 				// Resize from left edge (change startTime and duration)
@@ -442,7 +394,9 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 				const newDuration = Math.max(0.1, resizeStartDuration - deltaStart);
 
 				if (timeline) {
-					const layerIndex = layers.findIndex((layer) => layer.clips.some((clip) => clip.id === resizingClip.clipId));
+					const layerIndex = effectiveLayers.findIndex((layer) =>
+						layer.clips.some((clip) => clip.id === resizingClip.clipId)
+					);
 					if (layerIndex !== -1) {
 						timeline.moveClip(resizingClip.clipId, newStartTime);
 						timeline.updateClip(resizingClip.clipId, { duration: newDuration });
@@ -460,7 +414,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		} else if (isDraggingClip && selectedClipId) {
 			// Move the selected clip
 			const deltaX = x - dragStartX;
-			const deltaTime = deltaX / zoom;
+			const deltaTime = deltaX / effectiveZoom;
 			const newStartTime = Math.max(0, clipDragStartTime + deltaTime);
 
 			// Update clip position
@@ -534,28 +488,72 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 
 			const rect = canvas.getBoundingClientRect();
 			const x = e.clientX - rect.left + (scrollContainerRef.current?.scrollLeft || 0);
-			const dropTime = Math.max(0, x / zoom);
+			const y = e.clientY - rect.top + (scrollContainerRef.current?.scrollTop || 0);
+			const dropTime = Math.max(0, x / effectiveZoom);
 
-			// Find or create a layer for this resource type
-			let targetLayerIndex = layers.findIndex((layer) => layer.type === resource.type);
+			// Determine which layer was dropped onto based on Y position
+			// Layers are rendered from bottom to top, so we need to reverse the index
+			const layerIndexFromTop = Math.floor(y / LAYER_HEIGHT);
+			const targetLayerIndex = effectiveLayers.length - 1 - layerIndexFromTop;
 
-			// If no layer of this type exists, create one
-			if (targetLayerIndex === -1 && timeline) {
-				timeline.addLayer(resource.type);
-				// The new layer will be at the end
-				targetLayerIndex = layers.length;
-			} else if (targetLayerIndex === -1) {
-				// Fallback if timeline context is not available
-				const newLayer: TimelineLayer = {
-					id: `layer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-					type: resource.type,
-					clips: [],
-					locked: false,
-					visible: true,
-					name: `${resource.type.charAt(0).toUpperCase() + resource.type.slice(1)} Layer ${layers.length + 1}`,
-				};
-				setLayers([...layers, newLayer]);
-				targetLayerIndex = layers.length;
+			console.log("Drop position:", { x, y, layerIndexFromTop, targetLayerIndex, totalLayers: effectiveLayers.length });
+
+			let finalTargetLayerIndex = targetLayerIndex;
+			let newLayerCreated = false;
+
+			// Check if we have a valid layer at the drop position
+			if (targetLayerIndex >= 0 && targetLayerIndex < effectiveLayers.length) {
+				const targetLayer = effectiveLayers[targetLayerIndex];
+
+				// Check if the target layer type matches the resource type
+				if (targetLayer.type === resource.type && !targetLayer.locked) {
+					// Use the dropped layer
+					finalTargetLayerIndex = targetLayerIndex;
+					console.log("Adding to existing layer:", targetLayer.name);
+				} else {
+					// Layer type doesn't match or is locked, find or create appropriate layer
+					let matchingLayerIndex = -1;
+					for (let i = effectiveLayers.length - 1; i >= 0; i--) {
+						if (effectiveLayers[i].type === resource.type && !effectiveLayers[i].locked) {
+							matchingLayerIndex = i;
+							break;
+						}
+					}
+
+					if (matchingLayerIndex !== -1) {
+						finalTargetLayerIndex = matchingLayerIndex;
+						console.log("Layer type mismatch, using last matching layer");
+					} else {
+						// No matching layer found, create one
+						if (timeline) {
+							timeline.addLayer(resource.type);
+							finalTargetLayerIndex = effectiveLayers.length;
+							newLayerCreated = true;
+							console.log("Creating new layer for resource type:", resource.type);
+						}
+					}
+				}
+			} else {
+				// Drop outside existing layers, create new layer
+				if (timeline) {
+					timeline.addLayer(resource.type);
+					finalTargetLayerIndex = effectiveLayers.length;
+					newLayerCreated = true;
+					console.log("Drop outside layers, creating new layer");
+				} else {
+					// Fallback if timeline context is not available
+					const newLayer: TimelineLayer = {
+						id: `layer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+						type: resource.type,
+						clips: [],
+						locked: false,
+						visible: true,
+						name: `${resource.type.charAt(0).toUpperCase() + resource.type.slice(1)} Layer ${layers.length + 1}`,
+					};
+					setLayers([...effectiveLayers, newLayer]);
+					finalTargetLayerIndex = effectiveLayers.length;
+					newLayerCreated = true;
+				}
 			}
 
 			// Create a clip from the resource
@@ -566,6 +564,10 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 				duration: resource.duration || 5, // Default 5 seconds for images
 				trimStart: 0,
 				trimEnd: 0,
+				opacity: 1,
+				scale: 1,
+				rotation: 0,
+				position: { x: 0, y: 0 },
 				data: {
 					type: resource.type,
 					url: resource.url,
@@ -573,22 +575,44 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 				},
 			};
 
+			console.log("Creating new clip:", {
+				id: newClip.id,
+				resourceId: newClip.resourceId,
+				scale: newClip.scale,
+				rotation: newClip.rotation,
+				position: newClip.position,
+			});
+
 			// Add the clip to the layer
 			if (timeline) {
-				// Wait for the layer to be created if it was just added
-				setTimeout(() => {
-					const updatedLayerIndex = timeline.state.layers.findIndex((layer) => layer.type === resource.type);
-					if (updatedLayerIndex !== -1) {
-						timeline.addClip(newClip, updatedLayerIndex);
-					}
-				}, 100);
+				if (newLayerCreated) {
+					// Wait for the layer to be created, then add to the last layer of this type
+					setTimeout(() => {
+						const layers = timeline.state.layers;
+						let updatedLayerIndex = -1;
+						// Find the last layer of this resource type
+						for (let i = layers.length - 1; i >= 0; i--) {
+							if (layers[i].type === resource.type) {
+								updatedLayerIndex = i;
+								break;
+							}
+						}
+						if (updatedLayerIndex !== -1) {
+							timeline.addClip(newClip, updatedLayerIndex);
+						}
+					}, 100);
+				} else {
+					// Add to existing layer immediately
+					console.log("Adding clip to layer index:", finalTargetLayerIndex);
+					timeline.addClip(newClip, finalTargetLayerIndex);
+				}
 			} else {
 				// Fallback if timeline context is not available
-				const updatedLayers = [...layers];
-				if (updatedLayers[targetLayerIndex]) {
-					updatedLayers[targetLayerIndex] = {
-						...updatedLayers[targetLayerIndex],
-						clips: [...updatedLayers[targetLayerIndex].clips, newClip],
+				const updatedLayers = [...effectiveLayers];
+				if (updatedLayers[finalTargetLayerIndex]) {
+					updatedLayers[finalTargetLayerIndex] = {
+						...updatedLayers[finalTargetLayerIndex],
+						clips: [...updatedLayers[finalTargetLayerIndex].clips, newClip],
 					};
 					setLayers(updatedLayers);
 				}
@@ -630,8 +654,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		}
 
 		// Find indices
-		const currentIndex = layers.findIndex((l) => l.id === draggedLayerId);
-		const targetIndex = layers.findIndex((l) => l.id === targetLayerId);
+		const currentIndex = effectiveLayers.findIndex((l) => l.id === draggedLayerId);
+		const targetIndex = effectiveLayers.findIndex((l) => l.id === targetLayerId);
 
 		if (currentIndex !== -1 && targetIndex !== -1) {
 			timeline.reorderLayer(draggedLayerId, targetIndex);
@@ -653,7 +677,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	 * Zoom in (increase pixels per second)
 	 */
 	const handleZoomIn = () => {
-		const newZoom = Math.min(zoom * 1.5, MAX_ZOOM);
+		const newZoom = Math.min(effectiveZoom + 5, MAX_ZOOM);
 		setZoom(newZoom);
 		if (timeline) {
 			timeline.setZoom(newZoom);
@@ -664,7 +688,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	 * Zoom out (decrease pixels per second)
 	 */
 	const handleZoomOut = () => {
-		const newZoom = Math.max(zoom / 1.5, MIN_ZOOM);
+		const newZoom = Math.max(effectiveZoom - 5, MIN_ZOOM);
 		setZoom(newZoom);
 		if (timeline) {
 			timeline.setZoom(newZoom);
@@ -672,7 +696,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	};
 
 	return (
-		<div className="timeline-container bg-gray-950 border-t border-gray-700">
+		<div className="timeline-container bg-gray-950 border-t border-gray-700 flex flex-col flex-1">
 			{/* Timeline Controls */}
 			<div className="timeline-controls flex items-center justify-between gap-1.5 p-1.5 bg-gray-900 border-b border-gray-700">
 				<div className="flex items-center gap-3">
@@ -683,16 +707,16 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 							variant="outline"
 							size="icon"
 							onClick={handleZoomOut}
-							disabled={zoom <= MIN_ZOOM}
+							disabled={effectiveZoom <= MIN_ZOOM}
 							className="h-6 w-6">
 							<Minus className="h-3 w-3" />
 						</Button>
-						<span className="text-xs text-gray-300 min-w-16 text-center">{zoom.toFixed(0)} px/s</span>
+						<span className="text-xs text-gray-300 min-w-16 text-center">{effectiveZoom.toFixed(0)} px/s</span>
 						<Button
 							variant="outline"
 							size="icon"
 							onClick={handleZoomIn}
-							disabled={zoom >= MAX_ZOOM}
+							disabled={effectiveZoom >= MAX_ZOOM}
 							className="h-6 w-6">
 							<Plus className="h-3 w-3" />
 						</Button>
@@ -727,12 +751,12 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 								</DropdownMenuItem>
 							</DropdownMenuContent>
 						</DropdownMenu>
-						<span className="text-xs text-gray-500">{layers.length}</span>
+						<span className="text-xs text-gray-500">{effectiveLayers.length}</span>
 					</div>
 
 					<div className="flex items-center gap-2">
 						<div className="text-xs text-gray-400">
-							Time: {formatTime(currentTime)} / {formatTime(duration)}
+							Time: {formatTime(effectiveCurrentTime)} / {formatTime(effectiveDuration)}
 						</div>
 						<Button
 							variant="outline"
@@ -754,7 +778,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			{/* Timeline Ruler */}
 			<div className="flex">
 				{/* Spacer to align with layer sidebar */}
-				<div className="w-32 shrink-0 bg-gray-900 border-r border-gray-700" />
+				<div className="shrink-0 bg-gray-900 border-r border-gray-700" style={{ width: `${layerSidebarWidth}px` }} />
 
 				{/* Ruler - Scrollable container */}
 				<div
@@ -763,9 +787,9 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 					style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
 					<TimelineRuler
 						width={timelineWidth}
-						zoom={zoom}
-						duration={duration}
-						currentTime={currentTime}
+						zoom={effectiveZoom}
+						duration={effectiveDuration}
+						currentTime={effectiveCurrentTime}
 						onTimeChange={(time) => {
 							setCurrentTime(time);
 							if (timeline) {
@@ -776,14 +800,23 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 				</div>
 			</div>
 
-			{/* Timeline Canvas Container - Horizontally scrollable */}
-			<div className="flex overflow-hidden" style={{ maxHeight: `${TIMELINE_HEIGHT}px` }}>
+			{/* Timeline Canvas Container - Single scrollable parent for layers and tracks */}
+			<div
+				ref={scrollContainerRef}
+				className="flex flex-1 overflow-auto"
+				style={{
+					scrollbarWidth: "none",
+					msOverflowStyle: "none",
+				}}>
 				{/* Layer Controls Sidebar */}
-				<div className="w-32 shrink-0 bg-gray-900 border-r border-gray-700 overflow-y-auto">
-					{layers.length === 0 ? (
+				<div
+					ref={layerSidebarRef}
+					className="shrink-0 bg-gray-900 border-r border-gray-700 sticky left-0 z-10"
+					style={{ width: `${layerSidebarWidth}px` }}>
+					{effectiveLayers.length === 0 ? (
 						<div className="p-2 text-xs text-gray-500 text-center">No layers</div>
 					) : (
-						[...layers].reverse().map((layer) => (
+						[...effectiveLayers].reverse().map((layer) => (
 							<div
 								key={layer.id}
 								draggable
@@ -791,10 +824,10 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 								onDragOver={(e) => handleLayerDragOver(e, layer.id)}
 								onDrop={(e) => handleLayerDrop(e, layer.id)}
 								onDragEnd={handleLayerDragEnd}
-								className={`flex items-center justify-between px-2 py-3 border-b border-gray-700 hover:bg-gray-800 transition-colors cursor-move ${
+								className={`flex items-center justify-between px-2 py-1 border-b border-gray-700 hover:bg-gray-800 transition-colors cursor-move ${
 									draggingLayerId === layer.id ? "opacity-50" : ""
 								} ${dragOverLayerId === layer.id ? "bg-blue-500/20 border-blue-400" : ""}`}
-								style={{ height: `${LAYER_HEIGHT}px` }}>
+								style={{ height: `${LAYER_HEIGHT}px`, boxSizing: "border-box" }}>
 								<div className="flex items-center gap-1 flex-1 min-w-0">
 									<span className="text-sm">
 										{layer.type === "video" && "🎬"}
@@ -802,9 +835,43 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 										{layer.type === "image" && "🖼️"}
 										{layer.type === "text" && "📝"}
 									</span>
-									<span className="text-xs text-gray-300 truncate" title={layer.name}>
-										{layer.name?.split(" ")[0]}
-									</span>
+									{editingLayerId === layer.id ? (
+										<input
+											type="text"
+											value={editingLayerName}
+											onChange={(e) => setEditingLayerName(e.target.value)}
+											onBlur={() => {
+												if (editingLayerName.trim() && timeline) {
+													timeline.updateLayer(layer.id, { name: editingLayerName.trim() });
+												}
+												setEditingLayerId(null);
+											}}
+											onKeyDown={(e) => {
+												if (e.key === "Enter") {
+													if (editingLayerName.trim() && timeline) {
+														timeline.updateLayer(layer.id, { name: editingLayerName.trim() });
+													}
+													setEditingLayerId(null);
+												} else if (e.key === "Escape") {
+													setEditingLayerId(null);
+												}
+											}}
+											className="text-xs bg-gray-800 text-gray-300 px-1 py-0.5 rounded border border-blue-500 outline-none flex-1 min-w-0"
+											autoFocus
+											onClick={(e) => e.stopPropagation()}
+										/>
+									) : (
+										<span
+											className="text-xs text-gray-300 truncate cursor-text hover:text-white"
+											title={layer.name}
+											onDoubleClick={(e) => {
+												e.stopPropagation();
+												setEditingLayerId(layer.id);
+												setEditingLayerName(layer.name);
+											}}>
+											{layer.name}
+										</span>
+									)}
 								</div>
 								<div className="flex items-center gap-1">
 									<Button
@@ -830,19 +897,32 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 							</div>
 						))
 					)}
+					{/* Resize Handle */}
+					<div
+						className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500/50 active:bg-blue-500"
+						onMouseDown={(e) => {
+							e.preventDefault();
+							setResizeStartX(e.clientX);
+							setResizeStartWidth(layerSidebarWidth);
+							setIsResizingSidebar(true);
+						}}
+					/>
 				</div>
 
 				{/* Timeline Canvas */}
 				<div
-					ref={scrollContainerRef}
-					className={`flex-1 overflow-x-auto overflow-y-auto ${isDragOver ? "ring-2 ring-primary" : ""}`}
+					className={`flex-1 ${isDragOver ? "ring-2 ring-primary" : ""}`}
 					onDragOver={handleDragOver}
 					onDragLeave={handleDragLeave}
 					onDrop={handleDrop}>
 					<canvas
 						ref={canvasRef}
 						className="timeline-canvas"
-						style={{ cursor: cursorStyle }}
+						style={{
+							cursor: cursorStyle,
+							display: "block",
+							minHeight: `${LAYER_HEIGHT}px`,
+						}}
 						onMouseDown={handleCanvasMouseDown}
 						onMouseMove={handleCanvasMouseMove}
 						onMouseUp={handleCanvasMouseUp}

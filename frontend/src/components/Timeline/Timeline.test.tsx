@@ -1,7 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import React, { type ReactNode } from 'react';
 import { Timeline } from '@/components/Timeline/Timeline';
+import { TimelineProvider } from '@/context/TimelineContext';
 import type { TimelineLayer, Clip } from '@/types/timeline';
+
+// Wrapper component with TimelineProvider
+function TestWrapper({ children }: { children: ReactNode }) {
+  return <TimelineProvider>{children}</TimelineProvider>;
+}
+
+// Custom render function that wraps components in TimelineProvider
+function renderWithProvider(ui: React.ReactElement, options = {}) {
+  return render(ui, { wrapper: TestWrapper, ...options });
+}
 
 // Helper function to create a mock clip
 function createMockClip(overrides?: Partial<Clip>): Clip {
@@ -42,14 +54,14 @@ describe('Timeline Component', () => {
 
   describe('Rendering', () => {
     it('should render timeline canvas', () => {
-      render(<Timeline />);
+      renderWithProvider(<Timeline />);
       
       const canvas = document.querySelector('canvas');
       expect(canvas).toBeInTheDocument();
     });
 
     it('should render zoom controls', () => {
-      render(<Timeline />);
+      renderWithProvider(<Timeline />);
       
       // Look for zoom in and zoom out buttons
       const buttons = screen.getAllByRole('button');
@@ -57,7 +69,7 @@ describe('Timeline Component', () => {
     });
 
     it('should render timeline ruler', () => {
-      render(<Timeline />);
+      renderWithProvider(<Timeline />);
       
       // The TimelineRuler component should be rendered
       expect(screen.getByTestId('timeline-ruler')).toBeInTheDocument();
@@ -77,7 +89,7 @@ describe('Timeline Component', () => {
         }),
       ];
 
-      const { container } = render(<Timeline initialLayers={mockLayers} />);
+      const { container } = renderWithProvider(<Timeline initialLayers={mockLayers} />);
       const canvas = container.querySelector('canvas');
       
       expect(canvas).toBeInTheDocument();
@@ -95,7 +107,7 @@ describe('Timeline Component', () => {
         clips: [clip1, clip2],
       });
 
-      const { container } = render(<Timeline initialLayers={[layer]} />);
+      const { container } = renderWithProvider(<Timeline initialLayers={[layer]} />);
       const canvas = container.querySelector('canvas');
       
       expect(canvas).toBeInTheDocument();
@@ -111,7 +123,7 @@ describe('Timeline Component', () => {
       });
       
       const layer = createMockLayer({ clips: [clip] });
-      const { container } = render(<Timeline initialLayers={[layer]} />);
+      const { container } = renderWithProvider(<Timeline initialLayers={[layer]} />);
       
       const canvas = container.querySelector('canvas');
       const ctx = canvas?.getContext('2d');
@@ -126,7 +138,7 @@ describe('Timeline Component', () => {
         visible: false,
       });
 
-      render(<Timeline initialLayers={[hiddenLayer]} />);
+      renderWithProvider(<Timeline initialLayers={[hiddenLayer]} />);
       
       // The canvas should still render, but clips from hidden layers should not be drawn
       // This is tested implicitly through the canvas drawing logic
@@ -141,7 +153,7 @@ describe('Timeline Component', () => {
         createMockLayer({ id: 'audio-layer', type: 'audio', clips: [audioClip] }),
       ];
 
-      const { container } = render(<Timeline initialLayers={layers} />);
+      const { container } = renderWithProvider(<Timeline initialLayers={layers} />);
       const canvas = container.querySelector('canvas');
       
       expect(canvas).toBeInTheDocument();
@@ -157,7 +169,7 @@ describe('Timeline Component', () => {
       });
       
       const layer = createMockLayer({ clips: [trimmedClip] });
-      render(<Timeline initialLayers={[layer]} />);
+      renderWithProvider(<Timeline initialLayers={[layer]} />);
       
       // Trim indicators should be rendered on canvas
       // This is verified through the canvas drawing logic
@@ -166,7 +178,7 @@ describe('Timeline Component', () => {
 
   describe('Playhead Interaction', () => {
     it('should render playhead at current time position', () => {
-      const { container } = render(<Timeline />);
+      const { container } = renderWithProvider(<Timeline />);
       const canvas = container.querySelector('canvas');
       
       expect(canvas).toBeInTheDocument();
@@ -174,7 +186,7 @@ describe('Timeline Component', () => {
     });
 
     it('should update playhead position on canvas click', () => {
-      const { container } = render(<Timeline initialDuration={60} />);
+      const { container } = renderWithProvider(<Timeline initialDuration={60} />);
       const canvas = container.querySelector('canvas');
       
       expect(canvas).toBeInTheDocument();
@@ -191,7 +203,7 @@ describe('Timeline Component', () => {
     });
 
     it('should allow dragging the playhead', () => {
-      const { container } = render(<Timeline initialDuration={60} />);
+      const { container } = renderWithProvider(<Timeline initialDuration={60} />);
       const canvas = container.querySelector('canvas');
       
       expect(canvas).toBeInTheDocument();
@@ -217,7 +229,7 @@ describe('Timeline Component', () => {
     });
 
     it('should constrain playhead within timeline duration', () => {
-      const { container } = render(<Timeline initialDuration={30} />);
+      const { container } = renderWithProvider(<Timeline initialDuration={30} />);
       const canvas = container.querySelector('canvas');
       
       if (canvas) {
@@ -234,7 +246,7 @@ describe('Timeline Component', () => {
 
   describe('Zoom Functionality', () => {
     it('should zoom in when zoom in button is clicked', () => {
-      const { container } = render(<Timeline />);
+      const { container } = renderWithProvider(<Timeline />);
       
       const zoomInButton = screen.getAllByRole('button').find(btn => 
         btn.querySelector('svg')?.classList.contains('lucide-plus') ||
@@ -256,7 +268,7 @@ describe('Timeline Component', () => {
     });
 
     it('should zoom out when zoom out button is clicked', () => {
-      const { container } = render(<Timeline />);
+      const { container } = renderWithProvider(<Timeline />);
       
       const zoomOutButton = screen.getAllByRole('button').find(btn => 
         btn.querySelector('svg')?.classList.contains('lucide-minus') ||
@@ -278,7 +290,7 @@ describe('Timeline Component', () => {
     });
 
     it('should respect minimum zoom level', () => {
-      render(<Timeline />);
+      renderWithProvider(<Timeline />);
       
       const zoomOutButton = screen.getAllByRole('button').find(btn => 
         btn.querySelector('svg')?.classList.contains('lucide-minus')
@@ -296,7 +308,7 @@ describe('Timeline Component', () => {
     });
 
     it('should respect maximum zoom level', () => {
-      render(<Timeline />);
+      renderWithProvider(<Timeline />);
       
       const zoomInButton = screen.getAllByRole('button').find(btn => 
         btn.querySelector('svg')?.classList.contains('lucide-plus')
@@ -316,7 +328,7 @@ describe('Timeline Component', () => {
       const clip = createMockClip({ id: 'clip-1', startTime: 0, duration: 10 });
       const layer = createMockLayer({ clips: [clip] });
       
-      const { container, rerender } = render(<Timeline initialLayers={[layer]} />);
+      const { container, rerender } = renderWithProvider(<Timeline initialLayers={[layer]} />);
       
       const canvas = container.querySelector('canvas');
       const widthBefore = canvas?.width || 0;
@@ -338,7 +350,7 @@ describe('Timeline Component', () => {
 
   describe('Drag and Drop', () => {
     it('should support drop zone for adding clips', () => {
-      render(<Timeline />);
+      renderWithProvider(<Timeline />);
       
       // Timeline should be able to receive drop events
       const canvas = document.querySelector('canvas');
@@ -346,7 +358,7 @@ describe('Timeline Component', () => {
     });
 
     it('should handle drag over timeline canvas', () => {
-      const { container } = render(<Timeline />);
+      const { container } = renderWithProvider(<Timeline />);
       const canvas = container.querySelector('canvas');
       
       if (canvas) {
@@ -359,7 +371,7 @@ describe('Timeline Component', () => {
     });
 
     it('should handle drop on timeline', async () => {
-      const { container } = render(<Timeline />);
+      const { container } = renderWithProvider(<Timeline />);
       const canvas = container.querySelector('canvas');
       
       if (canvas) {
@@ -380,7 +392,7 @@ describe('Timeline Component', () => {
         createMockLayer({ id: 'layer-3', name: 'Text 1' }),
       ];
 
-      const { container } = render(<Timeline initialLayers={layers} />);
+      const { container } = renderWithProvider(<Timeline initialLayers={layers} />);
       const canvas = container.querySelector('canvas');
       
       // Canvas height should accommodate all layers
@@ -389,7 +401,7 @@ describe('Timeline Component', () => {
 
     it('should display layer names', () => {
       const layer = createMockLayer({ name: 'My Video Layer' });
-      render(<Timeline initialLayers={[layer]} />);
+      renderWithProvider(<Timeline initialLayers={[layer]} />);
       
       // Layer names are drawn on canvas, so we verify canvas exists
       const canvas = document.querySelector('canvas');
@@ -398,7 +410,7 @@ describe('Timeline Component', () => {
 
     it('should show locked indicator for locked layers', () => {
       const lockedLayer = createMockLayer({ locked: true });
-      render(<Timeline initialLayers={[lockedLayer]} />);
+      renderWithProvider(<Timeline initialLayers={[lockedLayer]} />);
       
       const canvas = document.querySelector('canvas');
       expect(canvas).toBeInTheDocument();
@@ -406,7 +418,7 @@ describe('Timeline Component', () => {
 
     it('should handle empty layers', () => {
       const emptyLayer = createMockLayer({ clips: [] });
-      render(<Timeline initialLayers={[emptyLayer]} />);
+      renderWithProvider(<Timeline initialLayers={[emptyLayer]} />);
       
       const canvas = document.querySelector('canvas');
       expect(canvas).toBeInTheDocument();
@@ -415,14 +427,14 @@ describe('Timeline Component', () => {
 
   describe('Scrolling', () => {
     it('should render scroll container', () => {
-      const { container } = render(<Timeline initialDuration={120} />);
+      const { container } = renderWithProvider(<Timeline initialDuration={120} />);
       
       // Timeline should have a scrollable container
       expect(container.querySelector('.overflow-x-auto')).toBeInTheDocument();
     });
 
     it('should be horizontally scrollable for long timelines', () => {
-      render(<Timeline initialDuration={300} />);
+      renderWithProvider(<Timeline initialDuration={300} />);
       
       const scrollContainer = document.querySelector('.overflow-x-auto');
       expect(scrollContainer).toBeInTheDocument();
@@ -442,7 +454,7 @@ describe('Timeline Component', () => {
       const layer = createMockLayer({ clips });
       
       const startTime = performance.now();
-      render(<Timeline initialLayers={[layer]} />);
+      renderWithProvider(<Timeline initialLayers={[layer]} />);
       const endTime = performance.now();
       
       // Should render within reasonable time (< 1000ms)
@@ -459,7 +471,7 @@ describe('Timeline Component', () => {
       );
       
       const startTime = performance.now();
-      render(<Timeline initialLayers={layers} />);
+      renderWithProvider(<Timeline initialLayers={layers} />);
       const endTime = performance.now();
       
       // Should render within reasonable time (< 1000ms)
@@ -469,14 +481,14 @@ describe('Timeline Component', () => {
 
   describe('Edge Cases', () => {
     it('should handle timeline with no layers', () => {
-      render(<Timeline initialLayers={[]} />);
+      renderWithProvider(<Timeline initialLayers={[]} />);
       
       const canvas = document.querySelector('canvas');
       expect(canvas).toBeInTheDocument();
     });
 
     it('should handle zero duration timeline', () => {
-      render(<Timeline initialDuration={0} />);
+      renderWithProvider(<Timeline initialDuration={0} />);
       
       const canvas = document.querySelector('canvas');
       expect(canvas).toBeInTheDocument();
@@ -486,7 +498,7 @@ describe('Timeline Component', () => {
       const clip = createMockClip({ duration: 0 });
       const layer = createMockLayer({ clips: [clip] });
       
-      render(<Timeline initialLayers={[layer]} />);
+      renderWithProvider(<Timeline initialLayers={[layer]} />);
       
       const canvas = document.querySelector('canvas');
       expect(canvas).toBeInTheDocument();
@@ -497,7 +509,7 @@ describe('Timeline Component', () => {
       const clip2 = createMockClip({ id: 'clip-2', startTime: 10, duration: 10 });
       
       const layer = createMockLayer({ clips: [clip1, clip2] });
-      render(<Timeline initialLayers={[layer]} />);
+      renderWithProvider(<Timeline initialLayers={[layer]} />);
       
       const canvas = document.querySelector('canvas');
       expect(canvas).toBeInTheDocument();
@@ -506,13 +518,13 @@ describe('Timeline Component', () => {
 
   describe('Integration', () => {
     it('should integrate with TimelineRuler component', () => {
-      render(<Timeline initialDuration={60} />);
+      renderWithProvider(<Timeline initialDuration={60} />);
       
       expect(screen.getByTestId('timeline-ruler')).toBeInTheDocument();
     });
 
     it('should update canvas when props change', () => {
-      const { rerender } = render(<Timeline initialDuration={60} />);
+      const { rerender } = renderWithProvider(<Timeline initialDuration={60} />);
       
       rerender(<Timeline initialDuration={120} />);
       
@@ -522,7 +534,7 @@ describe('Timeline Component', () => {
 
     it('should maintain state across re-renders', () => {
       const layers = [createMockLayer({ clips: [createMockClip()] })];
-      const { rerender } = render(<Timeline initialLayers={layers} />);
+      const { rerender } = renderWithProvider(<Timeline initialLayers={layers} />);
       
       rerender(<Timeline initialLayers={layers} />);
       
@@ -531,3 +543,4 @@ describe('Timeline Component', () => {
     });
   });
 });
+

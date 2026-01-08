@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useOptimistic } from "react";
 import { useDropzone } from "react-dropzone";
 import type { MediaResource } from "@/types/media";
 import { useMediaUpload } from "@/hooks/useMediaUpload";
@@ -36,6 +36,17 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 	onSelectedResourceClear,
 }) => {
 	const [resources, setResources] = useState<MediaResource[]>([]);
+	// React 19: useOptimistic for immediate UI updates during async operations
+	const [optimisticResources, updateOptimisticResources] = useOptimistic(
+		resources,
+		(state, action: { type: "add" | "remove"; resource: MediaResource }) => {
+			if (action.type === "add") {
+				return [...state, action.resource];
+			} else {
+				return state.filter((r) => r.id !== action.resource.id);
+			}
+		}
+	);
 	const [filter, setFilter] = useState<FilterType>("all");
 	const [isLoading, setIsLoading] = useState(true);
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -64,6 +75,19 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 	const onDrop = useCallback(
 		async (acceptedFiles: File[]) => {
 			for (const file of acceptedFiles) {
+				// React 19: Show optimistic resource immediately
+				const tempResource: MediaResource = {
+					id: `temp-${Date.now()}-${file.name}`,
+					name: file.name,
+					url: URL.createObjectURL(file),
+					type: file.type.startsWith("video") ? "video" : file.type.startsWith("audio") ? "audio" : "image",
+					size: file.size,
+					createdAt: new Date().toISOString(),
+					thumbnailUrl: "",
+				};
+
+				updateOptimisticResources({ type: "add", resource: tempResource });
+
 				const uploadedResource = await uploadFile(file);
 				if (uploadedResource) {
 					setResources((prev) => {
@@ -71,10 +95,13 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 						onResourcesChange?.(updated);
 						return updated;
 					});
+				} else {
+					// Rollback on failure
+					setResources((prev) => prev);
 				}
 			}
 		},
-		[uploadFile, onResourcesChange]
+		[uploadFile, onResourcesChange, updateOptimisticResources]
 	);
 
 	const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -87,7 +114,7 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 		multiple: true,
 	});
 
-	const filteredResources = resources.filter((resource) => {
+	const filteredResources = optimisticResources.filter((resource) => {
 		if (filter === "all") return true;
 		return resource.type === filter;
 	});
@@ -120,6 +147,10 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 
 		try {
 			setIsDeleting(true);
+
+			// React 19: Optimistically remove from UI immediately
+			updateOptimisticResources({ type: "remove", resource: resourceToDelete });
+
 			await deleteMedia(resourceToDelete.id);
 
 			// Clear selection if the deleted resource was selected
@@ -127,7 +158,7 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 				onSelectedResourceClear?.();
 			}
 
-			// Remove from local state
+			// Update actual state after successful delete
 			setResources((prev) => {
 				const updated = prev.filter((r) => r.id !== resourceToDelete.id);
 				onResourcesChange?.(updated);
@@ -138,6 +169,8 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 			setResourceToDelete(null);
 		} catch (err) {
 			console.error("Failed to delete resource:", err);
+			// Rollback optimistic update on error
+			setResources((prev) => prev);
 			// You could add error toast notification here
 		} finally {
 			setIsDeleting(false);
