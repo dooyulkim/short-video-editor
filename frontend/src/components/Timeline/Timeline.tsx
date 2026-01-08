@@ -44,6 +44,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const rulerScrollRef = useRef<HTMLDivElement>(null);
 	const layerSidebarRef = useRef<HTMLDivElement>(null);
+	// Ref to store pending clip when a new layer is created
+	const pendingClipRef = useRef<{ clip: Clip; layerType: string } | null>(null);
 
 	const timeline = useTimeline();
 	const [layers, setLayers] = useState<TimelineLayer[]>(initialLayers);
@@ -58,6 +60,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	const effectiveZoom = timeline?.state.zoom || zoom;
 	const effectiveCurrentTime = timeline?.state.currentTime !== undefined ? timeline.state.currentTime : currentTime;
 	const [isDragOver, setIsDragOver] = useState<boolean>(false);
+	const [isNewLayerDropZoneActive, setIsNewLayerDropZoneActive] = useState<boolean>(false);
 	const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
 	const [isDraggingClip, setIsDraggingClip] = useState<boolean>(false);
 	const [dragStartX, setDragStartX] = useState<number>(0);
@@ -80,6 +83,26 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	const [resizeStartWidth, setResizeStartWidth] = useState<number>(150);
 
 	const timelineWidth = effectiveDuration * effectiveZoom;
+
+	// Handle pending clip addition after layer is created
+	useEffect(() => {
+		if (pendingClipRef.current && timeline) {
+			const { clip, layerType } = pendingClipRef.current;
+			// Find the layer that was just created (last layer of this type)
+			let targetLayerIndex = -1;
+			for (let i = effectiveLayers.length - 1; i >= 0; i--) {
+				if (effectiveLayers[i].type === layerType) {
+					targetLayerIndex = i;
+					break;
+				}
+			}
+			if (targetLayerIndex !== -1) {
+				timeline.addClip(clip, targetLayerIndex);
+				pendingClipRef.current = null; // Clear the pending clip
+				console.log("Added pending clip to layer index:", targetLayerIndex);
+			}
+		}
+	}, [effectiveLayers, timeline]);
 
 	// Handle sidebar resize
 	useEffect(() => {
@@ -229,8 +252,35 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			ctx.font = "12px sans-serif";
 			ctx.textAlign = "left";
 			const displayName = clip.resourceName || clip.resourceId;
-			const clipName = displayName.length > 25 ? displayName.substring(0, 25) + "..." : displayName;
-			ctx.fillText(clipName, x + 5, y + height / 2 + 4);
+			const padding = 10; // 5px padding on each side
+			const availableWidth = width - padding;
+
+			// Truncate text to fit within clip width
+			let clipName = displayName;
+			const textWidth = ctx.measureText(clipName).width;
+
+			if (textWidth > availableWidth) {
+				const ellipsis = "...";
+				const ellipsisWidth = ctx.measureText(ellipsis).width;
+
+				// Binary search for the right length
+				let low = 0;
+				let high = displayName.length;
+				while (low < high) {
+					const mid = Math.ceil((low + high) / 2);
+					const truncated = displayName.substring(0, mid);
+					if (ctx.measureText(truncated).width + ellipsisWidth <= availableWidth) {
+						low = mid;
+					} else {
+						high = mid - 1;
+					}
+				}
+				clipName = low > 0 ? displayName.substring(0, low) + ellipsis : "";
+			}
+
+			if (clipName) {
+				ctx.fillText(clipName, x + 5, y + height / 2 + 4);
+			}
 
 			// Draw trim indicators if clip is trimmed
 			if (clip.trimStart > 0 || clip.trimEnd > 0) {
@@ -467,6 +517,50 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	};
 
 	/**
+	 * Handle drop on new layer drop zone
+	 */
+	const handleNewLayerDrop = (e: React.DragEvent, dropTime: number) => {
+		try {
+			const data = e.dataTransfer.getData("application/json");
+			if (!data) return;
+
+			const resource: MediaResource = JSON.parse(data);
+
+			// Create a new layer and add the resource as a clip
+			if (timeline) {
+				timeline.addLayer(resource.type);
+
+				// Create a clip from the resource
+				const fileNameWithoutExtension = resource.name.replace(/\.[^/.]+$/, "");
+				const newClip: Clip = {
+					id: `clip-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+					resourceId: resource.id,
+					resourceName: fileNameWithoutExtension,
+					startTime: dropTime,
+					duration: resource.duration || 5,
+					trimStart: 0,
+					trimEnd: 0,
+					opacity: 1,
+					scale: 1,
+					rotation: 0,
+					position: { x: 0, y: 0 },
+					data: {
+						type: resource.type,
+						url: resource.url,
+						name: resource.name,
+					},
+				};
+
+				// Store pending clip to be added when layer is created
+				pendingClipRef.current = { clip: newClip, layerType: resource.type };
+				console.log("New layer drop zone: created layer and stored pending clip at time:", dropTime);
+			}
+		} catch (error) {
+			console.error("Failed to handle drop on new layer zone:", error);
+		}
+	};
+
+	/**
 	 * Handle drag over to allow drop
 	 */
 	const handleDragOver = (e: React.DragEvent) => {
@@ -571,9 +665,12 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			}
 
 			// Create a clip from the resource
+			// Extract filename without extension for display
+			const fileNameWithoutExtension = resource.name.replace(/\.[^/.]+$/, "");
 			const newClip: Clip = {
 				id: `clip-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
 				resourceId: resource.id,
+				resourceName: fileNameWithoutExtension,
 				startTime: dropTime,
 				duration: resource.duration || 5, // Default 5 seconds for images
 				trimStart: 0,
@@ -600,21 +697,9 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			// Add the clip to the layer
 			if (timeline) {
 				if (newLayerCreated) {
-					// Wait for the layer to be created, then add to the last layer of this type
-					setTimeout(() => {
-						const layers = timeline.state.layers;
-						let updatedLayerIndex = -1;
-						// Find the last layer of this resource type
-						for (let i = layers.length - 1; i >= 0; i--) {
-							if (layers[i].type === resource.type) {
-								updatedLayerIndex = i;
-								break;
-							}
-						}
-						if (updatedLayerIndex !== -1) {
-							timeline.addClip(newClip, updatedLayerIndex);
-						}
-					}, 100);
+					// Store the clip in ref to be added when the layer is created
+					pendingClipRef.current = { clip: newClip, layerType: resource.type };
+					console.log("Stored pending clip for new layer of type:", resource.type);
 				} else {
 					// Add to existing layer immediately
 					console.log("Adding clip to layer index:", finalTargetLayerIndex);
@@ -791,8 +876,36 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 
 			{/* Timeline Ruler */}
 			<div className="flex">
-				{/* Spacer to align with layer sidebar */}
-				<div className="shrink-0 bg-gray-900 border-r border-gray-700" style={{ width: `${layerSidebarWidth}px` }} />
+				{/* Drop Zone to align with layer sidebar */}
+				<div
+					className={`shrink-0 flex items-center justify-center border-r border-dashed transition-colors ${
+						isNewLayerDropZoneActive
+							? "bg-blue-500/30 border-blue-400"
+							: "bg-gray-800 border-gray-600 hover:bg-gray-700"
+					}`}
+					style={{ width: `${layerSidebarWidth}px` }}
+					onDragOver={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						e.dataTransfer.dropEffect = "copy";
+						setIsNewLayerDropZoneActive(true);
+					}}
+					onDragLeave={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						setIsNewLayerDropZoneActive(false);
+					}}
+					onDrop={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+						setIsNewLayerDropZoneActive(false);
+						handleNewLayerDrop(e, 0);
+					}}>
+					<div className="flex items-center gap-1 text-xs text-gray-400">
+						<Plus className="h-3 w-3" />
+						<span>Drop to add</span>
+					</div>
+				</div>
 
 				{/* Ruler - Scrollable container */}
 				<div
