@@ -26,6 +26,7 @@ export type TimelineAction =
 	| { type: "UPDATE_LAYER"; payload: { layerId: string; updates: Partial<TimelineLayer> } }
 	| { type: "REORDER_LAYER"; payload: { layerId: string; newIndex: number } }
 	| { type: "TOGGLE_LAYER_VISIBILITY"; payload: { layerId: string } }
+	| { type: "TOGGLE_LAYER_MUTE"; payload: { layerId: string } }
 	| { type: "SET_CURRENT_TIME"; payload: { time: number } }
 	| { type: "SET_ZOOM"; payload: { zoom: number } }
 	| { type: "PLAY" }
@@ -132,6 +133,7 @@ function timelineReducer(state: TimelineState, action: TimelineAction): Timeline
 			const newLayer: TimelineLayer = {
 				id: `layer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
 				type: layerType,
+				muted: false,
 				clips: [],
 				locked: false,
 				visible: true,
@@ -228,6 +230,13 @@ function timelineReducer(state: TimelineState, action: TimelineAction): Timeline
 			return { ...state, layers: newLayers };
 		}
 
+		case "TOGGLE_LAYER_MUTE": {
+			const { layerId } = action.payload;
+			const newLayers = state.layers.map((layer) => (layer.id === layerId ? { ...layer, muted: !layer.muted } : layer));
+
+			return { ...state, layers: newLayers };
+		}
+
 		case "RESTORE_STATE": {
 			const { state: restoredState } = action.payload;
 			return restoredState;
@@ -251,6 +260,7 @@ interface TimelineContextType {
 	updateLayer: (layerId: string, updates: Partial<TimelineLayer>) => void;
 	reorderLayer: (layerId: string, newIndex: number) => void;
 	toggleLayerVisibility: (layerId: string) => void;
+	toggleLayerMute: (layerId: string) => void;
 	setCurrentTime: (time: number) => void;
 	undo: () => void;
 	redo: () => void;
@@ -429,6 +439,10 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 		dispatch({ type: "TOGGLE_LAYER_VISIBILITY", payload: { layerId } });
 	}, []);
 
+	const toggleLayerMute = useCallback((layerId: string) => {
+		dispatch({ type: "TOGGLE_LAYER_MUTE", payload: { layerId } });
+	}, []);
+
 	const setCurrentTime = useCallback((time: number) => {
 		dispatch({ type: "SET_CURRENT_TIME", payload: { time } });
 	}, []);
@@ -474,6 +488,7 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 		updateLayer,
 		reorderLayer,
 		toggleLayerVisibility,
+		toggleLayerMute,
 		setCurrentTime,
 		setZoom,
 		play,

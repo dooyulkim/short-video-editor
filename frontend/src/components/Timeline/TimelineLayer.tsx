@@ -2,7 +2,7 @@ import React from "react";
 import type { TimelineLayer as TimelineLayerType, Clip } from "@/types/timeline";
 import { TimelineClip } from "./TimelineClip";
 import { cn } from "@/lib/utils";
-import { Lock, Unlock, Eye, EyeOff } from "lucide-react";
+import { Lock, Unlock, Eye, EyeOff, Volume2, VolumeX } from "lucide-react";
 
 interface TimelineLayerProps {
 	layer: TimelineLayerType;
@@ -13,6 +13,7 @@ interface TimelineLayerProps {
 	onClipTrim: (clipId: string, newDuration: number, newTrimStart: number) => void;
 	onToggleLock: (layerId: string) => void;
 	onToggleVisible: (layerId: string) => void;
+	onToggleMute: (layerId: string) => void;
 	onUpdateClip?: (clipId: string, updates: Partial<Clip>) => void;
 	currentTime: number;
 }
@@ -26,6 +27,7 @@ export const TimelineLayer: React.FC<TimelineLayerProps> = ({
 	onClipTrim,
 	onToggleLock,
 	onToggleVisible,
+	onToggleMute,
 	onUpdateClip,
 	currentTime,
 }) => {
@@ -101,6 +103,19 @@ export const TimelineLayer: React.FC<TimelineLayerProps> = ({
 						title={layer.visible ? "Hide layer" : "Show layer"}>
 						{layer.visible ? <Eye size={16} /> : <EyeOff size={16} />}
 					</button>
+
+					{/* Mute/Unmute button - only show for video and audio layers */}
+					{(layer.type === "video" || layer.type === "audio") && (
+						<button
+							className={cn(
+								"p-1 rounded hover:bg-white/10 transition-colors",
+								layer.muted ? "text-red-400" : "text-white/70"
+							)}
+							onClick={() => onToggleMute(layer.id)}
+							title={layer.muted ? "Unmute layer" : "Mute layer"}>
+							{layer.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+						</button>
+					)}
 				</div>
 			</div>
 

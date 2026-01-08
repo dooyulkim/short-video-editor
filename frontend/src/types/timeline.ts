@@ -5,6 +5,7 @@ export interface TimelineLayer {
 	clips: Clip[];
 	locked: boolean;
 	visible: boolean;
+	muted: boolean; // Mute audio for this layer
 	name: string;
 }
 

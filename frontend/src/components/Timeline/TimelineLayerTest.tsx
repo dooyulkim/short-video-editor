@@ -19,6 +19,7 @@ export const TimelineLayerTest: React.FC = () => {
 			name: "Video Track 1",
 			locked: false,
 			visible: true,
+			muted: false,
 			clips: [
 				{
 					id: "clip-1",
@@ -50,6 +51,7 @@ export const TimelineLayerTest: React.FC = () => {
 			name: "Audio Track 1",
 			locked: false,
 			visible: true,
+			muted: false,
 			clips: [
 				{
 					id: "clip-3",
@@ -67,6 +69,7 @@ export const TimelineLayerTest: React.FC = () => {
 			name: "Text Overlay",
 			locked: false,
 			visible: true,
+			muted: false,
 			clips: [
 				{
 					id: "clip-4",
@@ -116,6 +119,12 @@ export const TimelineLayerTest: React.FC = () => {
 		);
 	};
 
+	const handleToggleMute = (layerId: string) => {
+		setLayers((prevLayers) =>
+			prevLayers.map((layer) => (layer.id === layerId ? { ...layer, muted: !layer.muted } : layer))
+		);
+	};
+
 	const handleAddLayer = () => {
 		const newLayer: TimelineLayerType = {
 			id: `layer-${layers.length + 1}`,
@@ -123,6 +132,7 @@ export const TimelineLayerTest: React.FC = () => {
 			name: `Video Track ${layers.length + 1}`,
 			locked: false,
 			visible: true,
+			muted: false,
 			clips: [],
 		};
 		setLayers([...layers, newLayer]);
@@ -224,6 +234,7 @@ export const TimelineLayerTest: React.FC = () => {
 								onClipTrim={handleClipTrim}
 								onToggleLock={handleToggleLock}
 								onToggleVisible={handleToggleVisible}
+								onToggleMute={handleToggleMute}
 								onUpdateClip={(clipId, updates) => {
 									setLayers((prevLayers) =>
 										prevLayers.map((l) => ({

@@ -547,7 +547,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		const videoClips = visibleClips.filter(({ clip, layer }) => layer.type === "video" || clip.data?.type === "video");
 
 		// Play or pause all visible video clips
-		videoClips.forEach(({ clip }) => {
+		videoClips.forEach(({ clip, layer }) => {
 			const video = videoElementsRef.current.get(clip.resourceId);
 			if (!video || video.readyState < 2) return;
 
@@ -561,9 +561,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				video.currentTime = videoTime;
 			}
 
-			// Unmute video during playback if it's on a video layer
-			// (audio layers would handle audio separately)
-			video.muted = false;
+			// Mute video if layer is muted, otherwise unmute during playback
+			video.muted = layer.muted || false;
 
 			// Only play if video is paused to avoid repeated play() calls
 			if (video.paused) {

@@ -3,7 +3,20 @@ import { Button } from "@/components/ui/button";
 import { TimelineRuler } from "./TimelineRuler";
 import type { TimelineLayer, Clip } from "@/types/timeline";
 import type { MediaResource } from "@/types/media";
-import { Plus, Minus, Video, Music, Image as ImageIcon, Type, Trash2, Eye, EyeOff, RotateCcw } from "lucide-react";
+import {
+	Plus,
+	Minus,
+	Video,
+	Music,
+	Image as ImageIcon,
+	Type,
+	Trash2,
+	Eye,
+	EyeOff,
+	RotateCcw,
+	Volume2,
+	VolumeX,
+} from "lucide-react";
 import { useTimeline } from "@/context/TimelineContext";
 import {
 	DropdownMenu,
@@ -543,11 +556,12 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 				} else {
 					// Fallback if timeline context is not available
 					const newLayer: TimelineLayer = {
-						id: `layer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+						id: `layer-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
 						type: resource.type,
 						clips: [],
 						locked: false,
 						visible: true,
+						muted: false,
 						name: `${resource.type.charAt(0).toUpperCase() + resource.type.slice(1)} Layer ${layers.length + 1}`,
 					};
 					setLayers([...effectiveLayers, newLayer]);
@@ -558,7 +572,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 
 			// Create a clip from the resource
 			const newClip: Clip = {
-				id: `clip-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+				id: `clip-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
 				resourceId: resource.id,
 				startTime: dropTime,
 				duration: resource.duration || 5, // Default 5 seconds for images
@@ -885,6 +899,19 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 										title={layer.visible ? "Hide layer" : "Show layer"}>
 										{layer.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3 opacity-50" />}
 									</Button>
+									{(layer.type === "video" || layer.type === "audio") && (
+										<Button
+											variant="ghost"
+											size="icon"
+											className="h-5 w-5 hover:bg-blue-500/20"
+											onClick={(e) => {
+												e.stopPropagation();
+												timeline?.toggleLayerMute(layer.id);
+											}}
+											title={layer.muted ? "Unmute layer" : "Mute layer"}>
+											{layer.muted ? <VolumeX className="h-3 w-3 text-red-400" /> : <Volume2 className="h-3 w-3" />}
+										</Button>
+									)}
 									<Button
 										variant="ghost"
 										size="icon"

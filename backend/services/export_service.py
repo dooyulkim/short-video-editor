@@ -302,6 +302,7 @@ class ExportService:
                 layer_type = layer.get("type", "video")
                 clips = layer.get("clips", [])
                 visible = layer.get("visible", True)
+                muted = layer.get("muted", False)
                 
                 if not visible:
                     continue
@@ -309,16 +310,18 @@ class ExportService:
                 if layer_type == "video":
                     for clip in clips:
                         processed_clip = self._process_video_clip(
-                            clip, width, height, fps
+                            clip, width, height, fps, muted
                         )
                         if processed_clip:
                             video_clips.append(processed_clip)
                             
                 elif layer_type == "audio":
-                    for clip in clips:
-                        processed_audio = self._process_audio_clip(clip)
-                        if processed_audio:
-                            audio_clips.append(processed_audio)
+                    # Skip audio layers if muted
+                    if not muted:
+                        for clip in clips:
+                            processed_audio = self._process_audio_clip(clip)
+                            if processed_audio:
+                                audio_clips.append(processed_audio)
                             
                 elif layer_type == "text":
                     for clip in clips:
@@ -395,7 +398,7 @@ class ExportService:
             raise Exception(f"Export failed: {str(e)}")
 
     def _process_video_clip(
-        self, clip_data: Dict, width: int, height: int, fps: int
+        self, clip_data: Dict, width: int, height: int, fps: int, muted: bool = False
     ) -> Optional[tuple]:
         """
         Process a single video clip with trimming, transitions, and keyframe transforms.
@@ -405,6 +408,7 @@ class ExportService:
             width: Target width
             height: Target height
             fps: Target fps
+            muted: If True, remove audio from video clip
             
         Returns:
             Tuple of (clip, start_time, end_time) or None
@@ -446,6 +450,10 @@ class ExportService:
             
             # Apply transitions
             clip = self._apply_transitions_dict(clip, transitions)
+            
+            # Remove audio if layer is muted (only for video clips, not images)
+            if muted and clip_type == "video":
+                clip = clip.without_audio()
             
             # Set fps
             clip = clip.set_fps(fps)
