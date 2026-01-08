@@ -36,11 +36,26 @@ export function useUndoRedo(currentState: TimelineState, restoreState: (state: T
 	const [canUndo, setCanUndo] = useState(false);
 	const [canRedo, setCanRedo] = useState(false);
 
+	// Track if initial state has been captured
+	const initializedRef = useRef(false);
+
 	// Update can flags based on current position - stable function
 	const updateCanFlags = useCallback(() => {
 		setCanUndo(currentPositionRef.current > 0);
 		setCanRedo(currentPositionRef.current < historyRef.current.length - 1);
 	}, []);
+
+	// Capture initial state on first render
+	useEffect(() => {
+		if (!initializedRef.current && currentState.layers) {
+			// Save the initial state as the first entry in history
+			const initialStateCopy: TimelineState = JSON.parse(JSON.stringify(currentState));
+			historyRef.current = [initialStateCopy];
+			currentPositionRef.current = 0;
+			initializedRef.current = true;
+			updateCanFlags();
+		}
+	}, [currentState, updateCanFlags]);
 
 	/**
 	 * Add a new state to the history
