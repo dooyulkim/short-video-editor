@@ -224,13 +224,15 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		/**
 		 * Draw a single clip as a rectangle
 		 */
-		const drawClip = (clip: Clip, layerY: number) => {
+		const drawClip = (clip: Clip, layerY: number, layerType: "video" | "audio" | "text" | "image") => {
 			const x = clip.startTime * effectiveZoom;
 			const width = clip.duration * effectiveZoom;
 			const height = LAYER_HEIGHT - 10;
 			const y = layerY + 5;
 
 			const isSelected = clip.id === selectedClipId;
+			// Only image and text clips can be resized
+			const isResizable = layerType === "image" || layerType === "text";
 
 			// Draw clip background
 			const clipColor = getClipColor();
@@ -242,8 +244,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			ctx.lineWidth = isSelected ? 3 : 2;
 			ctx.strokeRect(x, y, width, height);
 
-			// Draw resize handles when selected
-			if (isSelected) {
+			// Draw resize handles when selected (only for resizable clips: image and text)
+			if (isSelected && isResizable) {
 				const handleWidth = 6;
 				ctx.fillStyle = "#818cf8";
 				// Left handle
@@ -317,7 +319,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			// Draw clips in this layer
 			if (layer.visible) {
 				layer.clips.forEach((clip) => {
-					drawClip(clip, y);
+					drawClip(clip, y, layer.type);
 				});
 			}
 
@@ -363,6 +365,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 
 	/**
 	 * Check if cursor is near clip edge for resizing
+	 * Only image and text clips can be resized - video and audio have fixed durations
 	 */
 	const getClipEdge = (x: number, y: number): { clip: Clip; edge: "left" | "right"; layerIndex: number } | null => {
 		const EDGE_THRESHOLD = 8; // pixels
@@ -372,6 +375,12 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 
 		const layer = reversedLayers[layerIndex];
 		const actualLayerIndex = effectiveLayers.length - 1 - layerIndex;
+
+		// Only allow resizing for image and text layers (not video or audio)
+		if (layer.type === "video" || layer.type === "audio") {
+			return null;
+		}
+
 		const time = x / effectiveZoom;
 
 		for (const clip of layer.clips) {
