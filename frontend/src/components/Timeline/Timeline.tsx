@@ -377,7 +377,9 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		const actualLayerIndex = effectiveLayers.length - 1 - layerIndex;
 		const time = x / effectiveZoom;
 
-		for (const clip of layer.clips) {
+		// Iterate in reverse to find the most recently added (topmost) clip first
+		for (let i = layer.clips.length - 1; i >= 0; i--) {
+			const clip = layer.clips[i];
 			const clipStart = clip.startTime;
 			const clipEnd = clip.startTime + clip.duration;
 
@@ -409,7 +411,9 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 
 		const time = x / effectiveZoom;
 
-		for (const clip of layer.clips) {
+		// Iterate in reverse to find the most recently added (topmost) clip first
+		for (let i = layer.clips.length - 1; i >= 0; i--) {
+			const clip = layer.clips[i];
 			const clipStart = clip.startTime;
 			const clipEnd = clip.startTime + clip.duration;
 			const clipStartX = clipStart * effectiveZoom;

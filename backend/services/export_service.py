@@ -440,7 +440,20 @@ class ExportService:
                         resource_id = clip.get("resourceId", "unknown")
                         # Check if clip data indicates this is actually an image
                         clip_data = clip.get("data", {})
-                        actual_clip_type = clip_data.get("type", "video")
+                        actual_clip_type = clip_data.get("type", None)
+                        
+                        # If type not explicitly set, try to detect from file extension
+                        if actual_clip_type is None:
+                            media_path = self._find_media_file(resource_id)
+                            if media_path:
+                                ext = media_path.suffix.lower()
+                                if ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg']:
+                                    actual_clip_type = "image"
+                                    logger.info(f"      Detected image type from extension: {ext}")
+                                else:
+                                    actual_clip_type = "video"
+                            else:
+                                actual_clip_type = "video"
                         
                         logger.info(f"      Processing clip {clip_id} (resource: {resource_id}, type: {actual_clip_type})")
 
@@ -802,6 +815,8 @@ class ExportService:
             Tuple of (text_clip, start_time, end_time) or None
         """
         try:
+            logger.info(f"         _process_text_clip received clip_data: {clip_data}")
+            
             data = clip_data.get("data", {})
             start_time = clip_data.get("startTime", 0)
             duration = clip_data.get("duration", 5)
@@ -810,28 +825,182 @@ class ExportService:
             font_family = data.get("fontFamily", "Arial")
             font_size = data.get("fontSize", 50)
             color = data.get("color", "white")
-            position = data.get("position", {"x": width // 2, "y": height // 2})
+            
+            logger.info(f"         Text content: '{text_content}', font: {font_family}, size: {font_size}, color: {color}")
+            
+            # Position can be at clip level or in data
+            position = clip_data.get("position") or data.get("position", {"x": width // 2, "y": height // 2})
+            
+            # Handle scale and rotation
+            scale = clip_data.get("scale", 1)
+            if isinstance(scale, dict):
+                scale_factor = (scale.get("x", 1) + scale.get("y", 1)) / 2
+            else:
+                scale_factor = scale
+            
+            scaled_font_size = int(font_size * scale_factor)
+            rotation = clip_data.get("rotation", 0)
+            pos_x = position.get("x", width // 2)
+            pos_y = position.get("y", height // 2)
+            
+            logger.info(f"         Creating text clip: text='{text_content}', font={font_family}, size={scaled_font_size}, color={color}")
 
-            # Create text clip
-            txt_clip = TextClip(
-                text_content,
-                fontsize=font_size,
-                color=color,
-                font=font_family,
-                method='caption' if len(text_content) > 50 else 'label'
-            )
+            # Try using MoviePy's TextClip (requires ImageMagick)
+            try:
+                txt_clip = TextClip(
+                    text_content,
+                    fontsize=scaled_font_size,
+                    color=color,
+                    font=font_family,
+                    method='caption' if len(text_content) > 50 else 'label'
+                )
+                
+                logger.info(f"         TextClip created successfully with ImageMagick, size: {txt_clip.size}")
+                
+            except (OSError, IOError) as e:
+                # ImageMagick not available, use Pillow fallback
+                logger.warning(f"         ImageMagick not available, using Pillow fallback: {e}")
+                txt_clip = self._create_text_clip_with_pillow(
+                    text_content, scaled_font_size, color, font_family
+                )
+                if txt_clip is None:
+                    logger.error("         Pillow fallback also failed")
+                    return None
+                logger.info(f"         TextClip created with Pillow, size: {txt_clip.size}")
+
+            # Apply rotation if present
+            if rotation != 0:
+                txt_clip = txt_clip.rotate(rotation)
+                logger.info(f"         Applied rotation: {rotation} degrees")
 
             # Set position and duration
-            txt_clip = txt_clip.set_position((position["x"], position["y"]))
+            logger.info(f"         Setting position: ({pos_x}, {pos_y}), duration: {duration}s, start_time: {start_time}s")
+            
+            txt_clip = txt_clip.set_position((pos_x, pos_y))
             txt_clip = txt_clip.set_duration(duration)
             txt_clip = txt_clip.set_fps(fps)
 
             end_time = start_time + duration
+            
+            logger.info(f"         Text clip ready: start={start_time}s, end={end_time}s")
 
             return (txt_clip, start_time, end_time)
 
         except Exception as e:
             logger.error(f"         Error processing text clip: {str(e)}", exc_info=True)
+            return None
+    
+    def _create_text_clip_with_pillow(
+        self, text: str, font_size: int, color: str, font_family: str
+    ):
+        """
+        Create a text clip using Pillow (PIL) as a fallback when ImageMagick is not available.
+        
+        Args:
+            text: Text content to render
+            font_size: Font size in pixels
+            color: Text color (hex or name)
+            font_family: Font family name
+            
+        Returns:
+            ImageClip with rendered text or None if failed
+        """
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+            import numpy as np
+            
+            # Convert color from hex or name to RGB
+            if color.startswith('#'):
+                # Hex color
+                hex_color = color.lstrip('#')
+                rgb_color = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+            else:
+                # Named color - try to match common colors
+                color_map = {
+                    'white': (255, 255, 255),
+                    'black': (0, 0, 0),
+                    'red': (255, 0, 0),
+                    'green': (0, 255, 0),
+                    'blue': (0, 0, 255),
+                    'yellow': (255, 255, 0),
+                    'cyan': (0, 255, 255),
+                    'magenta': (255, 0, 255),
+                    'orange': (255, 165, 0),
+                    'purple': (128, 0, 128),
+                    'pink': (255, 192, 203),
+                    'gray': (128, 128, 128),
+                    'grey': (128, 128, 128),
+                }
+                rgb_color = color_map.get(color.lower(), (255, 255, 255))
+            
+            # Try to load font, fallback to default if not found
+            font = None
+            try:
+                # Try system font paths
+                font_paths = [
+                    f"C:/Windows/Fonts/{font_family}.ttf",
+                    f"C:/Windows/Fonts/{font_family.lower()}.ttf",
+                    f"/usr/share/fonts/truetype/{font_family.lower()}.ttf",
+                    f"/usr/share/fonts/TTF/{font_family}.ttf",
+                ]
+                for font_path in font_paths:
+                    try:
+                        font = ImageFont.truetype(font_path, font_size)
+                        break
+                    except:
+                        continue
+                
+                if font is None:
+                    # Try loading by name (works if font is installed)
+                    font = ImageFont.truetype(font_family, font_size)
+                    
+            except Exception:
+                # Use default font with size
+                try:
+                    font = ImageFont.load_default()
+                    logger.warning(f"         Could not load font '{font_family}', using default")
+                except:
+                    font = None
+            
+            # Calculate text size
+            if font:
+                # Create a dummy image to get text bounding box
+                dummy_img = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
+                dummy_draw = ImageDraw.Draw(dummy_img)
+                bbox = dummy_draw.textbbox((0, 0), text, font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+            else:
+                # Estimate size without font metrics
+                text_width = len(text) * font_size // 2
+                text_height = font_size
+            
+            # Add padding
+            padding = 10
+            img_width = text_width + padding * 2
+            img_height = text_height + padding * 2
+            
+            # Create RGBA image (transparent background)
+            img = Image.new('RGBA', (img_width, img_height), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(img)
+            
+            # Draw text with color and alpha
+            text_color = rgb_color + (255,)  # Add full alpha
+            if font:
+                draw.text((padding, padding), text, font=font, fill=text_color)
+            else:
+                draw.text((padding, padding), text, fill=text_color)
+            
+            # Convert to numpy array for MoviePy
+            img_array = np.array(img)
+            
+            # Create ImageClip from the array
+            clip = ImageClip(img_array, ismask=False)
+            
+            return clip
+            
+        except Exception as e:
+            logger.error(f"         Error creating text with Pillow: {str(e)}", exc_info=True)
             return None
 
     def _apply_transitions(self, clip: VideoFileClip, transitions: List[Dict]) -> VideoFileClip:

@@ -101,6 +101,10 @@ export const useTimelineDragDrop = ({
 					opacity: 1,
 					scale: 1,
 					rotation: 0,
+					// Store resource type in data for proper export handling
+					data: {
+						type: resourceType as "video" | "audio" | "image" | "text",
+					},
 				};
 
 				// Determine target layer
@@ -126,6 +130,7 @@ export const useTimelineDragDrop = ({
 							clips: [],
 							locked: false,
 							visible: true,
+							muted: false,
 							name: `${resourceType.charAt(0).toUpperCase() + resourceType.slice(1)} ${
 								layers.filter((l) => l.type === resourceType).length + 1
 							}`,

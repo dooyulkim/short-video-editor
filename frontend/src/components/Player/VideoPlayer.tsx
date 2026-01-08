@@ -22,6 +22,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	const containerRef = useRef<HTMLDivElement>(null);
 	const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
 	const imageElementsRef = useRef<Map<string, HTMLImageElement>>(new Map());
+	const textDimensionsRef = useRef<Map<string, { width: number; height: number }>>(new Map());
+	const [textDimensions, setTextDimensions] = useState<Map<string, { width: number; height: number }>>(new Map());
 	const animationFrameRef = useRef<number | undefined>(undefined);
 	const isFrameScheduledRef = useRef<boolean>(false);
 	const layersRef = useRef<TimelineLayer[]>(layers);
@@ -484,25 +486,108 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		(ctx: CanvasRenderingContext2D, clip: Clip, localTime: number) => {
 			if (!clip.data) return;
 
-			const {
-				text = "",
-				fontFamily = "Arial",
-				fontSize = 48,
-				color = "#ffffff",
-				textAlign = "center",
-				textBaseline = "middle",
-			} = clip.data;
+			const { text = "", fontFamily = "Arial", fontSize = 48, color = "#ffffff", animation = "none" } = clip.data;
 
-			const x = clip.position?.x ?? canvasSizeRef.current.width / 2;
-			const y = clip.position?.y ?? canvasSizeRef.current.height / 2;
-			// Draw text with optional stroke
-			if (clip.data.strokeColor) {
-				ctx.strokeStyle = clip.data.strokeColor;
-				ctx.lineWidth = clip.data.strokeWidth || 2;
-				ctx.strokeText(text, x, y);
+			// Get interpolated properties (supports keyframe animation)
+			const interpolated = getInterpolatedProperties(clip, localTime);
+			const scale = interpolated.scale;
+			const position = interpolated.position;
+			const rotation = interpolated.rotation;
+
+			// Calculate position (center if position is 0,0)
+			const x = position.x !== 0 ? position.x : canvasSizeRef.current.width / 2;
+			const y = position.y !== 0 ? position.y : canvasSizeRef.current.height / 2;
+
+			// Handle both uniform and non-uniform scaling
+			const scaleX = typeof scale === "number" ? scale : scale.x;
+			const scaleY = typeof scale === "number" ? scale : scale.y;
+
+			// Calculate base opacity from interpolated value
+			let opacity = interpolated.opacity;
+
+			// Apply animation effects
+			const relativeTime = localTime / clip.duration;
+			let xOffset = 0;
+
+			if (animation === "fade") {
+				// Fade in for first 10% and fade out for last 10%
+				if (relativeTime < 0.1) {
+					opacity *= relativeTime / 0.1;
+				} else if (relativeTime > 0.9) {
+					opacity *= (1 - relativeTime) / 0.1;
+				}
+			} else if (animation === "slide") {
+				// Slide in from left for first 20%
+				if (relativeTime < 0.2) {
+					xOffset = -(1 - relativeTime / 0.2) * canvasSizeRef.current.width * 0.3;
+				}
 			}
 
-			ctx.fillText(text, x, y);
+			// Calculate transition opacity
+			const transitionOpacity = calculateTransitionOpacity(clip, localTime);
+			opacity *= transitionOpacity;
+
+			// Save canvas state
+			ctx.save();
+
+			// Set font properties
+			const scaledFontSize = fontSize * scaleY;
+			ctx.font = `${scaledFontSize}px ${fontFamily}`;
+			ctx.fillStyle = color;
+			ctx.textAlign = "left";
+			ctx.textBaseline = "top";
+
+			// Calculate text dimensions for transforms
+			const lines = text.split("\n");
+			const lineHeight = scaledFontSize * 1.2;
+			let maxWidth = 0;
+			lines.forEach((line: string) => {
+				const metrics = ctx.measureText(line);
+				maxWidth = Math.max(maxWidth, metrics.width);
+			});
+			const textHeight = lines.length * lineHeight;
+
+			// Store text dimensions for resize overlay
+			const textDimKey = `text-${clip.id}`;
+			const storedDims = textDimensionsRef.current.get(textDimKey);
+			const newWidth = maxWidth / scaleX;
+			const newHeight = textHeight / scaleY;
+			if (!storedDims || storedDims.width !== newWidth || storedDims.height !== newHeight) {
+				textDimensionsRef.current.set(textDimKey, {
+					width: newWidth,
+					height: newHeight,
+				});
+				// Sync to state for re-render (but not during animation frame)
+				setTextDimensions(new Map(textDimensionsRef.current));
+			}
+
+			// Apply transformations - centered on the text
+			ctx.globalAlpha = opacity;
+			ctx.translate(x + xOffset, y);
+			ctx.rotate((rotation * Math.PI) / 180);
+
+			// Draw text shadow for better visibility
+			ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+			ctx.shadowBlur = 4;
+			ctx.shadowOffsetX = 2;
+			ctx.shadowOffsetY = 2;
+
+			// Draw text with optional stroke
+			if (clip.data?.strokeColor) {
+				ctx.strokeStyle = clip.data.strokeColor;
+				ctx.lineWidth = clip.data.strokeWidth || 2;
+			}
+
+			// Draw each line of text
+			lines.forEach((line: string, index: number) => {
+				const lineY = index * lineHeight;
+				if (clip.data?.strokeColor) {
+					ctx.strokeText(line, 0, lineY);
+				}
+				ctx.fillText(line, 0, lineY);
+			});
+
+			// Restore canvas state
 			ctx.restore();
 		},
 		[] // Stable callback - uses refs for dynamic values
@@ -747,24 +832,25 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 						const x = ((e.clientX - rect.left) / rect.width) * localCanvasSize.width;
 						const y = ((e.clientY - rect.top) / rect.height) * localCanvasSize.height;
 
-						// Find clicked clip
+						// Find clicked clip (check from top to bottom - reverse order)
 						const visibleClips = getVisibleClips(currentTime);
 						for (let i = visibleClips.length - 1; i >= 0; i--) {
 							const { clip, layer } = visibleClips[i];
+							const localTime = currentTime - clip.startTime;
+							const interpolated = getInterpolatedProperties(clip, localTime);
+							const scale = interpolated.scale;
+							const position = interpolated.position;
+							const scaleX = typeof scale === "number" ? scale : scale.x;
+							const scaleY = typeof scale === "number" ? scale : scale.y;
+
 							if (layer.type === "image" || clip.data?.type === "image") {
 								const img = imageElementsRef.current.get(clip.resourceId);
 								if (img) {
 									const imgWidth = img.naturalWidth || localCanvasSize.width;
 									const imgHeight = img.naturalHeight || localCanvasSize.height;
-									const localTime = currentTime - clip.startTime;
-									const interpolated = getInterpolatedProperties(clip, localTime);
-									const scale = interpolated.scale;
-									const position = interpolated.position;
 
 									const clipX = position.x !== 0 ? position.x : (localCanvasSize.width - imgWidth) / 2;
 									const clipY = position.y !== 0 ? position.y : (localCanvasSize.height - imgHeight) / 2;
-									const scaleX = typeof scale === "number" ? scale : scale.x;
-									const scaleY = typeof scale === "number" ? scale : scale.y;
 									const clipWidth = imgWidth * scaleX;
 									const clipHeight = imgHeight * scaleY;
 
@@ -772,6 +858,44 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 										setSelectedClip(clip.id);
 										return;
 									}
+								}
+							} else if (layer.type === "text" || clip.data?.type === "text") {
+								// Check text clip bounds
+								const textDims = textDimensionsRef.current.get(`text-${clip.id}`);
+
+								// Calculate fallback dimensions if not yet rendered
+								let estimatedWidth = 200;
+								let estimatedHeight = 60;
+
+								if (textDims) {
+									estimatedWidth = textDims.width;
+									estimatedHeight = textDims.height;
+								} else if (clip.data?.text && clip.data?.fontSize) {
+									// Estimate dimensions based on text content
+									const text = String(clip.data.text);
+									const fontSize = Number(clip.data.fontSize) || 48;
+									const lines = text.split("\n");
+									estimatedHeight = lines.length * fontSize * 1.2;
+									// Rough estimation: average character width is ~0.6 of font size
+									const maxLineLength = Math.max(...lines.map((l: string) => l.length));
+									estimatedWidth = maxLineLength * fontSize * 0.6;
+								}
+
+								const clipX = position.x !== 0 ? position.x : localCanvasSize.width / 2;
+								const clipY = position.y !== 0 ? position.y : localCanvasSize.height / 2;
+								const clipWidth = estimatedWidth * scaleX;
+								const clipHeight = estimatedHeight * scaleY;
+
+								// Add some padding for easier clicking
+								const padding = 10;
+								if (
+									x >= clipX - padding &&
+									x <= clipX + clipWidth + padding &&
+									y >= clipY - padding &&
+									y <= clipY + clipHeight + padding
+								) {
+									setSelectedClip(clip.id);
+									return;
 								}
 							}
 						}
@@ -792,6 +916,23 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 						scaleRatio={displaySize.width / localCanvasSize.width}
 						canvasSizeWidth={localCanvasSize.width}
 						canvasSizeHeight={localCanvasSize.height}
+					/>
+				)}
+
+				{/* Resize overlay for selected text clip */}
+				{selectedClip && selectedClip.data?.type === "text" && (
+					<ImageResizeOverlay
+						clip={selectedClip}
+						canvasWidth={displaySize.width}
+						canvasHeight={displaySize.height}
+						onResize={handleResize}
+						onUpdateClip={updateClip}
+						imageWidth={textDimensions.get(`text-${selectedClip.id}`)?.width || 200}
+						imageHeight={textDimensions.get(`text-${selectedClip.id}`)?.height || 60}
+						scaleRatio={displaySize.width / localCanvasSize.width}
+						canvasSizeWidth={localCanvasSize.width}
+						canvasSizeHeight={localCanvasSize.height}
+						centerAtPoint={true}
 					/>
 				)}
 			</div>

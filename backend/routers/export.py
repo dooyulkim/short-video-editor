@@ -208,6 +208,22 @@ async def start_export(
         
         logger.info(f"   Output filename: {output_filename}")
         
+        # Log detailed timeline information
+        layers = timeline_data.get("layers", [])
+        logger.info(f"   Timeline has {len(layers)} layers:")
+        for i, layer in enumerate(layers):
+            layer_type = layer.get("type", "unknown")
+            clips = layer.get("clips", [])
+            logger.info(f"      Layer {i}: type='{layer_type}', clips={len(clips)}")
+            for j, clip in enumerate(clips):
+                clip_id = clip.get("id", "unknown")
+                clip_data = clip.get("data", {})
+                clip_data_type = clip_data.get("type", "none")
+                logger.info(f"         Clip {j}: id={clip_id}, data.type='{clip_data_type}'")
+                if layer_type == "text" or clip_data_type == "text":
+                    logger.info(f"            Text content: '{clip_data.get('text', 'NO TEXT')}'")
+                    logger.info(f"            Position: {clip.get('position', 'NO POSITION')}")
+        
         # Create task entry
         with tasks_lock:
             export_tasks[task_id] = {

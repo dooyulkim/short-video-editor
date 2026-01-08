@@ -86,6 +86,18 @@ export function duplicateClip(clip: Clip): Clip {
 		...clip,
 		id: `${clip.id}-copy-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
 		startTime: clip.startTime + clip.duration, // Place after original clip
+		// Deep copy nested objects to avoid shared references
+		position: clip.position ? { ...clip.position } : undefined,
+		scale: clip.scale ? (typeof clip.scale === "number" ? clip.scale : { ...clip.scale }) : undefined,
+		data: clip.data ? { ...clip.data } : undefined,
+		transitions: clip.transitions
+			? {
+					in: clip.transitions.in ? { ...clip.transitions.in } : undefined,
+					out: clip.transitions.out ? { ...clip.transitions.out } : undefined,
+			  }
+			: undefined,
+		effects: clip.effects ? clip.effects.map((effect) => ({ ...effect })) : undefined,
+		keyframes: clip.keyframes ? clip.keyframes.map((kf) => ({ ...kf, value: { ...kf.value } })) : undefined,
 	};
 }
 

@@ -7,7 +7,9 @@ import { Timeline } from "./components/Timeline/Timeline";
 import { TransitionPanel } from "./components/TransitionPanel";
 import { EditTools } from "./components/Toolbar/EditTools";
 import { ExportDialog } from "./components/Export";
+import { TextEditor } from "./components/TextTool";
 import { TimelineProvider, useTimeline } from "./context/TimelineContext";
+import type { Clip } from "./types/timeline";
 import { Separator } from "./components/ui/separator";
 import { Button } from "./components/ui/button";
 import { Toaster } from "./components/ui/toaster";
@@ -165,6 +167,33 @@ function AppContent() {
 		setIsRightSidebarOpen(true);
 	};
 
+	// Handle adding text clips to the timeline
+	const handleAddText = (textClip: Clip) => {
+		if (!timeline) return;
+
+		// Set the start time to the current playhead position
+		const clipWithStartTime = {
+			...textClip,
+			startTime: timeline.state.currentTime,
+		};
+
+		// Find or create a text layer
+		const textLayerIndex = timeline.state.layers.findIndex((layer) => layer.type === "text");
+
+		if (textLayerIndex >= 0) {
+			// Add to existing text layer
+			timeline.addClip(clipWithStartTime, textLayerIndex);
+		} else {
+			// Create a new text layer and add the clip
+			timeline.addLayer("text");
+			// The layer will be added at the end, so we add the clip to the last layer
+			setTimeout(() => {
+				const newLayerIndex = timeline.state.layers.length;
+				timeline.addClip(clipWithStartTime, newLayerIndex);
+			}, 0);
+		}
+	};
+
 	return (
 		<div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
 			{/* Top Toolbar with Logo and Project Controls */}
@@ -189,8 +218,8 @@ function AppContent() {
 							isMobile && "absolute inset-y-0 left-0 z-30 shadow-xl"
 						)}>
 						{/* Sidebar Header */}
-						<div className="flex items-center justify-between p-3 border-b border-border bg-muted/30">
-							<h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+						<div className="flex items-center justify-between px-3 py-1 border-b border-border bg-muted/30">
+							<h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 								{activeTab === "media"
 									? "Resources"
 									: activeTab === "transitions"
@@ -199,8 +228,8 @@ function AppContent() {
 									? "Text Tools"
 									: activeTab}
 							</h2>
-							<Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsLeftSidebarOpen(false)}>
-								<PanelLeftClose className="h-4 w-4" />
+							<Button variant="ghost" size="icon" className="size-6" onClick={() => setIsLeftSidebarOpen(false)}>
+								<PanelLeftClose className="size-4" />
 							</Button>
 						</div>
 
@@ -216,8 +245,11 @@ function AppContent() {
 							)}
 							{activeTab === "transitions" && <TransitionPanel />}
 							{activeTab === "text" && (
-								<div className="p-4">
-									<p className="text-sm text-muted-foreground">Text tools coming soon...</p>
+								<div className="p-4 space-y-4">
+									<TextEditor onAddText={handleAddText} />
+									<p className="text-xs text-muted-foreground">
+										Click the button above to add text overlays to your video.
+									</p>
 								</div>
 							)}
 							{!["media", "transitions", "text"].includes(activeTab) && (
@@ -245,9 +277,9 @@ function AppContent() {
 					<Button
 						variant="outline"
 						size="icon"
-						className="absolute left-2 top-4 z-20 h-8 w-8 shadow-md"
+						className="absolute left-2 top-4 z-20 size-8 shadow-md"
 						onClick={() => setIsLeftSidebarOpen(true)}>
-						<ChevronRight className="h-4 w-4" />
+						<ChevronRight className="size-4" />
 					</Button>
 				)}
 
@@ -263,10 +295,10 @@ function AppContent() {
 									<Button
 										variant="ghost"
 										size="icon"
-										className="h-6 w-6"
+										className="size-6"
 										onClick={() => setIsPropertiesPanelOpen(true)}
 										title="Show Properties">
-										<ChevronLeft className="h-3 w-3" />
+										<ChevronLeft className="size-3" />
 									</Button>
 								)}{" "}
 							</div>
@@ -287,27 +319,27 @@ function AppContent() {
 													}, 50);
 												}, 50);
 											}}
-											className="h-12 w-12 rounded-full shadow-lg hover:scale-110 transition-transform"
+											className="size-12 rounded-full shadow-lg hover:scale-110 transition-transform"
 											title="Restart preview">
-											<RotateCcw className="h-5 w-5" />
+											<RotateCcw className="size-5" />
 										</Button>
 										{!isPlaying ? (
 											<Button
 												variant="secondary"
 												size="icon"
 												onClick={() => timeline?.play()}
-												className="h-12 w-12 rounded-full shadow-lg hover:scale-110 transition-transform"
+												className="size-12 rounded-full shadow-lg hover:scale-110 transition-transform"
 												title="Play preview">
-												<Play className="h-5 w-5" />
+												<Play className="size-5" />
 											</Button>
 										) : (
 											<Button
 												variant="secondary"
 												size="icon"
 												onClick={() => timeline?.pause()}
-												className="h-12 w-12 rounded-full shadow-lg hover:scale-110 transition-transform"
+												className="size-12 rounded-full shadow-lg hover:scale-110 transition-transform"
 												title="Pause preview">
-												<Pause className="h-5 w-5" />
+												<Pause className="size-5" />
 											</Button>
 										)}
 									</div>
@@ -318,15 +350,15 @@ function AppContent() {
 						{/* Properties Section - Right */}
 						{isPropertiesPanelOpen && (
 							<div className="w-80 flex flex-col overflow-hidden bg-card border-l border-border">
-								<div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/30">
+								<div className="flex items-center justify-between px-4 py-1 border-b border-border bg-muted/30">
 									<h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Properties</h2>
 									<Button
 										variant="ghost"
 										size="icon"
-										className="h-6 w-6"
+										className="size-6"
 										onClick={() => setIsPropertiesPanelOpen(false)}
 										title="Hide Properties">
-										<PanelRightClose className="h-3 w-3" />
+										<PanelRightClose className="size-3" />
 									</Button>
 								</div>
 								<div className="flex-1 overflow-y-auto px-4 py-3">
@@ -365,7 +397,7 @@ function AppContent() {
 													</>
 												) : selectedResource.type === "audio" ? (
 													<div className="w-full h-full flex flex-col items-center justify-center space-y-3 p-4">
-														<Music className="w-12 h-12 text-primary" />
+														<Music className="size-12 text-primary" />
 														<audio
 															key={selectedResource.id}
 															src={selectedResource.url}
