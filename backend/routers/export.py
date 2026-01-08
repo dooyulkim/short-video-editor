@@ -32,6 +32,8 @@ export_service = ExportService()
 class ExportSettings(BaseModel):
     """Export settings from frontend."""
     resolution: str = "1080p"
+    width: Optional[int] = None  # Custom width
+    height: Optional[int] = None  # Custom height
     format: str = "mp4"
     quality: str = "high"
     filename: str = "export"
@@ -196,6 +198,14 @@ async def start_export(
             fps_map = {"high": 30, "medium": 24, "low": 15}
             fps = fps_map.get(request.settings.quality, 30)
             logger.info(f"   Settings: resolution={resolution}, format={request.settings.format}, quality={request.settings.quality}, fps={fps}")
+            
+            # If custom width/height provided, add to timeline data for export
+            if request.settings.width and request.settings.height:
+                timeline_data["resolution"] = {
+                    "width": request.settings.width,
+                    "height": request.settings.height
+                }
+                logger.info(f"   Custom resolution: {request.settings.width}x{request.settings.height}")
         else:
             resolution = request.resolution
             fps = request.fps

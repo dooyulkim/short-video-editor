@@ -1,6 +1,6 @@
-import axios, { AxiosError, type AxiosRequestConfig, type AxiosResponse } from 'axios';
-import type { ExportSettings, ExportResponse, ExportStatusResponse } from '@/types/export';
-import type { Timeline } from '@/types/timeline';
+import axios, { AxiosError, type AxiosRequestConfig, type AxiosResponse } from "axios";
+import type { ExportSettings, ExportResponse, ExportStatusResponse } from "@/types/export";
+import type { Timeline } from "@/types/timeline";
 import type { MediaResource } from "@/types/media";
 import type {
 	MediaMetadataResponse,
@@ -207,8 +207,8 @@ export const listMedia = async (): Promise<MediaResource[]> => {
  * @param id - The media resource ID
  */
 export const getMediaMetadata = async (id: string): Promise<MediaMetadataResponse> => {
-  const response = await api.get<MediaMetadataResponse>(`/media/${id}/metadata`);
-  return response.data;
+	const response = await api.get<MediaMetadataResponse>(`/media/${id}/metadata`);
+	return response.data;
 };
 
 /**
@@ -217,10 +217,10 @@ export const getMediaMetadata = async (id: string): Promise<MediaMetadataRespons
  * @param width - Optional width for waveform sampling (default: 1000)
  */
 export const getWaveform = async (id: string, width: number = 1000): Promise<WaveformResponse> => {
-  const response = await api.get<WaveformResponse>(`/media/${id}/waveform`, {
-    params: { width },
-  });
-  return response.data;
+	const response = await api.get<WaveformResponse>(`/media/${id}/waveform`, {
+		params: { width },
+	});
+	return response.data;
 };
 
 /**
@@ -229,11 +229,11 @@ export const getWaveform = async (id: string, width: number = 1000): Promise<Wav
  * @param timestamp - Optional timestamp for thumbnail (default: 0)
  */
 export const getThumbnail = async (id: string, timestamp: number = 0): Promise<Blob> => {
-  const response = await api.get(`/media/${id}/thumbnail`, {
-    params: { timestamp },
-    responseType: 'blob',
-  });
-  return response.data;
+	const response = await api.get(`/media/${id}/thumbnail`, {
+		params: { timestamp },
+		responseType: "blob",
+	});
+	return response.data;
 };
 
 /**
@@ -241,7 +241,7 @@ export const getThumbnail = async (id: string, timestamp: number = 0): Promise<B
  * @param id - The media resource ID
  */
 export const deleteMedia = async (id: string): Promise<void> => {
-  await api.delete(`/media/${id}`);
+	await api.delete(`/media/${id}`);
 };
 
 // ===========================
@@ -254,11 +254,11 @@ export const deleteMedia = async (id: string): Promise<void> => {
  * @param cutTime - Time in seconds to cut the video
  */
 export const cutVideo = async (id: string, cutTime: number): Promise<CutVideoResponse> => {
-  const response = await api.post<CutVideoResponse>('/timeline/cut', {
-    video_id: id,
-    cut_time: cutTime,
-  });
-  return response.data;
+	const response = await api.post<CutVideoResponse>("/timeline/cut", {
+		video_id: id,
+		cut_time: cutTime,
+	});
+	return response.data;
 };
 
 /**
@@ -267,17 +267,13 @@ export const cutVideo = async (id: string, cutTime: number): Promise<CutVideoRes
  * @param startTime - Start time in seconds
  * @param endTime - End time in seconds
  */
-export const trimVideo = async (
-  id: string,
-  startTime: number,
-  endTime: number
-): Promise<TrimVideoResponse> => {
-  const response = await api.post<TrimVideoResponse>('/timeline/trim', {
-    video_id: id,
-    start_time: startTime,
-    end_time: endTime,
-  });
-  return response.data;
+export const trimVideo = async (id: string, startTime: number, endTime: number): Promise<TrimVideoResponse> => {
+	const response = await api.post<TrimVideoResponse>("/timeline/trim", {
+		video_id: id,
+		start_time: startTime,
+		end_time: endTime,
+	});
+	return response.data;
 };
 
 /**
@@ -285,15 +281,12 @@ export const trimVideo = async (
  * @param clipIds - Array of clip IDs to merge
  * @param startTimes - Array of start times for each clip
  */
-export const mergeVideos = async (
-  clipIds: string[],
-  startTimes: number[]
-): Promise<MergeVideosResponse> => {
-  const response = await api.post<MergeVideosResponse>('/timeline/merge', {
-    clip_ids: clipIds,
-    start_times: startTimes,
-  });
-  return response.data;
+export const mergeVideos = async (clipIds: string[], startTimes: number[]): Promise<MergeVideosResponse> => {
+	const response = await api.post<MergeVideosResponse>("/timeline/merge", {
+		clip_ids: clipIds,
+		start_times: startTimes,
+	});
+	return response.data;
 };
 
 // ===========================
@@ -305,20 +298,19 @@ export const mergeVideos = async (
  * @param timelineData - The complete timeline data
  * @param settings - Export settings (resolution, format, quality, filename)
  */
-export const startExport = async (
-  timelineData: Timeline,
-  settings: ExportSettings
-): Promise<ExportResponse> => {
-  const response = await api.post<ExportResponse>('/export/start', {
-    timeline: timelineData,
-    settings: {
-      resolution: settings.resolution,
-      format: settings.format.toLowerCase(),
-      quality: settings.quality,
-      filename: settings.filename,
-    },
-  });
-  return response.data;
+export const startExport = async (timelineData: Timeline, settings: ExportSettings): Promise<ExportResponse> => {
+	const response = await api.post<ExportResponse>("/export/start", {
+		timeline: timelineData,
+		settings: {
+			resolution: settings.resolution,
+			width: settings.customResolution.width,
+			height: settings.customResolution.height,
+			format: settings.format.toLowerCase(),
+			quality: settings.quality,
+			filename: settings.filename,
+		},
+	});
+	return response.data;
 };
 
 /**
@@ -326,8 +318,8 @@ export const startExport = async (
  * @param taskId - The export task ID
  */
 export const getExportStatus = async (taskId: string): Promise<ExportStatusResponse> => {
-  const response = await api.get<ExportStatusResponse>(`/export/status/${taskId}`);
-  return response.data;
+	const response = await api.get<ExportStatusResponse>(`/export/status/${taskId}`);
+	return response.data;
 };
 
 /**
@@ -335,11 +327,11 @@ export const getExportStatus = async (taskId: string): Promise<ExportStatusRespo
  * @param taskId - The export task ID
  */
 export const downloadExport = async (taskId: string): Promise<Blob> => {
-  const response = await api.get(`/export/download/${taskId}`, {
-    responseType: 'blob',
-    timeout: 600000, // 10 minutes for large downloads
-  });
-  return response.data;
+	const response = await api.get(`/export/download/${taskId}`, {
+		responseType: "blob",
+		timeout: 600000, // 10 minutes for large downloads
+	});
+	return response.data;
 };
 
 /**
@@ -347,7 +339,7 @@ export const downloadExport = async (taskId: string): Promise<Blob> => {
  * @param taskId - The export task ID
  */
 export const cancelExport = async (taskId: string): Promise<void> => {
-  await api.post(`/export/cancel/${taskId}`);
+	await api.post(`/export/cancel/${taskId}`);
 };
 
 // ===========================
@@ -359,8 +351,8 @@ export const cancelExport = async (taskId: string): Promise<void> => {
  * @param videoId - The video ID
  */
 export const extractAudio = async (videoId: string): Promise<{ id: string; audio_path: string }> => {
-  const response = await api.post(`/audio/extract/${videoId}`);
-  return response.data;
+	const response = await api.post(`/audio/extract/${videoId}`);
+	return response.data;
 };
 
 /**
@@ -368,10 +360,10 @@ export const extractAudio = async (videoId: string): Promise<{ id: string; audio
  * @param tracks - Array of audio track data with IDs, start times, and volumes
  */
 export const mixAudio = async (
-  tracks: Array<{ id: string; startTime: number; volume: number }>
+	tracks: Array<{ id: string; startTime: number; volume: number }>
 ): Promise<{ id: string; output_path: string }> => {
-  const response = await api.post('/audio/mix', { tracks });
-  return response.data;
+	const response = await api.post("/audio/mix", { tracks });
+	return response.data;
 };
 
 // ===========================
@@ -386,18 +378,18 @@ export const mixAudio = async (
  * @param duration - Duration of transition in seconds
  */
 export const applyTransition = async (
-  clip1Id: string,
-  clip2Id: string,
-  transitionType: 'fade' | 'dissolve' | 'wipe' | 'slide',
-  duration: number
+	clip1Id: string,
+	clip2Id: string,
+	transitionType: "fade" | "dissolve" | "wipe" | "slide",
+	duration: number
 ): Promise<{ id: string; output_path: string }> => {
-  const response = await api.post('/transitions/apply', {
-    clip1_id: clip1Id,
-    clip2_id: clip2Id,
-    transition_type: transitionType,
-    duration,
-  });
-  return response.data;
+	const response = await api.post("/transitions/apply", {
+		clip1_id: clip1Id,
+		clip2_id: clip2Id,
+		transition_type: transitionType,
+		duration,
+	});
+	return response.data;
 };
 
 // ===========================
@@ -408,8 +400,8 @@ export const applyTransition = async (
  * Check API health status
  */
 export const healthCheck = async (): Promise<{ status: string; version: string }> => {
-  const response = await api.get('/health');
-  return response.data;
+	const response = await api.get("/health");
+	return response.data;
 };
 
 /**
@@ -418,12 +410,12 @@ export const healthCheck = async (): Promise<{ status: string; version: string }
  * @param filename - The filename to save as
  */
 export const downloadFile = (url: string, filename: string): void => {
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+	const link = document.createElement("a");
+	link.href = url;
+	link.download = filename;
+	document.body.appendChild(link);
+	link.click();
+	document.body.removeChild(link);
 };
 
 /**
@@ -432,9 +424,9 @@ export const downloadFile = (url: string, filename: string): void => {
  * @param filename - The filename to save as
  */
 export const downloadBlob = (blob: Blob, filename: string): void => {
-  const url = URL.createObjectURL(blob);
-  downloadFile(url, filename);
-  URL.revokeObjectURL(url);
+	const url = URL.createObjectURL(blob);
+	downloadFile(url, filename);
+	URL.revokeObjectURL(url);
 };
 
 // Export axios instance for custom requests
