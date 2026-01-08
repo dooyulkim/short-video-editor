@@ -2,6 +2,7 @@ import os
 import uuid
 import cv2
 import numpy as np
+import logging
 from pathlib import Path
 from typing import Tuple, Optional
 from PIL import Image
@@ -10,6 +11,8 @@ import base64
 from io import BytesIO
 
 from models.media import VideoMetadata, AudioMetadata, ImageMetadata
+
+logger = logging.getLogger(__name__)
 
 
 class MediaService:
@@ -48,6 +51,8 @@ class MediaService:
         # Save file to disk
         with open(file_path, "wb") as f:
             f.write(file_content)
+        
+        logger.info(f"📁 Saved uploaded file: {filename} -> {file_id} ({file_type})")
         
         return file_id, str(file_path)
     
@@ -90,7 +95,7 @@ class MediaService:
                     if video.duration:
                         duration = video.duration
             except Exception as e:
-                print(f"Warning: Could not check audio track: {e}")
+                logger.warning(f"Could not check audio track for {file_path}: {e}")
             
             # Get file format from extension
             file_format = Path(file_path).suffix[1:].lower()

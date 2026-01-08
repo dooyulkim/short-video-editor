@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import "./App.css";
 import { TopToolbar } from "./components/Toolbar/TopToolbar";
 import { ResourcePanel } from "./components/ResourcePanel";
@@ -6,6 +6,7 @@ import { VideoPlayer } from "./components/Player/VideoPlayer";
 import { Timeline } from "./components/Timeline/Timeline";
 import { TransitionPanel } from "./components/TransitionPanel";
 import { EditTools } from "./components/Toolbar/EditTools";
+import { ExportDialog } from "./components/Export";
 import { TimelineProvider, useTimeline } from "./context/TimelineContext";
 import { Separator } from "./components/ui/separator";
 import { Button } from "./components/ui/button";
@@ -21,6 +22,7 @@ import {
 	RotateCcw,
 } from "lucide-react";
 import type { MediaResource } from "./types/media";
+import type { Timeline as TimelineType } from "./types/timeline";
 import { cn } from "./lib/utils";
 
 function AppContent() {
@@ -39,6 +41,23 @@ function AppContent() {
 	const [isResizingRight, setIsResizingRight] = useState(false);
 	const [isResizingTimeline, setIsResizingTimeline] = useState(false);
 	const [isMobile, setIsMobile] = useState(false);
+	const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+
+	// Create timeline data object for export
+	const timelineData: TimelineType = useMemo(
+		() => ({
+			id: "main-timeline",
+			name: "Main Timeline",
+			layers: timeline?.state.layers || [],
+			duration: timeline?.state.duration || 0,
+			fps: 30,
+			resolution: {
+				width: timeline?.state.canvasSize?.width || 1080,
+				height: timeline?.state.canvasSize?.height || 1920,
+			},
+		}),
+		[timeline?.state.layers, timeline?.state.duration, timeline?.state.canvasSize]
+	);
 
 	// Set dark mode by default
 	useEffect(() => {
@@ -138,8 +157,7 @@ function AppContent() {
 	};
 
 	const handleExport = () => {
-		console.log("Export video");
-		// TODO: Implement video export
+		setIsExportDialogOpen(true);
 	};
 
 	const handleResourceSelect = (resource: MediaResource) => {
@@ -499,6 +517,7 @@ function AppContent() {
 					</section>
 				</main>
 			</div>
+			<ExportDialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen} timeline={timelineData} />
 			<Toaster />
 		</div>
 	);

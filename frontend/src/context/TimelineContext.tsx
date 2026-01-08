@@ -13,6 +13,7 @@ export interface TimelineState {
 	zoom: number; // pixels per second
 	selectedClipId: string | null;
 	isPlaying: boolean;
+	canvasSize: { width: number; height: number }; // Canvas/export dimensions
 }
 
 // Action types
@@ -34,6 +35,7 @@ export type TimelineAction =
 	| { type: "PAUSE" }
 	| { type: "SET_SELECTED_CLIP"; payload: { clipId: string | null } }
 	| { type: "SET_DURATION"; payload: { duration: number } }
+	| { type: "SET_CANVAS_SIZE"; payload: { width: number; height: number } }
 	| { type: "RESTORE_STATE"; payload: { state: TimelineState } };
 
 // Initial state
@@ -44,6 +46,7 @@ const initialState: TimelineState = {
 	zoom: 20, // 20 pixels per second default
 	selectedClipId: null,
 	isPlaying: false,
+	canvasSize: { width: 1080, height: 1920 }, // Default portrait for short videos
 };
 
 // Reducer function
@@ -209,6 +212,14 @@ function timelineReducer(state: TimelineState, action: TimelineAction): Timeline
 			};
 		}
 
+		case "SET_CANVAS_SIZE": {
+			const { width, height } = action.payload;
+			return {
+				...state,
+				canvasSize: { width, height },
+			};
+		}
+
 		case "REORDER_LAYER": {
 			const { layerId, newIndex } = action.payload;
 			const newLayers = [...state.layers];
@@ -272,6 +283,7 @@ interface TimelineContextType {
 	pause: () => void;
 	setSelectedClip: (clipId: string | null) => void;
 	setDuration: (duration: number) => void;
+	setCanvasSize: (width: number, height: number) => void;
 	restoreState: (state: TimelineState) => void;
 	resetTimeline: () => void;
 }
@@ -478,6 +490,10 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 		dispatch({ type: "SET_DURATION", payload: { duration } });
 	}, []);
 
+	const setCanvasSize = useCallback((width: number, height: number) => {
+		dispatch({ type: "SET_CANVAS_SIZE", payload: { width, height } });
+	}, []);
+
 	const restoreStateAction = useCallback((restoredState: TimelineState) => {
 		dispatch({ type: "RESTORE_STATE", payload: { state: restoredState } });
 	}, []);
@@ -506,6 +522,7 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 		pause,
 		setSelectedClip,
 		setDuration,
+		setCanvasSize,
 		undo,
 		redo,
 		canUndo,

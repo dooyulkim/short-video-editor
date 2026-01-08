@@ -15,7 +15,7 @@ interface VideoPlayerProps {
  * Renders all visible clips at current time with proper layering
  */
 export function VideoPlayer({ width: initialWidth, height: initialHeight, className = "" }: VideoPlayerProps) {
-	const { state, updateClip, setSelectedClip } = useTimeline();
+	const { state, updateClip, setSelectedClip, setCanvasSize } = useTimeline();
 	const { layers, currentTime, isPlaying, selectedClipId } = state;
 
 	const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -33,13 +33,16 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	const canvasSizeRef = useRef({ width: initialWidth || 1080, height: initialHeight || 1920 });
 	const [isReady, setIsReady] = useState(false);
 	const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 });
-	const [canvasSize, setCanvasSize] = useState({ width: initialWidth || 1080, height: initialHeight || 1920 });
+	const [localCanvasSize, setLocalCanvasSize] = useState({
+		width: initialWidth || 1080,
+		height: initialHeight || 1920,
+	});
 	const [imageDimensions, setImageDimensions] = useState<Map<string, { width: number; height: number }>>(new Map());
 
 	// Update refs when state changes and detect scrubbing
 	useEffect(() => {
 		layersRef.current = layers;
-		canvasSizeRef.current = canvasSize;
+		canvasSizeRef.current = localCanvasSize;
 		isPlayingRef.current = isPlaying;
 		const timeDiff = Math.abs(currentTime - currentTimeRef.current);
 		currentTimeRef.current = currentTime;
@@ -58,7 +61,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				isScrubbingRef.current = false;
 			}, 150);
 		}
-	}, [layers, currentTime, isPlaying, canvasSize]);
+	}, [layers, currentTime, isPlaying, localCanvasSize]);
 
 	/**
 	 * Create a stable reference for layers that only changes when visual content changes
@@ -143,7 +146,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		const detectCanvasSize = async () => {
 			// If dimensions are explicitly provided, use them
 			if (initialWidth && initialHeight) {
-				setCanvasSize({ width: initialWidth, height: initialHeight });
+				setLocalCanvasSize({ width: initialWidth, height: initialHeight });
+				setCanvasSize(initialWidth, initialHeight);
 				return;
 			}
 
@@ -154,7 +158,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			if (firstVideoClip && videoElementsRef.current.has(firstVideoClip.resourceId)) {
 				const video = videoElementsRef.current.get(firstVideoClip.resourceId);
 				if (video && video.videoWidth && video.videoHeight) {
-					setCanvasSize({ width: video.videoWidth, height: video.videoHeight });
+					setLocalCanvasSize({ width: video.videoWidth, height: video.videoHeight });
+					setCanvasSize(video.videoWidth, video.videoHeight);
 				}
 			}
 		};
@@ -162,7 +167,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		if (isReady) {
 			detectCanvasSize();
 		}
-	}, [isReady, mediaClipsKey, initialWidth, initialHeight]); // Use mediaClipsKey instead of layers
+	}, [isReady, mediaClipsKey, initialWidth, initialHeight, setCanvasSize]); // Use mediaClipsKey instead of layers
 
 	/**
 	 * Update display size based on container dimensions while maintaining aspect ratio
@@ -176,7 +181,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 
 			const containerWidth = containerRef.current.clientWidth - borderAndPadding;
 			const containerHeight = containerRef.current.clientHeight - borderAndPadding;
-			const aspectRatio = canvasSize.width / canvasSize.height;
+			const aspectRatio = localCanvasSize.width / localCanvasSize.height;
 			const containerAspectRatio = containerWidth / containerHeight;
 
 			let displayWidth, displayHeight;
@@ -197,7 +202,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		updateDisplaySize();
 		window.addEventListener("resize", updateDisplaySize);
 		return () => window.removeEventListener("resize", updateDisplaySize);
-	}, [canvasSize]);
+	}, [localCanvasSize]);
 
 	/**
 	 * Load video and image elements for all clips
@@ -729,8 +734,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				}}>
 				<canvas
 					ref={canvasRef}
-					width={canvasSize.width}
-					height={canvasSize.height}
+					width={localCanvasSize.width}
+					height={localCanvasSize.height}
 					style={{
 						width: displaySize.width ? `${displaySize.width}px` : "100%",
 						height: displaySize.height ? `${displaySize.height}px` : "100%",
@@ -739,8 +744,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 					className="bg-black"
 					onClick={(e) => {
 						const rect = e.currentTarget.getBoundingClientRect();
-						const x = ((e.clientX - rect.left) / rect.width) * canvasSize.width;
-						const y = ((e.clientY - rect.top) / rect.height) * canvasSize.height;
+						const x = ((e.clientX - rect.left) / rect.width) * localCanvasSize.width;
+						const y = ((e.clientY - rect.top) / rect.height) * localCanvasSize.height;
 
 						// Find clicked clip
 						const visibleClips = getVisibleClips(currentTime);
@@ -749,15 +754,15 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 							if (layer.type === "image" || clip.data?.type === "image") {
 								const img = imageElementsRef.current.get(clip.resourceId);
 								if (img) {
-									const imgWidth = img.naturalWidth || canvasSize.width;
-									const imgHeight = img.naturalHeight || canvasSize.height;
+									const imgWidth = img.naturalWidth || localCanvasSize.width;
+									const imgHeight = img.naturalHeight || localCanvasSize.height;
 									const localTime = currentTime - clip.startTime;
 									const interpolated = getInterpolatedProperties(clip, localTime);
 									const scale = interpolated.scale;
 									const position = interpolated.position;
 
-									const clipX = position.x !== 0 ? position.x : (canvasSize.width - imgWidth) / 2;
-									const clipY = position.y !== 0 ? position.y : (canvasSize.height - imgHeight) / 2;
+									const clipX = position.x !== 0 ? position.x : (localCanvasSize.width - imgWidth) / 2;
+									const clipY = position.y !== 0 ? position.y : (localCanvasSize.height - imgHeight) / 2;
 									const scaleX = typeof scale === "number" ? scale : scale.x;
 									const scaleY = typeof scale === "number" ? scale : scale.y;
 									const clipWidth = imgWidth * scaleX;
@@ -782,11 +787,11 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 						canvasWidth={displaySize.width}
 						canvasHeight={displaySize.height}
 						onResize={handleResize}
-						imageWidth={imageDimensions.get(selectedClip.resourceId)?.width || canvasSize.width}
-						imageHeight={imageDimensions.get(selectedClip.resourceId)?.height || canvasSize.height}
-						scaleRatio={displaySize.width / canvasSize.width}
-						canvasSizeWidth={canvasSize.width}
-						canvasSizeHeight={canvasSize.height}
+						imageWidth={imageDimensions.get(selectedClip.resourceId)?.width || localCanvasSize.width}
+						imageHeight={imageDimensions.get(selectedClip.resourceId)?.height || localCanvasSize.height}
+						scaleRatio={displaySize.width / localCanvasSize.width}
+						canvasSizeWidth={localCanvasSize.width}
+						canvasSizeHeight={localCanvasSize.height}
 					/>
 				)}
 			</div>

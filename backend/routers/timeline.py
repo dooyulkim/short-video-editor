@@ -1,9 +1,12 @@
+import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import os
 
 from services.timeline_service import TimelineService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

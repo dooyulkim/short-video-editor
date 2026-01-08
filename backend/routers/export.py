@@ -1,9 +1,8 @@
 """
 Export router for video timeline export functionality.
 """
-import os
 import uuid
-import asyncio
+import logging
 from typing import Dict, Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
@@ -14,8 +13,10 @@ import threading
 
 from services.export_service import ExportService
 
+# Configure logger
+logger = logging.getLogger("video-editor.export")
 
-router = APIRouter(prefix="/export", tags=["export"])
+router = APIRouter(tags=["export"])
 
 # In-memory storage for export tasks
 # In production, use Redis or a database
@@ -28,9 +29,20 @@ tasks_lock = threading.Lock()
 export_service = ExportService()
 
 
+class ExportSettings(BaseModel):
+    """Export settings from frontend."""
+    resolution: str = "1080p"
+    format: str = "mp4"
+    quality: str = "high"
+    filename: str = "export"
+
+
 class ExportRequest(BaseModel):
     """Request model for starting an export."""
-    timeline_data: Dict
+    timeline: Dict  # Timeline data from frontend
+    settings: Optional[ExportSettings] = None
+    # Legacy support
+    timeline_data: Optional[Dict] = None
     resolution: str = "1080p"
     fps: int = 30
     output_filename: Optional[str] = None
@@ -40,7 +52,7 @@ class ExportStatusResponse(BaseModel):
     """Response model for export status."""
     task_id: str
     status: str  # pending, processing, completed, failed
-    progress: float  # 0.0 to 1.0
+    progress: float  # 0-100 percentage
     message: Optional[str] = None
     output_path: Optional[str] = None
     created_at: str
@@ -81,10 +93,29 @@ def process_export(
     Args:
         task_id: Unique task ID
         timeline_data: Timeline JSON data
-        resolution: Output resolution
+        resolution: Output resolution preset (fallback)
         fps: Output frames per second
         output_filename: Output filename
     """
+    logger.info(f"🎬 Starting export task {task_id}")
+    
+    # Extract resolution from timeline data if available
+    timeline_resolution = timeline_data.get("resolution", {})
+    width = timeline_resolution.get("width")
+    height = timeline_resolution.get("height")
+    
+    if width and height:
+        logger.info(f"   Using timeline resolution: {width}x{height}, FPS: {fps}, Output: {output_filename}")
+    else:
+        logger.info(f"   Using preset resolution: {resolution}, FPS: {fps}, Output: {output_filename}")
+    
+    # Log timeline info
+    layers = timeline_data.get("layers", [])
+    logger.info(f"   Timeline has {len(layers)} layers")
+    for i, layer in enumerate(layers):
+        clips = layer.get("clips", [])
+        logger.info(f"   Layer {i} ({layer.get('type', 'unknown')}): {len(clips)} clips, visible={layer.get('visible', True)}, muted={layer.get('muted', False)}")
+    
     try:
         # Update status to processing
         with tasks_lock:
@@ -94,14 +125,18 @@ def process_export(
         # Progress callback
         def progress_callback(progress: float):
             update_task_progress(task_id, progress)
+            logger.debug(f"   Export {task_id} progress: {progress*100:.1f}%")
         
-        # Perform export
+        # Perform export with explicit dimensions if available
+        logger.info("📹 Calling export_service.export_timeline...")
         output_path = export_service.export_timeline(
             timeline_data=timeline_data,
             output_path=output_filename,
             resolution=resolution,
             fps=fps,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
+            width=width,
+            height=height
         )
         
         # Update task as completed
@@ -112,8 +147,12 @@ def process_export(
             export_tasks[task_id]["completed_at"] = datetime.now().isoformat()
             export_tasks[task_id]["message"] = "Export completed successfully"
         
+        logger.info(f"✅ Export task {task_id} completed successfully")
+        logger.info(f"   Output saved to: {output_path}")
+        
     except Exception as e:
         # Update task as failed
+        logger.error(f"❌ Export task {task_id} failed: {str(e)}", exc_info=True)
         with tasks_lock:
             export_tasks[task_id]["status"] = "failed"
             export_tasks[task_id]["message"] = f"Export failed: {str(e)}"
@@ -135,16 +174,39 @@ async def start_export(
     Returns:
         Task ID and status
     """
+    logger.info("📥 Received export start request")
+    
     try:
         # Generate unique task ID
         task_id = str(uuid.uuid4())
+        logger.info(f"   Generated task ID: {task_id}")
         
-        # Generate output filename
-        if request.output_filename:
-            output_filename = request.output_filename
+        # Handle both new frontend format (timeline + settings) and legacy format (timeline_data)
+        timeline_data = request.timeline if request.timeline else request.timeline_data
+        
+        if not timeline_data:
+            logger.error("   No timeline data provided in request")
+            raise HTTPException(status_code=400, detail="Timeline data is required")
+        
+        # Extract settings from new format or use defaults
+        if request.settings:
+            resolution = request.settings.resolution
+            output_filename = f"{request.settings.filename}.{request.settings.format}"
+            # Map quality to fps
+            fps_map = {"high": 30, "medium": 24, "low": 15}
+            fps = fps_map.get(request.settings.quality, 30)
+            logger.info(f"   Settings: resolution={resolution}, format={request.settings.format}, quality={request.settings.quality}, fps={fps}")
         else:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_filename = f"export_{timestamp}.mp4"
+            resolution = request.resolution
+            fps = request.fps
+            if request.output_filename:
+                output_filename = request.output_filename
+            else:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_filename = f"export_{timestamp}.mp4"
+            logger.info(f"   Legacy settings: resolution={resolution}, fps={fps}")
+        
+        logger.info(f"   Output filename: {output_filename}")
         
         # Create task entry
         with tasks_lock:
@@ -163,11 +225,13 @@ async def start_export(
         background_tasks.add_task(
             process_export,
             task_id,
-            request.timeline_data,
-            request.resolution,
-            request.fps,
+            timeline_data,
+            resolution,
+            fps,
             output_filename
         )
+        
+        logger.info(f"   Export task {task_id} queued for processing")
         
         return ExportStartResponse(
             task_id=task_id,
@@ -196,10 +260,13 @@ async def get_export_status(task_id: str):
         
         task = export_tasks[task_id]
         
+        # Convert progress from 0-1 to 0-100 for frontend
+        progress_percent = task["progress"] * 100
+        
         return ExportStatusResponse(
             task_id=task["task_id"],
             status=task["status"],
-            progress=task["progress"],
+            progress=progress_percent,
             message=task.get("message"),
             output_path=task.get("output_path"),
             created_at=task["created_at"],
