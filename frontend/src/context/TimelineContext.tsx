@@ -38,7 +38,7 @@ export type TimelineAction =
 const initialState: TimelineState = {
 	layers: [],
 	currentTime: 0,
-	duration: 90, // 90 seconds minimum duration
+	duration: 120, // 120 seconds (2 minutes) default duration
 	zoom: 20, // 20 pixels per second default
 	selectedClipId: null,
 	isPlaying: false,
@@ -61,9 +61,9 @@ function timelineReducer(state: TimelineState, action: TimelineAction): Timeline
 				clips: [...newLayers[layerIndex].clips, clip],
 			};
 
-			// Update duration if clip extends beyond current duration (minimum 90 seconds)
+			// Update duration if clip extends beyond current duration (minimum 120 seconds)
 			const clipEndTime = clip.startTime + clip.duration;
-			const newDuration = Math.max(90, state.duration, clipEndTime);
+			const newDuration = Math.max(120, state.duration, clipEndTime);
 
 			return {
 				...state,
@@ -202,7 +202,7 @@ function timelineReducer(state: TimelineState, action: TimelineAction): Timeline
 			const { duration } = action.payload;
 			return {
 				...state,
-				duration: Math.max(90, duration), // Minimum 90 seconds
+				duration: Math.max(120, duration), // Minimum 120 seconds (2 minutes)
 			};
 		}
 
@@ -228,6 +228,10 @@ function timelineReducer(state: TimelineState, action: TimelineAction): Timeline
 			return { ...state, layers: newLayers };
 		}
 
+		case "RESTORE_STATE": {
+			const { state: restoredState } = action.payload;
+			return restoredState;
+		}
 		default:
 			return state;
 	}

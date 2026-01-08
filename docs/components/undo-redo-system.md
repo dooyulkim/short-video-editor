@@ -71,12 +71,25 @@ function Toolbar() {
 
 ## What Gets Tracked
 
-The undo/redo system automatically tracks:
+The undo/redo system automatically tracks all structural changes to the timeline:
 
-- **Layer changes**: Adding/removing layers
-- **Clip changes**: Adding, removing, moving, trimming clips
-- **Clip properties**: Transitions, effects, positions
-- **Timeline structure**: Layer order and organization
+### Clip Operations
+- **Adding clips**: Dragging media from library to timeline
+- **Removing clips**: Deleting clips via Delete key or toolbar
+- **Moving clips**: Dragging clips to new positions
+- **Trimming clips**: Resizing clips by dragging edges
+- **Updating clip properties**: Transitions, effects, opacity, volume, etc.
+
+### Layer Operations
+- **Adding layers**: Creating new video, audio, image, or text layers
+- **Removing layers**: Deleting existing layers
+- **Reordering layers**: Drag-and-drop layer reordering
+- **Renaming layers**: Changing layer names
+- **Toggling layer visibility**: Show/hide layers
+- **Toggling layer lock**: Lock/unlock layers for editing
+
+### Timeline Operations
+- **Duration changes**: Timeline extension when clips are added beyond current duration
 
 The system **does NOT** track:
 

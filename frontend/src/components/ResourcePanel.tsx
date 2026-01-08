@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useOptimistic } from "react";
+import React, { useState, useCallback, useEffect, useOptimistic, startTransition } from "react";
 import { useDropzone } from "react-dropzone";
 import type { MediaResource } from "@/types/media";
 import { useMediaUpload } from "@/hooks/useMediaUpload";
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Upload, Video, Music, Image as ImageIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTimeline } from "@/context/TimelineContext";
 
 interface ResourcePanelProps {
 	onResourcesChange?: (resources: MediaResource[]) => void;
@@ -53,6 +54,7 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 	const [resourceToDelete, setResourceToDelete] = useState<MediaResource | null>(null);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const { uploadFile, progress, isUploading, error } = useMediaUpload();
+	const timeline = useTimeline();
 
 	// Fetch existing resources on mount
 	useEffect(() => {
@@ -81,9 +83,10 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 					name: file.name,
 					url: URL.createObjectURL(file),
 					type: file.type.startsWith("video") ? "video" : file.type.startsWith("audio") ? "audio" : "image",
-					size: file.size,
-					createdAt: new Date().toISOString(),
-					thumbnailUrl: "",
+					createdAt: new Date(),
+					thumbnail: "",
+					metadata: {},
+					fileSize: file.size,
 				};
 
 				updateOptimisticResources({ type: "add", resource: tempResource });
@@ -149,9 +152,31 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 			setIsDeleting(true);
 
 			// React 19: Optimistically remove from UI immediately
-			updateOptimisticResources({ type: "remove", resource: resourceToDelete });
+			startTransition(() => {
+				updateOptimisticResources({ type: "remove", resource: resourceToDelete });
+			});
 
 			await deleteMedia(resourceToDelete.id);
+
+			// Remove all clips that use this resource from the timeline
+			if (timeline) {
+				const { state } = timeline;
+				const clipsToRemove: string[] = [];
+
+				// Find all clips that reference this resource
+				state.layers.forEach((layer) => {
+					layer.clips.forEach((clip) => {
+						if (clip.resourceId === resourceToDelete.id) {
+							clipsToRemove.push(clip.id);
+						}
+					});
+				});
+
+				// Remove each clip from the timeline
+				clipsToRemove.forEach((clipId) => {
+					timeline.removeClip(clipId);
+				});
+			}
 
 			// Clear selection if the deleted resource was selected
 			if (selectedResource?.id === resourceToDelete.id) {
@@ -268,12 +293,12 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 									title={[
 										resource.name,
 										resource.duration && `Duration: ${formatDuration(resource.duration)}`,
-										resource.metadata.width &&
-											resource.metadata.height &&
+										resource.metadata?.width &&
+											resource.metadata?.height &&
 											`Resolution: ${resource.metadata.width} × ${resource.metadata.height}`,
 										`Size: ${formatFileSize(resource.fileSize)}`,
-										resource.metadata.fps && `FPS: ${resource.metadata.fps}`,
-										resource.metadata.codec && `Codec: ${resource.metadata.codec}`,
+										resource.metadata?.fps && `FPS: ${resource.metadata.fps}`,
+										resource.metadata?.codec && `Codec: ${resource.metadata.codec}`,
 									]
 										.filter(Boolean)
 										.join("\n")}
