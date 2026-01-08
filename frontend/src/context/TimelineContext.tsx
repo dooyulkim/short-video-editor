@@ -1,8 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useReducer, useCallback, useEffect, useRef } from "react";
+import React, { createContext, useContext, useReducer, useCallback, useEffect, useRef, useMemo } from "react";
 import type { ReactNode } from "react";
 import type { TimelineLayer, Clip } from "@/types/timeline";
 import { useUndoRedo } from "@/hooks/useUndoRedo";
+import { calculateContentDuration } from "@/utils/clipOperations";
 
 // State interface
 export interface TimelineState {
@@ -294,11 +295,16 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 	const currentTimeRef = useRef(state.currentTime);
 	const durationRef = useRef(state.duration);
 
+	// Calculate the content duration (end of last resource) and keep it in a ref
+	const contentDuration = useMemo(() => calculateContentDuration(state.layers), [state.layers]);
+	const contentDurationRef = useRef(contentDuration);
+
 	// Update refs when state changes
 	useEffect(() => {
 		currentTimeRef.current = state.currentTime;
 		durationRef.current = state.duration;
-	}, [state.currentTime, state.duration]);
+		contentDurationRef.current = contentDuration;
+	}, [state.currentTime, state.duration, contentDuration]);
 
 	// Initialize undo/redo first
 	const { undo, redo, canUndo, canRedo, addToHistory } = useUndoRedo(state, (restoredState: TimelineState) => {
@@ -373,9 +379,14 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 			// Update current time using ref to avoid stale state
 			const newTime = currentTimeRef.current + deltaTime;
 
-			// Check if reached end of timeline
-			if (newTime >= durationRef.current) {
-				dispatch({ type: "SET_CURRENT_TIME", payload: { time: durationRef.current } });
+			// Check if reached end of content (end of last resource placed)
+			// Use contentDurationRef for actual content, fall back to 0 if no content
+			const maxPlaybackTime = contentDurationRef.current > 0 ? contentDurationRef.current : 0;
+
+			// Stop playback if no content or reached end of content
+			if (maxPlaybackTime <= 0 || newTime >= maxPlaybackTime) {
+				const finalTime = maxPlaybackTime > 0 ? maxPlaybackTime : 0;
+				dispatch({ type: "SET_CURRENT_TIME", payload: { time: finalTime } });
 				dispatch({ type: "PAUSE" });
 				return;
 			}

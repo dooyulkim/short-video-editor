@@ -1,14 +1,16 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useTimeline } from '@/context/TimelineContext';
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useTimeline } from "@/context/TimelineContext";
+import { calculateContentDuration } from "@/utils/clipOperations";
 
 export interface UseVideoPlaybackReturn {
-  isPlaying: boolean;
-  currentTime: number;
-  play: () => void;
-  pause: () => void;
-  seek: (time: number) => void;
-  stop: () => void;
-  togglePlayPause: () => void;
+	isPlaying: boolean;
+	currentTime: number;
+	contentDuration: number;
+	play: () => void;
+	pause: () => void;
+	seek: (time: number) => void;
+	stop: () => void;
+	togglePlayPause: () => void;
 }
 
 /**
@@ -16,134 +18,166 @@ export interface UseVideoPlaybackReturn {
  * Manages playback state and updates timeline currentTime at 30fps
  */
 export function useVideoPlayback(): UseVideoPlaybackReturn {
-  const { state, setCurrentTime, play: contextPlay, pause: contextPause } = useTimeline();
-  const { currentTime, duration, isPlaying } = state;
-  
-  const [localCurrentTime, setLocalCurrentTime] = useState(currentTime);
-  const animationFrameRef = useRef<number | null>(null);
-  const lastFrameTimeRef = useRef<number>(0);
-  const targetFPS = 30;
-  const frameInterval = 1000 / targetFPS; // ~33ms for 30fps
+	const { state, setCurrentTime, play: contextPlay, pause: contextPause } = useTimeline();
+	const { currentTime, isPlaying, layers } = state;
 
-  // Sync local time with context time
-  useEffect(() => {
-    setLocalCurrentTime(currentTime);
-  }, [currentTime]);
+	// Calculate the actual content duration based on the end of the last resource placed
+	const contentDuration = useMemo(() => calculateContentDuration(layers), [layers]);
 
-  /**
-   * Start playback
-   */
-  const play = useCallback(() => {
-    if (localCurrentTime >= duration) {
-      // If at end, restart from beginning
-      setLocalCurrentTime(0);
-      setCurrentTime(0);
-    }
-    
-    contextPlay();
-  }, [localCurrentTime, duration, setCurrentTime, contextPlay]);
+	// Use content duration for playback, but ensure at least 0 (no content case)
+	const playbackDuration = contentDuration > 0 ? contentDuration : 0;
 
-  /**
-   * Pause playback
-   */
-  const pause = useCallback(() => {
-    contextPause();
-    if (animationFrameRef.current !== null) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-    lastFrameTimeRef.current = 0;
-  }, [contextPause]);
+	// Use ref to always have the latest playback duration in animation callback
+	const playbackDurationRef = useRef(playbackDuration);
+	useEffect(() => {
+		playbackDurationRef.current = playbackDuration;
+	}, [playbackDuration]);
 
-  /**
-   * Seek to specific time
-   */
-  const seek = useCallback((time: number) => {
-    const clampedTime = Math.max(0, Math.min(time, duration));
-    setLocalCurrentTime(clampedTime);
-    setCurrentTime(clampedTime);
-    lastFrameTimeRef.current = 0;
-  }, [duration, setCurrentTime]);
+	const [localCurrentTime, setLocalCurrentTime] = useState(currentTime);
+	const animationFrameRef = useRef<number | null>(null);
+	const lastFrameTimeRef = useRef<number>(0);
+	const targetFPS = 30;
+	const frameInterval = 1000 / targetFPS; // ~33ms for 30fps
 
-  /**
-   * Stop playback and reset to beginning
-   */
-  const stop = useCallback(() => {
-    pause();
-    seek(0);
-  }, [pause, seek]);
+	// Sync local time with context time
+	useEffect(() => {
+		setLocalCurrentTime(currentTime);
+	}, [currentTime]);
 
-  /**
-   * Toggle between play and pause
-   */
-  const togglePlayPause = useCallback(() => {
-    if (isPlaying) {
-      pause();
-    } else {
-      play();
-    }
-  }, [isPlaying, play, pause]);
+	/**
+	 * Start playback
+	 */
+	const play = useCallback(() => {
+		// Don't play if there's no content
+		if (playbackDurationRef.current <= 0) {
+			return;
+		}
 
-  /**
-   * Animation loop for smooth playback
-   */
-  useEffect(() => {
-    if (!isPlaying) {
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-      return;
-    }
+		if (localCurrentTime >= playbackDurationRef.current) {
+			// If at end, restart from beginning
+			setLocalCurrentTime(0);
+			setCurrentTime(0);
+		}
 
-    const animate = (timestamp: number) => {
-      if (!lastFrameTimeRef.current) {
-        lastFrameTimeRef.current = timestamp;
-      }
+		contextPlay();
+	}, [localCurrentTime, setCurrentTime, contextPlay]);
 
-      const deltaTime = timestamp - lastFrameTimeRef.current;
+	/**
+	 * Pause playback
+	 */
+	const pause = useCallback(() => {
+		contextPause();
+		if (animationFrameRef.current !== null) {
+			cancelAnimationFrame(animationFrameRef.current);
+			animationFrameRef.current = null;
+		}
+		lastFrameTimeRef.current = 0;
+	}, [contextPause]);
 
-      // Only update if enough time has passed (30fps throttling)
-      if (deltaTime >= frameInterval) {
-        setLocalCurrentTime((prevTime) => {
-          const newTime = prevTime + (deltaTime / 1000); // Convert ms to seconds
-          
-          // Auto-pause at end of timeline
-          if (newTime >= duration) {
-            contextPause();
-            setCurrentTime(duration);
-            return duration;
-          }
+	/**
+	 * Seek to specific time - clamp to content duration
+	 */
+	const seek = useCallback(
+		(time: number) => {
+			const maxTime = playbackDurationRef.current > 0 ? playbackDurationRef.current : state.duration;
+			const clampedTime = Math.max(0, Math.min(time, maxTime));
+			setLocalCurrentTime(clampedTime);
+			setCurrentTime(clampedTime);
+			lastFrameTimeRef.current = 0;
+		},
+		[state.duration, setCurrentTime]
+	);
 
-          // Update timeline context
-          setCurrentTime(newTime);
-          return newTime;
-        });
+	/**
+	 * Stop playback and reset to beginning
+	 */
+	const stop = useCallback(() => {
+		pause();
+		seek(0);
+	}, [pause, seek]);
 
-        lastFrameTimeRef.current = timestamp;
-      }
+	/**
+	 * Toggle between play and pause
+	 */
+	const togglePlayPause = useCallback(() => {
+		if (isPlaying) {
+			pause();
+		} else {
+			play();
+		}
+	}, [isPlaying, play, pause]);
 
-      // Continue animation loop
-      animationFrameRef.current = requestAnimationFrame(animate);
-    };
+	/**
+	 * Animation loop for smooth playback
+	 * Uses content duration (end of last resource) as the maximum playback time
+	 */
+	useEffect(() => {
+		if (!isPlaying) {
+			if (animationFrameRef.current !== null) {
+				cancelAnimationFrame(animationFrameRef.current);
+				animationFrameRef.current = null;
+			}
+			return;
+		}
 
-    lastFrameTimeRef.current = 0;
-    animationFrameRef.current = requestAnimationFrame(animate);
+		// Don't run animation if there's no content
+		if (playbackDurationRef.current <= 0) {
+			contextPause();
+			return;
+		}
 
-    return () => {
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [isPlaying, duration, frameInterval, setCurrentTime, contextPause]);
+		const animate = (timestamp: number) => {
+			if (!lastFrameTimeRef.current) {
+				lastFrameTimeRef.current = timestamp;
+			}
 
-  return {
-    isPlaying,
-    currentTime: localCurrentTime,
-    play,
-    pause,
-    seek,
-    stop,
-    togglePlayPause,
-  };
+			const deltaTime = timestamp - lastFrameTimeRef.current;
+
+			// Only update if enough time has passed (30fps throttling)
+			if (deltaTime >= frameInterval) {
+				setLocalCurrentTime((prevTime) => {
+					const newTime = prevTime + deltaTime / 1000; // Convert ms to seconds
+
+					// Get the current content duration from ref (always up to date)
+					const currentPlaybackDuration = playbackDurationRef.current;
+
+					// Auto-pause at end of content (end of last resource)
+					if (newTime >= currentPlaybackDuration) {
+						contextPause();
+						setCurrentTime(currentPlaybackDuration);
+						return currentPlaybackDuration;
+					}
+
+					// Update timeline context
+					setCurrentTime(newTime);
+					return newTime;
+				});
+
+				lastFrameTimeRef.current = timestamp;
+			}
+
+			// Continue animation loop
+			animationFrameRef.current = requestAnimationFrame(animate);
+		};
+
+		lastFrameTimeRef.current = 0;
+		animationFrameRef.current = requestAnimationFrame(animate);
+
+		return () => {
+			if (animationFrameRef.current !== null) {
+				cancelAnimationFrame(animationFrameRef.current);
+			}
+		};
+	}, [isPlaying, frameInterval, setCurrentTime, contextPause]);
+
+	return {
+		isPlaying,
+		currentTime: localCurrentTime,
+		contentDuration: playbackDuration,
+		play,
+		pause,
+		seek,
+		stop,
+		togglePlayPause,
+	};
 }

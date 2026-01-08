@@ -258,6 +258,30 @@ class ExportService:
         
         return clip
 
+    def _calculate_content_duration(self, layers: List[Dict]) -> float:
+        """
+        Calculate the actual content duration based on the end time of the last resource placed.
+        This ensures the exported video only includes the actual content, not empty timeline space.
+        
+        Args:
+            layers: List of timeline layers with clips
+            
+        Returns:
+            The end time of the last clip, or 0 if no clips exist
+        """
+        max_end_time = 0.0
+        
+        for layer in layers:
+            clips = layer.get("clips", [])
+            for clip in clips:
+                start_time = clip.get("startTime", 0)
+                duration = clip.get("duration", 0)
+                clip_end_time = start_time + duration
+                if clip_end_time > max_end_time:
+                    max_end_time = clip_end_time
+        
+        return max_end_time
+
     def export_timeline(
         self,
         timeline_data: Dict,
@@ -288,7 +312,18 @@ class ExportService:
             
             # Extract layers from timeline data
             layers = timeline_data.get("layers", [])
-            duration = timeline_data.get("duration", 0)
+            
+            # Calculate content duration based on the end of the last resource placed
+            # This ensures we only export actual content, not empty timeline space
+            content_duration = self._calculate_content_duration(layers)
+            
+            # Use content duration if available, otherwise fall back to timeline duration
+            # but ensure we have at least some duration
+            timeline_duration = timeline_data.get("duration", 0)
+            duration = content_duration if content_duration > 0 else timeline_duration
+            
+            if duration <= 0:
+                raise Exception("No content to export: timeline has no clips")
             
             if progress_callback:
                 progress_callback(0.1)

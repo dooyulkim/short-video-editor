@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { TimelineRuler } from "./TimelineRuler";
 import type { TimelineLayer, Clip } from "@/types/timeline";
 import type { MediaResource } from "@/types/media";
+import { calculateContentDuration } from "@/utils/clipOperations";
 import {
 	Plus,
 	Minus,
@@ -59,6 +60,10 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	const effectiveDuration = timeline?.state.duration > 0 ? timeline.state.duration : duration;
 	const effectiveZoom = timeline?.state.zoom || zoom;
 	const effectiveCurrentTime = timeline?.state.currentTime !== undefined ? timeline.state.currentTime : currentTime;
+
+	// Calculate the actual content duration (end of last resource placed)
+	const contentDuration = useMemo(() => calculateContentDuration(effectiveLayers), [effectiveLayers]);
+
 	const [isDragOver, setIsDragOver] = useState<boolean>(false);
 	const [isNewLayerDropZoneActive, setIsNewLayerDropZoneActive] = useState<boolean>(false);
 	const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
@@ -855,7 +860,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 
 					<div className="flex items-center gap-2">
 						<div className="text-xs text-gray-400">
-							Time: {formatTime(effectiveCurrentTime)} / {formatTime(effectiveDuration)}
+							Time: {formatTime(effectiveCurrentTime)} / {formatTime(contentDuration)}
 						</div>
 						<Button
 							variant="outline"

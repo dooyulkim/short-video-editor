@@ -7,42 +7,42 @@ import type { Clip, TimelineLayer } from "@/types/timeline";
  * @returns Array of two new clips, or original clip if cut time is invalid
  */
 export function cutClipAtTime(clip: Clip, cutTime: number): Clip[] {
-  // Validate cut time is within the clip's duration
-  if (cutTime <= 0 || cutTime >= clip.duration) {
-    return [clip];
-  }
+	// Validate cut time is within the clip's duration
+	if (cutTime <= 0 || cutTime >= clip.duration) {
+		return [clip];
+	}
 
-  // Calculate the actual cut position relative to the source media
-  const cutPositionInSource = clip.trimStart + cutTime;
+	// Calculate the actual cut position relative to the source media
+	const cutPositionInSource = clip.trimStart + cutTime;
 
-  // First clip: from start to cut point
-  const firstClip: Clip = {
-    ...clip,
-    id: `${clip.id}-part1-${Date.now()}`,
-    duration: cutTime,
-    trimEnd: clip.trimStart + clip.duration - cutPositionInSource, // remaining trim at end
-  };
+	// First clip: from start to cut point
+	const firstClip: Clip = {
+		...clip,
+		id: `${clip.id}-part1-${Date.now()}`,
+		duration: cutTime,
+		trimEnd: clip.trimStart + clip.duration - cutPositionInSource, // remaining trim at end
+	};
 
-  // Second clip: from cut point to end
-  const secondClip: Clip = {
-    ...clip,
-    id: `${clip.id}-part2-${Date.now()}`,
-    startTime: clip.startTime + cutTime,
-    duration: clip.duration - cutTime,
-    trimStart: cutPositionInSource, // start from cut position in source
-    transitions: {
-      in: undefined, // Remove in transition from second clip
-      out: clip.transitions?.out, // Keep out transition only on second clip
-    },
-  };
+	// Second clip: from cut point to end
+	const secondClip: Clip = {
+		...clip,
+		id: `${clip.id}-part2-${Date.now()}`,
+		startTime: clip.startTime + cutTime,
+		duration: clip.duration - cutTime,
+		trimStart: cutPositionInSource, // start from cut position in source
+		transitions: {
+			in: undefined, // Remove in transition from second clip
+			out: clip.transitions?.out, // Keep out transition only on second clip
+		},
+	};
 
-  // Keep in transition only on first clip
-  firstClip.transitions = {
-    in: clip.transitions?.in,
-    out: undefined,
-  };
+	// Keep in transition only on first clip
+	firstClip.transitions = {
+		in: clip.transitions?.in,
+		out: undefined,
+	};
 
-  return [firstClip, secondClip];
+	return [firstClip, secondClip];
 }
 
 /**
@@ -52,32 +52,28 @@ export function cutClipAtTime(clip: Clip, cutTime: number): Clip[] {
  * @param newEndTime - New end time on the timeline (in seconds)
  * @returns Updated clip with adjusted trim properties
  */
-export function trimClip(
-  clip: Clip,
-  newStartTime: number,
-  newEndTime: number
-): Clip {
-  // Calculate how much time was trimmed from the start and end
-  const startDiff = newStartTime - clip.startTime;
-  const endDiff = (clip.startTime + clip.duration) - newEndTime;
+export function trimClip(clip: Clip, newStartTime: number, newEndTime: number): Clip {
+	// Calculate how much time was trimmed from the start and end
+	const startDiff = newStartTime - clip.startTime;
+	const endDiff = clip.startTime + clip.duration - newEndTime;
 
-  // Calculate new trim values
-  const newTrimStart = clip.trimStart + Math.max(0, startDiff);
-  const newTrimEnd = clip.trimEnd + Math.max(0, endDiff);
-  const newDuration = newEndTime - newStartTime;
+	// Calculate new trim values
+	const newTrimStart = clip.trimStart + Math.max(0, startDiff);
+	const newTrimEnd = clip.trimEnd + Math.max(0, endDiff);
+	const newDuration = newEndTime - newStartTime;
 
-  // Validate that the new duration is positive
-  if (newDuration <= 0) {
-    return clip;
-  }
+	// Validate that the new duration is positive
+	if (newDuration <= 0) {
+		return clip;
+	}
 
-  return {
-    ...clip,
-    startTime: newStartTime,
-    duration: newDuration,
-    trimStart: newTrimStart,
-    trimEnd: newTrimEnd,
-  };
+	return {
+		...clip,
+		startTime: newStartTime,
+		duration: newDuration,
+		trimStart: newTrimStart,
+		trimEnd: newTrimEnd,
+	};
 }
 
 /**
@@ -86,11 +82,11 @@ export function trimClip(
  * @returns New clip with same properties but different ID, placed after the original
  */
 export function duplicateClip(clip: Clip): Clip {
-  return {
-    ...clip,
-    id: `${clip.id}-copy-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    startTime: clip.startTime + clip.duration, // Place after original clip
-  };
+	return {
+		...clip,
+		id: `${clip.id}-copy-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+		startTime: clip.startTime + clip.duration, // Place after original clip
+	};
 }
 
 /**
@@ -99,14 +95,11 @@ export function duplicateClip(clip: Clip): Clip {
  * @param clipId - ID of the clip to remove
  * @returns Updated layers array with the clip removed
  */
-export function deleteClip(
-  layers: TimelineLayer[],
-  clipId: string
-): TimelineLayer[] {
-  return layers.map((layer) => ({
-    ...layer,
-    clips: layer.clips.filter((clip) => clip.id !== clipId),
-  }));
+export function deleteClip(layers: TimelineLayer[], clipId: string): TimelineLayer[] {
+	return layers.map((layer) => ({
+		...layer,
+		clips: layer.clips.filter((clip) => clip.id !== clipId),
+	}));
 }
 
 /**
@@ -115,17 +108,14 @@ export function deleteClip(
  * @param clipId - ID of the clip to find
  * @returns The clip and its layer index, or null if not found
  */
-export function findClipById(
-  layers: TimelineLayer[],
-  clipId: string
-): { clip: Clip; layerIndex: number } | null {
-  for (let i = 0; i < layers.length; i++) {
-    const clip = layers[i].clips.find((c) => c.id === clipId);
-    if (clip) {
-      return { clip, layerIndex: i };
-    }
-  }
-  return null;
+export function findClipById(layers: TimelineLayer[], clipId: string): { clip: Clip; layerIndex: number } | null {
+	for (let i = 0; i < layers.length; i++) {
+		const clip = layers[i].clips.find((c) => c.id === clipId);
+		if (clip) {
+			return { clip, layerIndex: i };
+		}
+	}
+	return null;
 }
 
 /**
@@ -135,15 +125,30 @@ export function findClipById(
  * @param newClips - Array of new clips to replace the original
  * @returns Updated layers array
  */
-export function replaceClip(
-  layers: TimelineLayer[],
-  clipId: string,
-  newClips: Clip[]
-): TimelineLayer[] {
-  return layers.map((layer) => ({
-    ...layer,
-    clips: layer.clips.flatMap((clip) =>
-      clip.id === clipId ? newClips : [clip]
-    ),
-  }));
+export function replaceClip(layers: TimelineLayer[], clipId: string, newClips: Clip[]): TimelineLayer[] {
+	return layers.map((layer) => ({
+		...layer,
+		clips: layer.clips.flatMap((clip) => (clip.id === clipId ? newClips : [clip])),
+	}));
+}
+
+/**
+ * Calculate the content duration based on the end time of the last resource placed.
+ * This represents the actual playable content duration, not the timeline's display duration.
+ * @param layers - Array of timeline layers
+ * @returns The end time of the last clip, or 0 if no clips exist
+ */
+export function calculateContentDuration(layers: TimelineLayer[]): number {
+	let maxEndTime = 0;
+
+	for (const layer of layers) {
+		for (const clip of layer.clips) {
+			const clipEndTime = clip.startTime + clip.duration;
+			if (clipEndTime > maxEndTime) {
+				maxEndTime = clipEndTime;
+			}
+		}
+	}
+
+	return maxEndTime;
 }
