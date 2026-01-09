@@ -101,9 +101,11 @@ export const useTimelineDragDrop = ({
 					opacity: 1,
 					scale: 1,
 					rotation: 0,
-					// Store resource type in data for proper export handling
+					// Store resource type and dimensions in data for proper export handling
 					data: {
 						type: resourceType as "video" | "audio" | "image" | "text",
+						width: resource.metadata?.width,
+						height: resource.metadata?.height,
 					},
 				};
 

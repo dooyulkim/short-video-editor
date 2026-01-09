@@ -167,18 +167,18 @@ export const TimelineLayerTest: React.FC = () => {
 				<div className="flex gap-4 items-center mb-4">
 					<div className="flex gap-2">
 						<Button onClick={handleZoomOut} size="sm" variant="outline">
-							<ZoomOut className="mr-2 h-4 w-4" />
+							<ZoomOut className="mr-2 size-4" />
 							Zoom Out
 						</Button>
 						<Button onClick={handleZoomIn} size="sm" variant="outline">
-							<ZoomIn className="mr-2 h-4 w-4" />
+							<ZoomIn className="mr-2 size-4" />
 							Zoom In
 						</Button>
 						<span className="text-sm text-slate-400 flex items-center ml-2">Zoom: {zoom}px/s</span>
 					</div>
 
 					<Button onClick={handleAddLayer} size="sm" variant="outline">
-						<Plus className="mr-2 h-4 w-4" />
+						<Plus className="mr-2 size-4" />
 						Add Layer
 					</Button>
 				</div>

@@ -53,7 +53,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 		<div className="h-14 border-b bg-background flex items-center px-4 gap-2">
 			{/* Logo/Brand */}
 			<div className="flex items-center gap-2 mr-4">
-				<Film className="h-6 w-6 text-primary" />
+				<Film className="size-6 text-primary" />
 				<span className="font-bold text-lg">Short Video Editor</span>
 			</div>
 
@@ -62,15 +62,15 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 			{/* File operations */}
 			<div className="flex items-center gap-1 mr-2">
 				<Button variant="ghost" size="sm" onClick={onSave} className="gap-2">
-					<Save className="h-4 w-4" />
+					<Save className="size-4" />
 					Save
 				</Button>
 				<Button variant="ghost" size="sm" onClick={onLoad} className="gap-2">
-					<FolderOpen className="h-4 w-4" />
+					<FolderOpen className="size-4" />
 					Open
 				</Button>
 				<Button variant="ghost" size="sm" onClick={onExport} className="gap-2">
-					<FileDown className="h-4 w-4" />
+					<FileDown className="size-4" />
 					Export
 				</Button>
 			</div>
@@ -93,7 +93,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 							size="sm"
 							onClick={() => onTabChange?.(tab.id)}
 							className={cn("gap-2", activeTab === tab.id && "bg-primary/10 text-primary")}>
-							<Icon className="h-4 w-4" />
+							<Icon className="size-4" />
 							<span className="hidden md:inline">{tab.label}</span>
 						</Button>
 					);

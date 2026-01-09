@@ -115,19 +115,19 @@ export function ProjectManager() {
 		<div className="flex items-center gap-2">
 			{/* Save Project Button */}
 			<Button variant="outline" size="sm" onClick={() => setShowSaveDialog(true)} className="gap-2">
-				<Save className="h-4 w-4" />
+				<Save className="size-4" />
 				Save
 			</Button>
 
 			{/* Load Project Button */}
 			<Button variant="outline" size="sm" onClick={handleLoadProject} disabled={isPending} className="gap-2">
-				<FolderOpen className="h-4 w-4" />
+				<FolderOpen className="size-4" />
 				{isPending ? "Loading..." : "Load"}
 			</Button>
 
 			{/* New Project Button */}
 			<Button variant="outline" size="sm" onClick={handleNewProject} className="gap-2">
-				<FileText className="h-4 w-4" />
+				<FileText className="size-4" />
 				New
 			</Button>
 
@@ -159,7 +159,7 @@ export function ProjectManager() {
 							Cancel
 						</Button>
 						<Button onClick={handleSaveProject} className="gap-2">
-							<Download className="h-4 w-4" />
+							<Download className="size-4" />
 							Save Project
 						</Button>
 					</DialogFooter>
@@ -206,16 +206,16 @@ export function ProjectManager() {
 												<div className="flex-1">
 													<CardTitle className="text-base">{project.name}</CardTitle>
 													<CardDescription className="flex items-center gap-1 mt-1">
-														<Clock className="h-3 w-3" />
+														<Clock className="size-3" />
 														{formatProjectDate(project.lastOpened)}
 													</CardDescription>
 												</div>
 												<Button
 													variant="ghost"
 													size="icon"
-													className="h-8 w-8"
+													className="size-8"
 													onClick={(e) => handleRemoveRecent(project.id, e)}>
-													<Trash2 className="h-4 w-4" />
+													<Trash2 className="size-4" />
 												</Button>
 											</div>
 										</CardHeader>

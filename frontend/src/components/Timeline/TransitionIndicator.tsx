@@ -111,7 +111,7 @@ export const TransitionIndicator: React.FC<TransitionIndicatorProps> = ({ transi
 						"text-white shadow-sm",
 						"group-hover:scale-110 transition-transform"
 					)}>
-					<Icon className="h-3 w-3" />
+					<Icon className="size-3" />
 				</div>
 
 				{/* Edge border indicator */}
@@ -126,7 +126,7 @@ export const TransitionIndicator: React.FC<TransitionIndicatorProps> = ({ transi
 					<DialogHeader>
 						<DialogTitle className="flex items-center gap-2">
 							<div className={cn("p-2 rounded-md", config.color, "text-white")}>
-								<Icon className="h-4 w-4" />
+								<Icon className="size-4" />
 							</div>
 							{config.name} {position === "start" ? "In" : "Out"}
 						</DialogTitle>

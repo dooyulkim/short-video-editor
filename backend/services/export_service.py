@@ -133,29 +133,51 @@ class ExportService:
 
     def _apply_keyframe_transforms(
         self, clip, clip_data: Dict, original_width: int, original_height: int,
-        canvas_width: int, canvas_height: int
+        canvas_width: int, canvas_height: int,
+        source_width: int = None, source_height: int = None,
+        scale_factor_x: float = 1.0, scale_factor_y: float = 1.0
     ):
         """
         Apply keyframe-based transformations to a clip.
+        
+        The frontend preview draws video at original dimensions × user_scale.
+        When exporting to a different resolution, we scale everything proportionally
+        so the video appears the same relative to the canvas.
 
         Args:
             clip: MoviePy clip object
             clip_data: Clip data containing keyframes
             original_width: Original width of the clip
             original_height: Original height of the clip
-            canvas_width: Canvas/output width for centering
-            canvas_height: Canvas/output height for centering
+            canvas_width: Export canvas width for centering
+            canvas_height: Export canvas height for centering
+            source_width: Original source canvas width (for scaling)
+            source_height: Original source canvas height (for scaling)
+            scale_factor_x: Scale factor for X positions
+            scale_factor_y: Scale factor for Y positions
 
         Returns:
             Transformed clip
         """
+        # Use source dimensions if provided, otherwise use canvas dimensions
+        if source_width is None:
+            source_width = canvas_width
+        if source_height is None:
+            source_height = canvas_height
+            
         keyframes = clip_data.get("keyframes")
         if not keyframes:
             # Apply static transforms
             return self._apply_static_transforms(
                 clip, clip_data, original_width, original_height,
-                canvas_width, canvas_height
+                canvas_width, canvas_height,
+                source_width=source_width, source_height=source_height,
+                scale_factor_x=scale_factor_x, scale_factor_y=scale_factor_y
             )
+
+        # Calculate canvas-to-canvas scale factors
+        canvas_scale_x = canvas_width / source_width if source_width > 0 else 1.0
+        canvas_scale_y = canvas_height / source_height if source_height > 0 else 1.0
 
         def transform_func(get_frame, t):
             """Transform function applied to each frame."""
@@ -187,45 +209,67 @@ class ExportService:
         # Apply time-varying function
         clip = clip.fl(transform_func)
 
-        # Apply time-varying scale and position
+        # Apply time-varying scale and position with canvas scaling
         def make_frame(t):
             scale_val = self._interpolate_keyframes(keyframes, t, "scale")
             if scale_val is None:
                 scale_val = clip_data.get("scale", 1)
 
-            # Handle scale as number or dict - apply directly without base scaling
+            # Handle scale as number or dict
             if isinstance(scale_val, dict):
-                scale_x = scale_val.get("x", 1)
-                scale_y = scale_val.get("y", 1)
+                user_scale_x = scale_val.get("x", 1)
+                user_scale_y = scale_val.get("y", 1)
             else:
-                scale_x = scale_y = scale_val
+                user_scale_x = scale_val
+                user_scale_y = scale_val
 
             position_val = self._interpolate_keyframes(keyframes, t, "position")
             if position_val is None:
                 position_val = clip_data.get("position", {"x": 0, "y": 0})
 
-            # Calculate position - center clip if position is (0, 0)
-            # Use ORIGINAL dimensions like frontend VideoPlayer
+            # Calculate position - scale from source to export canvas
             if isinstance(position_val, dict):
-                pos_x = position_val.get("x", 0)
-                pos_y = position_val.get("y", 0)
+                raw_pos_x = position_val.get("x", 0)
+                raw_pos_y = position_val.get("y", 0)
             else:
+                raw_pos_x = 0
+                raw_pos_y = 0
+
+            # ============================================================
+            # FILL MODE: When position is (0,0) and scale is 1 (default),
+            # stretch the video to fill the entire export canvas.
+            # ============================================================
+            is_default_transform = (
+                raw_pos_x == 0 and raw_pos_y == 0
+                and user_scale_x == 1 and user_scale_y == 1
+            )
+            
+            if is_default_transform:
+                # FILL MODE: Stretch video to fill entire export canvas
+                final_scale_x = canvas_width / original_width if original_width > 0 else 1.0
+                final_scale_y = canvas_height / original_height if original_height > 0 else 1.0
                 pos_x = 0
                 pos_y = 0
+            else:
+                # PRESERVE MODE: Scale proportionally from preview to export canvas
+                final_scale_x = user_scale_x * canvas_scale_x
+                final_scale_y = user_scale_y * canvas_scale_y
+                
+                # Calculate scaled dimensions
+                scaled_width = int(original_width * final_scale_x)
+                scaled_height = int(original_height * final_scale_y)
+                
+                # Scale positions proportionally
+                pos_x = raw_pos_x * canvas_scale_x
+                pos_y = raw_pos_y * canvas_scale_y
 
-            # Center clip using ORIGINAL dimensions (matching frontend)
-            if pos_x == 0:
-                pos_x = (canvas_width - original_width) / 2
-            if pos_y == 0:
-                pos_y = (canvas_height - original_height) / 2
-
-            return (scale_x, scale_y, pos_x, pos_y)
+            return (final_scale_x, final_scale_y, pos_x, pos_y)
 
         # Apply resize based on keyframes
         def resize_func(t):
-            scale_x, scale_y, _, _ = make_frame(t)
-            new_width = int(original_width * scale_x)
-            new_height = int(original_height * scale_y)
+            final_scale_x, final_scale_y, _, _ = make_frame(t)
+            new_width = int(original_width * final_scale_x)
+            new_height = int(original_height * final_scale_y)
             return (new_width, new_height)
 
         # Apply position based on keyframes
@@ -241,66 +285,117 @@ class ExportService:
 
     def _apply_static_transforms(
         self, clip, clip_data: Dict, original_width: int, original_height: int,
-        canvas_width: int, canvas_height: int
+        canvas_width: int, canvas_height: int,
+        source_width: int = None, source_height: int = None,
+        scale_factor_x: float = 1.0, scale_factor_y: float = 1.0
     ):
         """
         Apply static (non-keyframed) transformations to a clip.
+        Handles scaling from source canvas (preview) to export canvas dimensions.
+        
+        The frontend preview draws video at original dimensions × user_scale.
+        When exporting to a different resolution, we scale everything proportionally
+        so the video appears the same relative to the canvas.
 
         Args:
             clip: MoviePy clip object
             clip_data: Clip data
-            original_width: Original width
-            original_height: Original height
-            canvas_width: Canvas/output width for centering
-            canvas_height: Canvas/output height for centering
+            original_width: Original width of the media
+            original_height: Original height of the media
+            canvas_width: Export canvas width for centering
+            canvas_height: Export canvas height for centering
+            source_width: Original source canvas width (for scaling positions)
+            source_height: Original source canvas height (for scaling positions)
+            scale_factor_x: Scale factor for X positions (export_width / source_width)
+            scale_factor_y: Scale factor for Y positions (export_height / source_height)
 
         Returns:
             Transformed clip
         """
-        # Get user scale - apply directly without any base scaling
-        # This matches frontend VideoPlayer behavior exactly
+        # Use source dimensions if provided, otherwise use canvas dimensions
+        if source_width is None:
+            source_width = canvas_width
+        if source_height is None:
+            source_height = canvas_height
+            
+        # Get user scale from clip data
         user_scale = clip_data.get("scale", 1)
         if isinstance(user_scale, dict):
-            scale_x = user_scale.get("x", 1)
-            scale_y = user_scale.get("y", 1)
+            user_scale_x = user_scale.get("x", 1)
+            user_scale_y = user_scale.get("y", 1)
         else:
-            scale_x = user_scale
-            scale_y = user_scale
+            user_scale_x = user_scale
+            user_scale_y = user_scale
 
-        # Calculate scaled dimensions
-        scaled_width = int(original_width * scale_x)
-        scaled_height = int(original_height * scale_y)
-
-        logger.info(
-            f"         Transform: original={original_width}x{original_height}, "
-            f"scale={scale_x},{scale_y}, scaled={scaled_width}x{scaled_height}, "
-            f"canvas={canvas_width}x{canvas_height}"
-        )
-
-        # Resize clip if scale is not 1
-        if scale_x != 1 or scale_y != 1:
-            clip = clip.resize(width=scaled_width, height=scaled_height)
-
-        # Apply position - match frontend VideoPlayer centering logic exactly
-        # Frontend: x = position.x !== 0 ? position.x : (canvasWidth - imgWidth) / 2
-        # Note: Frontend uses ORIGINAL dimensions for centering calculation,
-        # but the scaled dimensions are what's drawn
+        # Get position from clip data
         position = clip_data.get("position", {})
         pos_x = position.get("x", 0) if position else 0
         pos_y = position.get("y", 0) if position else 0
 
-        logger.info(f"         Raw position from clip: ({pos_x}, {pos_y})")
+        # ============================================================
+        # FILL MODE: When position is (0,0) and scale is 1 (default/untransformed),
+        # stretch the video to fill the entire export canvas.
+        # This prioritizes the export ratio over the original video ratio.
+        # ============================================================
+        is_default_transform = (
+            pos_x == 0 and pos_y == 0
+            and user_scale_x == 1 and user_scale_y == 1
+        )
+        
+        logger.info(
+            f"         Video: {original_width}x{original_height}, "
+            f"Source canvas: {source_width}x{source_height}, "
+            f"Export canvas: {canvas_width}x{canvas_height}"
+        )
+        logger.info(f"         User scale: x={user_scale_x}, y={user_scale_y}")
+        logger.info(f"         Position: ({pos_x}, {pos_y}), Default transform: {is_default_transform}")
 
-        # Center clip if position is (0, 0) - using ORIGINAL dimensions like frontend
-        # This can result in negative positions for large images, which is correct
-        if pos_x == 0:
-            pos_x = (canvas_width - original_width) / 2
-        if pos_y == 0:
-            pos_y = (canvas_height - original_height) / 2
+        if is_default_transform:
+            # FILL MODE: Stretch video to fill entire export canvas
+            # This ignores original aspect ratio and fills the export dimensions
+            scaled_width = canvas_width
+            scaled_height = canvas_height
+            final_pos_x = 0
+            final_pos_y = 0
+            
+            logger.info(
+                f"         FILL MODE: Stretching to fill export canvas "
+                f"{scaled_width}x{scaled_height}"
+            )
+        else:
+            # PRESERVE MODE: When user has manually positioned or scaled the video,
+            # scale proportionally from preview to export canvas
+            canvas_scale_x = canvas_width / source_width if source_width > 0 else 1.0
+            canvas_scale_y = canvas_height / source_height if source_height > 0 else 1.0
+            
+            logger.info(
+                f"         Canvas scale factors: x={canvas_scale_x:.3f}, y={canvas_scale_y:.3f}"
+            )
 
-        logger.info(f"         Final position: ({pos_x}, {pos_y})")
+            # In preview, video is drawn at: original_size * user_scale
+            # In export, we scale that by the canvas ratio
+            # Final size = original_size * user_scale * canvas_scale
+            final_scale_x = user_scale_x * canvas_scale_x
+            final_scale_y = user_scale_y * canvas_scale_y
+            
+            scaled_width = int(original_width * final_scale_x)
+            scaled_height = int(original_height * final_scale_y)
 
-        clip = clip.set_position((pos_x, pos_y))
+            logger.info(
+                f"         Final scale: x={final_scale_x:.3f}, y={final_scale_y:.3f}, "
+                f"scaled size={scaled_width}x{scaled_height}"
+            )
+
+            # Scale positions proportionally
+            final_pos_x = pos_x * canvas_scale_x
+            final_pos_y = pos_y * canvas_scale_y
+
+        logger.info(f"         Final position: ({final_pos_x}, {final_pos_y})")
+
+        # Resize clip
+        clip = clip.resize(width=scaled_width, height=scaled_height)
+
+        clip = clip.set_position((final_pos_x, final_pos_y))
 
         # Apply rotation
         rotation = clip_data.get("rotation")
@@ -382,7 +477,20 @@ class ExportService:
                 # Fall back to resolution preset
                 width, height = self.resolutions.get(resolution, (1920, 1080))
             
+            # Get source resolution (original canvas size from preview)
+            # This is needed to scale positions/sizes from preview to export resolution
+            source_res = timeline_data.get("sourceResolution", {})
+            source_width = source_res.get("width", width)
+            source_height = source_res.get("height", height)
+            
+            # Calculate scale factors from source to export resolution
+            # These are used to transform clip positions and sizes
+            scale_factor_x = width / source_width if source_width > 0 else 1.0
+            scale_factor_y = height / source_height if source_height > 0 else 1.0
+            
             logger.info(f"   Output dimensions: {width}x{height}")
+            logger.info(f"   Source dimensions: {source_width}x{source_height}")
+            logger.info(f"   Scale factors: x={scale_factor_x:.4f}, y={scale_factor_y:.4f}")
 
             # Extract layers from timeline data
             layers = timeline_data.get("layers", [])
@@ -458,8 +566,11 @@ class ExportService:
                         logger.info(f"      Processing clip {clip_id} (resource: {resource_id}, type: {actual_clip_type})")
 
                         # Process clip with the correct type (image or video)
+                        # Pass scale factors for position/size transformation
                         processed_clip = self._process_video_clip(
-                            clip, width, height, fps, muted=True, clip_type=actual_clip_type
+                            clip, width, height, fps, muted=True, clip_type=actual_clip_type,
+                            source_width=source_width, source_height=source_height,
+                            scale_factor_x=scale_factor_x, scale_factor_y=scale_factor_y
                         )
                         if processed_clip:
                             video_clip, start_time, end_time = processed_clip
@@ -487,8 +598,11 @@ class ExportService:
                         logger.info(f"      Processing image clip {clip_id} (resource: {resource_id})")
 
                         # Process image clip (images have no audio)
+                        # Pass scale factors for position/size transformation
                         processed_clip = self._process_video_clip(
-                            clip, width, height, fps, muted=True, clip_type="image"
+                            clip, width, height, fps, muted=True, clip_type="image",
+                            source_width=source_width, source_height=source_height,
+                            scale_factor_x=scale_factor_x, scale_factor_y=scale_factor_y
                         )
                         if processed_clip:
                             image_clip, start_time, end_time = processed_clip
@@ -516,7 +630,9 @@ class ExportService:
                         clip_id = clip.get("id", "unknown")
                         logger.info(f"      Processing text clip {clip_id}")
                         processed_text = self._process_text_clip(
-                            clip, width, height, fps
+                            clip, width, height, fps,
+                            source_width=source_width, source_height=source_height,
+                            scale_factor_x=scale_factor_x, scale_factor_y=scale_factor_y
                         )
                         if processed_text:
                             text_clips.append(processed_text)
@@ -580,6 +696,30 @@ class ExportService:
             # Write final video file
             output_path = str(self.output_dir / output_path)
             logger.info(f"   Writing final video to: {output_path}")
+            
+            # Create a progress logger for moviepy that reports progress from 80% to 98%
+            class ProgressLogger:
+                def __init__(self, callback):
+                    self.callback = callback
+                    self.last_progress = 0
+                    
+                def bars_callback(self, bar_type, progress_info):
+                    """Called by moviepy during rendering."""
+                    if bar_type == 'video' and 't' in progress_info:
+                        # progress_info['t'] is current time, progress_info['total'] is total duration
+                        current = progress_info.get('t', 0)
+                        total = progress_info.get('total', 1)
+                        if total > 0:
+                            # Map 0-100% of video encoding to 80-98% of total progress
+                            video_progress = current / total
+                            overall_progress = 0.8 + (video_progress * 0.18)  # 80% to 98%
+                            # Only update if progress increased by at least 1%
+                            if overall_progress - self.last_progress >= 0.01:
+                                self.callback(overall_progress)
+                                self.last_progress = overall_progress
+            
+            progress_logger = ProgressLogger(progress_callback) if progress_callback else None
+            
             composite_video.write_videofile(
                 output_path,
                 fps=fps,
@@ -587,7 +727,7 @@ class ExportService:
                 audio_codec='aac',
                 temp_audiofile=f'temp-audio-{uuid.uuid4()}.m4a',
                 remove_temp=True,
-                logger=None  # Suppress moviepy logging
+                logger='bar' if progress_logger else None
             )
             logger.info("   Video file written successfully")
 
@@ -611,18 +751,24 @@ class ExportService:
 
     def _process_video_clip(
         self, clip_data: Dict, width: int, height: int, fps: int,
-        muted: bool = False, clip_type: str = "video"
+        muted: bool = False, clip_type: str = "video",
+        source_width: int = None, source_height: int = None,
+        scale_factor_x: float = 1.0, scale_factor_y: float = 1.0
     ) -> Optional[tuple]:
         """
         Process a single video or image clip with trimming, transitions, and keyframe transforms.
 
         Args:
             clip_data: Clip data from timeline
-            width: Target width
-            height: Target height
+            width: Target/export width
+            height: Target/export height
             fps: Target fps
             muted: If True, remove audio from video clip
             clip_type: Type of clip - "video" or "image" (from layer type)
+            source_width: Original source canvas width (for scaling)
+            source_height: Original source canvas height (for scaling)
+            scale_factor_x: Scale factor for X positions (export_width / source_width)
+            scale_factor_y: Scale factor for Y positions (export_height / source_height)
 
         Returns:
             Tuple of (clip, start_time, end_time) or None
@@ -665,10 +811,12 @@ class ExportService:
                 original_height = clip.h
 
             # Apply keyframe transforms or static transforms
-            # Pass canvas dimensions (width, height) for proper centering
+            # Pass canvas dimensions and scale factors for proper scaling from preview to export
             clip = self._apply_keyframe_transforms(
                 clip, clip_data, original_width, original_height,
-                width, height  # Canvas dimensions for centering
+                width, height,  # Export canvas dimensions
+                source_width=source_width, source_height=source_height,
+                scale_factor_x=scale_factor_x, scale_factor_y=scale_factor_y
             )
 
             # Apply transitions
@@ -800,22 +948,38 @@ class ExportService:
             return None
 
     def _process_text_clip(
-        self, clip_data: Dict, width: int, height: int, fps: int
+        self, clip_data: Dict, width: int, height: int, fps: int,
+        source_width: int = None, source_height: int = None,
+        scale_factor_x: float = 1.0, scale_factor_y: float = 1.0
     ) -> Optional[tuple]:
         """
         Process a single text clip.
 
         Args:
             clip_data: Clip data from timeline
-            width: Video width
-            height: Video height
+            width: Export video width
+            height: Export video height
             fps: Target fps
+            source_width: Original source canvas width (for scaling positions)
+            source_height: Original source canvas height (for scaling positions)
+            scale_factor_x: Scale factor for X positions
+            scale_factor_y: Scale factor for Y positions
 
         Returns:
             Tuple of (text_clip, start_time, end_time) or None
         """
         try:
             logger.info(f"         _process_text_clip received clip_data: {clip_data}")
+            
+            # Use source dimensions if provided, otherwise use export dimensions
+            if source_width is None:
+                source_width = width
+            if source_height is None:
+                source_height = height
+            
+            # Calculate canvas-to-canvas scale for text positioning
+            canvas_scale_x = width / source_width if source_width > 0 else 1.0
+            canvas_scale_y = height / source_height if source_height > 0 else 1.0
             
             data = clip_data.get("data", {})
             start_time = clip_data.get("startTime", 0)
@@ -829,7 +993,7 @@ class ExportService:
             logger.info(f"         Text content: '{text_content}', font: {font_family}, size: {font_size}, color: {color}")
             
             # Position can be at clip level or in data
-            position = clip_data.get("position") or data.get("position", {"x": width // 2, "y": height // 2})
+            position = clip_data.get("position") or data.get("position", {"x": source_width // 2, "y": source_height // 2})
             
             # Handle scale and rotation
             scale = clip_data.get("scale", 1)
@@ -838,12 +1002,19 @@ class ExportService:
             else:
                 scale_factor = scale
             
-            scaled_font_size = int(font_size * scale_factor)
+            # Scale font size for export resolution - use average of canvas scales
+            avg_canvas_scale = (canvas_scale_x + canvas_scale_y) / 2
+            scaled_font_size = int(font_size * scale_factor * avg_canvas_scale)
             rotation = clip_data.get("rotation", 0)
-            pos_x = position.get("x", width // 2)
-            pos_y = position.get("y", height // 2)
+            
+            # Scale positions from source to export canvas
+            raw_pos_x = position.get("x", source_width // 2)
+            raw_pos_y = position.get("y", source_height // 2)
+            pos_x = int(raw_pos_x * canvas_scale_x)
+            pos_y = int(raw_pos_y * canvas_scale_y)
             
             logger.info(f"         Creating text clip: text='{text_content}', font={font_family}, size={scaled_font_size}, color={color}")
+            logger.info(f"         Position: raw=({raw_pos_x}, {raw_pos_y}), scaled=({pos_x}, {pos_y}), canvas_scale=({canvas_scale_x:.3f}, {canvas_scale_y:.3f})")
 
             # Try using MoviePy's TextClip (requires ImageMagick)
             try:

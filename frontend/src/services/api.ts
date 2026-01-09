@@ -237,11 +237,15 @@ export const getThumbnail = async (id: string, timestamp: number = 0): Promise<B
 };
 
 /**
- * Delete media resource
+ * Delete media resource and all related artifacts (split/trimmed videos)
  * @param id - The media resource ID
+ * @returns Object containing message and array of all deleted IDs
  */
-export const deleteMedia = async (id: string): Promise<void> => {
-	await api.delete(`/media/${id}`);
+export const deleteMedia = async (
+	id: string
+): Promise<{ message: string; media_id: string; deleted_ids: string[] }> => {
+	const response = await api.delete<{ message: string; media_id: string; deleted_ids: string[] }>(`/media/${id}`);
+	return response.data;
 };
 
 // ===========================

@@ -5,13 +5,19 @@ from typing import List, Optional
 import os
 
 from services.timeline_service import TimelineService
+from services.media_service import MediaService
+from models.media import MediaResource
+from routers.media import media_store
 
-logger = logging.getLogger(__name__)
+# Configure logger
+logger = logging.getLogger("video-editor.timeline")
+logger.setLevel(logging.DEBUG)
 
 router = APIRouter()
 
-# Initialize timeline service
+# Initialize services
 timeline_service = TimelineService()
+media_service = MediaService(upload_dir="uploads", thumbnail_dir="thumbnails")
 
 
 # Request/Response models
@@ -120,6 +126,41 @@ async def cut_video(request: CutRequest):
         )
         segment1_id, segment1_path, segment2_id, segment2_path = result
 
+        # Register segments in media_store with parent_id reference
+        for seg_id, seg_path in [(segment1_id, segment1_path), (segment2_id, segment2_path)]:
+            try:
+                file_size = os.path.getsize(seg_path) if os.path.exists(seg_path) else 0
+                video_metadata = media_service.extract_video_metadata(seg_path)
+                
+                # Generate thumbnail for segment
+                thumbnail_path = None
+                try:
+                    thumbnail_path = media_service.generate_thumbnail(
+                        video_path=seg_path,
+                        timestamp=0,
+                        thumbnail_id=seg_id
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to generate thumbnail for segment {seg_id}: {e}")
+                
+                segment_resource = MediaResource(
+                    id=seg_id,
+                    filename=os.path.basename(seg_path),
+                    file_path=seg_path,
+                    file_size=file_size,
+                    media_type="video",
+                    thumbnail_path=thumbnail_path,
+                    waveform_path=None,
+                    parent_id=request.video_id,
+                    video_metadata=video_metadata,
+                    audio_metadata=None,
+                    image_metadata=None
+                )
+                media_store[seg_id] = segment_resource
+                logger.info(f"   Registered segment {seg_id} with parent {request.video_id}")
+            except Exception as e:
+                logger.warning(f"Failed to register segment {seg_id}: {e}")
+
         return CutResponse(
             segment1_id=segment1_id,
             segment1_path=segment1_path,
@@ -179,6 +220,40 @@ async def trim_video(request: TrimRequest):
         )
 
         duration = request.end_time - request.start_time
+
+        # Register trimmed video in media_store with parent_id reference
+        try:
+            file_size = os.path.getsize(trimmed_path) if os.path.exists(trimmed_path) else 0
+            video_metadata = media_service.extract_video_metadata(trimmed_path)
+            
+            # Generate thumbnail for trimmed video
+            thumbnail_path = None
+            try:
+                thumbnail_path = media_service.generate_thumbnail(
+                    video_path=trimmed_path,
+                    timestamp=0,
+                    thumbnail_id=trimmed_id
+                )
+            except Exception as e:
+                logger.warning(f"Failed to generate thumbnail for trimmed video {trimmed_id}: {e}")
+            
+            trimmed_resource = MediaResource(
+                id=trimmed_id,
+                filename=os.path.basename(trimmed_path),
+                file_path=trimmed_path,
+                file_size=file_size,
+                media_type="video",
+                thumbnail_path=thumbnail_path,
+                waveform_path=None,
+                parent_id=request.video_id,
+                video_metadata=video_metadata,
+                audio_metadata=None,
+                image_metadata=None
+            )
+            media_store[trimmed_id] = trimmed_resource
+            logger.info(f"   Registered trimmed video {trimmed_id} with parent {request.video_id}")
+        except Exception as e:
+            logger.warning(f"Failed to register trimmed video {trimmed_id}: {e}")
 
         return TrimResponse(
             trimmed_id=trimmed_id,

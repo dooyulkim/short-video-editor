@@ -206,6 +206,11 @@ async def start_export(
                     "height": request.settings.height
                 }
                 logger.info(f"   Custom resolution: {request.settings.width}x{request.settings.height}")
+            
+            # Log source resolution if provided (for aspect ratio scaling)
+            source_res = timeline_data.get("sourceResolution", {})
+            if source_res:
+                logger.info(f"   Source resolution (from preview): {source_res.get('width')}x{source_res.get('height')}")
         else:
             resolution = request.resolution
             fps = request.fps

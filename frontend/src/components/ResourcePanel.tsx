@@ -156,14 +156,16 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 				updateOptimisticResources({ type: "remove", resource: resourceToDelete });
 			});
 
-			await deleteMedia(resourceToDelete.id);
-
-			// Remove all clips that use this resource from the timeline
+			// First, remove clips from timeline to release video element references
+			// This triggers cleanup in VideoPlayer which releases file handles
+			let deletedIds = [resourceToDelete.id];
 			if (timeline) {
 				const { state } = timeline;
 				const clipsToRemove: string[] = [];
 
-				// Find all clips that reference this resource
+				// Find all clips that reference this resource or any of its child resources
+				// For now, we just remove clips with this exact resourceId
+				// Child resources will be determined after API call
 				state.layers.forEach((layer) => {
 					layer.clips.forEach((clip) => {
 						if (clip.resourceId === resourceToDelete.id) {
@@ -183,9 +185,35 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 				onSelectedResourceClear?.();
 			}
 
-			// Update actual state after successful delete
+			// Wait for video element cleanup to complete before deleting file
+			// This prevents Windows file locking issues
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			// Now delete from backend (after video elements are cleaned up)
+			const deleteResult = await deleteMedia(resourceToDelete.id);
+			deletedIds = deleteResult.deleted_ids || [resourceToDelete.id];
+
+			// Remove any additional child resource clips that were discovered
+			if (timeline && deletedIds.length > 1) {
+				const { state } = timeline;
+				const additionalClipsToRemove: string[] = [];
+
+				state.layers.forEach((layer) => {
+					layer.clips.forEach((clip) => {
+						if (deletedIds.includes(clip.resourceId) && clip.resourceId !== resourceToDelete.id) {
+							additionalClipsToRemove.push(clip.id);
+						}
+					});
+				});
+
+				additionalClipsToRemove.forEach((clipId) => {
+					timeline.removeClip(clipId);
+				});
+			}
+
+			// Update actual state after successful delete - remove all deleted resources
 			setResources((prev) => {
-				const updated = prev.filter((r) => r.id !== resourceToDelete.id);
+				const updated = prev.filter((r) => !deletedIds.includes(r.id));
 				onResourcesChange?.(updated);
 				return updated;
 			});
@@ -221,7 +249,15 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 	};
 
 	return (
-		<div className="h-full flex flex-col p-4 bg-background">
+		<div
+			className="h-full flex flex-col p-4 bg-background"
+			tabIndex={-1}
+			onBlur={(e) => {
+				// Check if the new focus target is outside this component
+				if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+					onSelectedResourceClear?.();
+				}
+			}}>
 			<div className="mb-4">
 				<h2 className="text-2xl font-bold mb-2">Resources</h2>
 				<p className="text-sm text-muted-foreground">Upload media files or drag them to the timeline</p>
@@ -302,7 +338,11 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 									]
 										.filter(Boolean)
 										.join("\n")}
-									className="cursor-pointer hover:shadow-lg transition-shadow hover:border-primary">
+									className={cn(
+										"cursor-pointer hover:shadow-lg transition-all hover:border-primary",
+										selectedResource?.id === resource.id &&
+											"border-2 border-primary ring-2 ring-primary/30 shadow-lg bg-primary/5"
+									)}>
 									<CardHeader className="p-1">
 										<div className="flex items-start justify-between gap-2">
 											<div className="flex items-center gap-2 flex-1 min-w-0">
@@ -312,9 +352,9 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 											<Button
 												variant="ghost"
 												size="icon"
-												className="h-6 w-6 hover:bg-destructive/10 hover:text-destructive"
+												className="size-6 hover:bg-destructive/10 hover:text-destructive"
 												onClick={(e) => handleDeleteClick(e, resource)}>
-												<X className="h-4 w-4" />
+												<X className="size-4" />
 											</Button>
 										</div>
 									</CardHeader>
@@ -342,8 +382,13 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 				<AlertDialogContent>
 					<AlertDialogHeader>
 						<AlertDialogTitle>Delete Resource</AlertDialogTitle>
-						<AlertDialogDescription>
-							Are you sure you want to delete "{resourceToDelete?.name}"? This action cannot be undone.
+						<AlertDialogDescription className="space-y-2">
+							<p>Are you sure you want to delete "{resourceToDelete?.name}"?</p>
+							<p className="text-amber-500 font-medium">
+								⚠️ This will also delete any split or trimmed videos created from this resource, and remove all related
+								clips from the timeline.
+							</p>
+							<p>This action cannot be undone.</p>
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>

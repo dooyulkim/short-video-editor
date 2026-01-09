@@ -104,7 +104,7 @@ export function EditTools({ className }: EditToolsProps) {
 						? "Position playhead over the clip"
 						: "Cut clip at playhead (splits into two clips)"
 				}>
-				<Scissors className="h-3 w-3 mr-1.5" />
+				<Scissors className="size-3 mr-1.5" />
 				Cut
 			</Button>
 
@@ -115,7 +115,7 @@ export function EditTools({ className }: EditToolsProps) {
 				disabled={!hasSelection}
 				className="h-7 px-2 text-xs"
 				title={!hasSelection ? "Select a clip first" : "Enable trim mode to adjust clip start/end"}>
-				<Minimize2 className="h-3 w-3 mr-1.5" />
+				<Minimize2 className="size-3 mr-1.5" />
 				Trim
 			</Button>
 
@@ -126,7 +126,7 @@ export function EditTools({ className }: EditToolsProps) {
 				disabled={!hasSelection}
 				className="h-7 px-2 text-xs"
 				title={!hasSelection ? "Select a clip first" : "Delete selected clip"}>
-				<Trash2 className="h-3 w-3 mr-1.5" />
+				<Trash2 className="size-3 mr-1.5" />
 				Delete
 			</Button>
 
@@ -137,7 +137,7 @@ export function EditTools({ className }: EditToolsProps) {
 				disabled={!hasSelection}
 				className="h-7 px-2 text-xs"
 				title={!hasSelection ? "Select a clip first" : "Duplicate clip (places copy after original)"}>
-				<Copy className="h-3 w-3 mr-1.5" />
+				<Copy className="size-3 mr-1.5" />
 				Duplicate
 			</Button>
 		</div>

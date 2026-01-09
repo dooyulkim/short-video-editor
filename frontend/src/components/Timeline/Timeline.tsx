@@ -14,7 +14,7 @@ import {
 	Trash2,
 	Eye,
 	EyeOff,
-	RotateCcw,
+	SkipBack,
 	Volume2,
 	VolumeX,
 } from "lucide-react";
@@ -727,6 +727,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 					type: resource.type,
 					url: resource.url,
 					name: resource.name,
+					width: resource.metadata?.width,
+					height: resource.metadata?.height,
 				},
 			};
 
@@ -851,8 +853,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 							size="icon"
 							onClick={handleZoomOut}
 							disabled={effectiveZoom <= MIN_ZOOM}
-							className="h-6 w-6">
-							<Minus className="h-3 w-3" />
+							className="size-6">
+							<Minus className="size-3" />
 						</Button>
 						<span className="text-xs text-gray-300 min-w-16 text-center">{effectiveZoom.toFixed(0)} px/s</span>
 						<Button
@@ -860,8 +862,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 							size="icon"
 							onClick={handleZoomIn}
 							disabled={effectiveZoom >= MAX_ZOOM}
-							className="h-6 w-6">
-							<Plus className="h-3 w-3" />
+							className="size-6">
+							<Plus className="size-3" />
 						</Button>
 					</div>
 
@@ -871,25 +873,25 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
 								<Button variant="outline" size="sm" className="h-6 text-xs">
-									<Plus className="h-3 w-3 mr-1" />
+									<Plus className="size-3 mr-1" />
 									Add Layer
 								</Button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent>
 								<DropdownMenuItem onClick={() => timeline?.addLayer("video")}>
-									<Video className="h-4 w-4 mr-2" />
+									<Video className="size-4 mr-2" />
 									Video Layer
 								</DropdownMenuItem>
 								<DropdownMenuItem onClick={() => timeline?.addLayer("audio")}>
-									<Music className="h-4 w-4 mr-2" />
+									<Music className="size-4 mr-2" />
 									Audio Layer
 								</DropdownMenuItem>
 								<DropdownMenuItem onClick={() => timeline?.addLayer("image")}>
-									<ImageIcon className="h-4 w-4 mr-2" />
+									<ImageIcon className="size-4 mr-2" />
 									Image Layer
 								</DropdownMenuItem>
 								<DropdownMenuItem onClick={() => timeline?.addLayer("text")}>
-									<Type className="h-4 w-4 mr-2" />
+									<Type className="size-4 mr-2" />
 									Text Layer
 								</DropdownMenuItem>
 							</DropdownMenuContent>
@@ -910,9 +912,9 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 									timeline.setCurrentTime(0);
 								}
 							}}
-							className="h-6 w-6"
-							title="Reset to start">
-							<RotateCcw className="h-3 w-3" />
+							className="size-6"
+							title="Go to start">
+							<SkipBack className="size-3" />
 						</Button>
 					</div>
 				</div>
@@ -946,7 +948,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 						handleNewLayerDrop(e, 0);
 					}}>
 					<div className="flex items-center gap-1 text-xs text-gray-400">
-						<Plus className="h-3 w-3" />
+						<Plus className="size-3" />
 						<span>Drop to add</span>
 					</div>
 				</div>
@@ -1048,34 +1050,34 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 									<Button
 										variant="ghost"
 										size="icon"
-										className="h-5 w-5 hover:bg-blue-500/20"
+										className="size-5 hover:bg-blue-500/20"
 										onClick={(e) => {
 											e.stopPropagation();
 											timeline?.toggleLayerVisibility(layer.id);
 										}}
 										title={layer.visible ? "Hide layer" : "Show layer"}>
-										{layer.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3 opacity-50" />}
+										{layer.visible ? <Eye className="size-3" /> : <EyeOff className="size-3 opacity-50" />}
 									</Button>
 									{(layer.type === "video" || layer.type === "audio") && (
 										<Button
 											variant="ghost"
 											size="icon"
-											className="h-5 w-5 hover:bg-blue-500/20"
+											className="size-5 hover:bg-blue-500/20"
 											onClick={(e) => {
 												e.stopPropagation();
 												timeline?.toggleLayerMute(layer.id);
 											}}
 											title={layer.muted ? "Unmute layer" : "Mute layer"}>
-											{layer.muted ? <VolumeX className="h-3 w-3 text-red-400" /> : <Volume2 className="h-3 w-3" />}
+											{layer.muted ? <VolumeX className="size-3 text-red-400" /> : <Volume2 className="size-3" />}
 										</Button>
 									)}
 									<Button
 										variant="ghost"
 										size="icon"
-										className="h-5 w-5 hover:bg-red-500/20 hover:text-red-400"
+										className="size-5 hover:bg-red-500/20 hover:text-red-400"
 										onClick={() => timeline?.removeLayer(layer.id)}
 										title="Delete layer">
-										<Trash2 className="h-3 w-3" />
+										<Trash2 className="size-3" />
 									</Button>
 								</div>
 							</div>

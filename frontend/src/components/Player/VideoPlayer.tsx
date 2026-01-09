@@ -141,8 +141,9 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	}, [layers]);
 
 	/**
-	 * Detect canvas size based on the first video's dimensions
-	 * Uses mediaClipsKey to avoid re-running when only mute changes
+	 * Detect canvas size based on the largest video's dimensions
+	 * Prioritizes clip.data dimensions (from resource metadata) for immediate detection
+	 * Falls back to video element dimensions after loading
 	 */
 	useEffect(() => {
 		const detectCanvasSize = async () => {
@@ -153,23 +154,48 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				return;
 			}
 
-			// Find the first video clip using ref
-			const currentLayers = layersRef.current;
-			const firstVideoClip = currentLayers.flatMap((layer) => layer.clips).find((clip) => clip.data?.type === "video");
+			// Find all video clips
+			const videoClips = layers.flatMap((layer) => layer.clips).filter((clip) => clip.data?.type === "video");
 
-			if (firstVideoClip && videoElementsRef.current.has(firstVideoClip.resourceId)) {
-				const video = videoElementsRef.current.get(firstVideoClip.resourceId);
-				if (video && video.videoWidth && video.videoHeight) {
-					setLocalCanvasSize({ width: video.videoWidth, height: video.videoHeight });
-					setCanvasSize(video.videoWidth, video.videoHeight);
+			if (videoClips.length > 0) {
+				let maxWidth = 0;
+				let maxHeight = 0;
+
+				// Find the largest video dimensions
+				for (const clip of videoClips) {
+					// First try to get dimensions from clip data (set when clip is created from resource)
+					let clipWidth = clip.data?.width;
+					let clipHeight = clip.data?.height;
+
+					// Fall back to video element dimensions if available
+					if ((!clipWidth || !clipHeight) && videoElementsRef.current.has(clip.resourceId)) {
+						const video = videoElementsRef.current.get(clip.resourceId);
+						if (video && video.videoWidth && video.videoHeight) {
+							clipWidth = video.videoWidth;
+							clipHeight = video.videoHeight;
+						}
+					}
+
+					if (clipWidth && clipHeight) {
+						// Use the largest area to determine the canvas size
+						const currentArea = clipWidth * clipHeight;
+						const maxArea = maxWidth * maxHeight;
+						if (currentArea > maxArea) {
+							maxWidth = clipWidth;
+							maxHeight = clipHeight;
+						}
+					}
+				}
+
+				if (maxWidth > 0 && maxHeight > 0) {
+					setLocalCanvasSize({ width: maxWidth, height: maxHeight });
+					setCanvasSize(maxWidth, maxHeight);
 				}
 			}
 		};
 
-		if (isReady) {
-			detectCanvasSize();
-		}
-	}, [isReady, mediaClipsKey, initialWidth, initialHeight, setCanvasSize]); // Use mediaClipsKey instead of layers
+		detectCanvasSize();
+	}, [layers, initialWidth, initialHeight, setCanvasSize, isReady]); // Run whenever layers change
 
 	/**
 	 * Update display size based on container dimensions while maintaining aspect ratio
@@ -281,6 +307,33 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 					}
 				}
 			}
+
+			// Clean up video/image elements for resources that are no longer in any clip
+			const currentResourceIds = new Set(currentLayers.flatMap((layer) => layer.clips.map((clip) => clip.resourceId)));
+
+			// Remove unused video elements
+			videoElementsRef.current.forEach((video, resourceId) => {
+				if (!currentResourceIds.has(resourceId)) {
+					video.pause();
+					video.src = "";
+					video.load(); // Reset the video element
+					videoElementsRef.current.delete(resourceId);
+					console.log(`🗑️ Cleaned up video element for resource: ${resourceId}`);
+				}
+			});
+
+			// Remove unused image elements
+			imageElementsRef.current.forEach((_, resourceId) => {
+				if (!currentResourceIds.has(resourceId)) {
+					imageElementsRef.current.delete(resourceId);
+					setImageDimensions((prev) => {
+						const newMap = new Map(prev);
+						newMap.delete(resourceId);
+						return newMap;
+					});
+					console.log(`🗑️ Cleaned up image element for resource: ${resourceId}`);
+				}
+			});
 
 			setIsReady(true);
 		};
@@ -804,19 +857,9 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	}, [isPlaying, currentTime, isReady, playbackSyncKey]); // Use playbackSyncKey to avoid visibility/mute triggered re-syncs
 
 	return (
-		<div
-			ref={containerRef}
-			className={`relative ${className}`}
-			style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "12px" }}>
+		<div ref={containerRef} className={`relative flex items-center justify-center p-3 ${className}`}>
 			{/* Wrapper for canvas and overlay to ensure they align */}
-			<div
-				style={{
-					position: "relative",
-					border: "2px solid rgba(134, 165, 217, 0.4)",
-					borderRadius: "4px",
-					boxShadow: "0 0 20px rgba(0, 0, 0, 0.5)",
-					padding: "8px",
-				}}>
+			<div className="relative border-2 border-blue-300/40 rounded shadow-[0_0_20px_rgba(0,0,0,0.5)]">
 				<canvas
 					ref={canvasRef}
 					width={localCanvasSize.width}
@@ -824,9 +867,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 					style={{
 						width: displaySize.width ? `${displaySize.width}px` : "100%",
 						height: displaySize.height ? `${displaySize.height}px` : "100%",
-						display: "block",
 					}}
-					className="bg-black"
+					className="block bg-black"
 					onClick={(e) => {
 						const rect = e.currentTarget.getBoundingClientRect();
 						const x = ((e.clientX - rect.left) / rect.width) * localCanvasSize.width;

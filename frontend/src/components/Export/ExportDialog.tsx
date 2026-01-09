@@ -133,9 +133,25 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 			customResolution: effectiveResolution,
 		};
 
+		// Create a copy of the timeline with export resolution
+		// Include both the original canvas size (for scaling calculations) and export resolution
+		const timelineForExport = {
+			...timeline,
+			// Store original canvas size for position/scale calculations
+			sourceResolution: {
+				width: timeline.resolution.width,
+				height: timeline.resolution.height,
+			},
+			// Set the target export resolution
+			resolution: {
+				width: effectiveResolution.width,
+				height: effectiveResolution.height,
+			},
+		};
+
 		startTransition(async () => {
 			try {
-				const response = await startExport(timeline, exportSettings);
+				const response = await startExport(timelineForExport, exportSettings);
 				setExportTask({
 					taskId: response.task_id,
 					status: "pending",
@@ -209,7 +225,7 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 			<DialogContent className="sm:max-w-[500px]">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
-						<FileVideo className="h-5 w-5" />
+						<FileVideo className="size-5" />
 						Export Video
 					</DialogTitle>
 					<DialogDescription>Configure export settings for your video project</DialogDescription>
@@ -345,7 +361,7 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 
 				<DialogFooter className="gap-2">
 					<Button variant="outline" onClick={() => handleClose(false)} disabled={isExporting && !isFailed}>
-						<X className="h-4 w-4 mr-2" />
+						<X className="size-4 mr-2" />
 						{isExporting && !isFailed ? "Cancel" : "Close"}
 					</Button>
 
@@ -353,12 +369,12 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 						<Button onClick={handleStartExport} disabled={!canStartExport || isPending}>
 							{isExporting || isPending ? (
 								<>
-									<Loader2 className="h-4 w-4 mr-2 animate-spin" />
+									<Loader2 className="size-4 mr-2 animate-spin" />
 									Exporting...
 								</>
 							) : (
 								<>
-									<FileVideo className="h-4 w-4 mr-2" />
+									<FileVideo className="size-4 mr-2" />
 									Start Export
 								</>
 							)}
@@ -367,7 +383,7 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 
 					{isCompleted && (
 						<Button onClick={handleDownload}>
-							<Download className="h-4 w-4 mr-2" />
+							<Download className="size-4 mr-2" />
 							Download
 						</Button>
 					)}

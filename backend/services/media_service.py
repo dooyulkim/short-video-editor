@@ -303,14 +303,37 @@ class MediaService:
         Returns:
             True if deletion was successful
         """
+        import time
+        max_retries = 5
+        retry_delay = 0.5  # seconds
+
+        def delete_with_retry(path: str) -> bool:
+            """Attempt to delete a file with retries for Windows file locking."""
+            if not os.path.exists(path):
+                return True
+            
+            for attempt in range(max_retries):
+                try:
+                    os.remove(path)
+                    return True
+                except PermissionError as e:
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            f"File locked, retrying in {retry_delay}s "
+                            f"(attempt {attempt + 1}/{max_retries}): {path}"
+                        )
+                        time.sleep(retry_delay)
+                    else:
+                        raise e
+            return False
+
         try:
             # Delete main file
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            delete_with_retry(file_path)
             
             # Delete thumbnail if provided
-            if thumbnail_path and os.path.exists(thumbnail_path):
-                os.remove(thumbnail_path)
+            if thumbnail_path:
+                delete_with_retry(thumbnail_path)
             
             return True
         

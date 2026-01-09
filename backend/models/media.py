@@ -43,6 +43,7 @@ class MediaResource(BaseModel):
     thumbnail_path: Optional[str] = Field(None, description="Path to thumbnail image")
     waveform_path: Optional[str] = Field(None, description="Path to waveform image (for audio)")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Upload timestamp")
+    parent_id: Optional[str] = Field(None, description="ID of parent resource (for split/trimmed videos)")
     
     # Type-specific metadata
     video_metadata: Optional[VideoMetadata] = Field(None, description="Video-specific metadata")
