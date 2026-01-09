@@ -40,6 +40,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		height: initialHeight || 1920,
 	});
 	const [imageDimensions, setImageDimensions] = useState<Map<string, { width: number; height: number }>>(new Map());
+	const [videoDimensions, setVideoDimensions] = useState<Map<string, { width: number; height: number }>>(new Map());
 
 	// Update refs when state changes and detect scrubbing
 	useEffect(() => {
@@ -124,10 +125,20 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		[updateClip]
 	);
 
-	// Get selected clip for resize overlay
-	const selectedClip = selectedClipId
-		? layers.flatMap((layer) => layer.clips).find((clip) => clip.id === selectedClipId)
-		: null;
+	// Get selected clip for resize overlay, along with its layer type
+	let selectedClipInfo = null;
+	if (selectedClipId) {
+		for (const layer of layers) {
+			const clip = layer.clips.find((c) => c.id === selectedClipId);
+			if (clip) {
+				selectedClipInfo = { clip, layerType: layer.type };
+				break;
+			}
+		}
+	}
+
+	const selectedClip = selectedClipInfo?.clip ?? null;
+	const selectedClipLayerType = selectedClipInfo?.layerType;
 
 	/**
 	 * Create a stable key for media loading that only changes when clips are added/removed
@@ -154,8 +165,10 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				return;
 			}
 
-			// Find all video clips
-			const videoClips = layers.flatMap((layer) => layer.clips).filter((clip) => clip.data?.type === "video");
+			// Find all video clips (check both layer type and clip data type)
+			const videoClips = layers.flatMap((layer) =>
+				layer.clips.filter((clip) => layer.type === "video" || clip.data?.type === "video")
+			);
 
 			if (videoClips.length > 0) {
 				let maxWidth = 0;
@@ -233,6 +246,44 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	}, [localCanvasSize]);
 
 	/**
+	 * Deselect clip when clicking outside the preview panel
+	 * But not when clicking on timeline, toolbar, or other areas that handle their own selection
+	 */
+	useEffect(() => {
+		const handleClickOutside = (e: MouseEvent) => {
+			if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+				// Check if clicked on timeline area or other interactive areas - don't deselect in those cases
+				const target = e.target as HTMLElement;
+
+				// Don't deselect when clicking on:
+				// - Timeline canvas or container
+				// - Resource panel
+				// - Toolbar buttons (edit tools, etc.)
+				// - Any area that handles clip selection
+				const isInteractiveArea =
+					target.closest("[data-timeline]") ||
+					target.closest("[data-edit-tools]") ||
+					target.closest(".timeline-container") ||
+					target.closest('[class*="timeline"]') ||
+					target.closest('[class*="Timeline"]') ||
+					target.closest('[class*="toolbar"]') ||
+					target.closest('[class*="Toolbar"]') ||
+					target.closest("button") ||
+					target.closest('[role="button"]') ||
+					(target.tagName === "CANVAS" && !containerRef.current?.contains(target));
+
+				if (!isInteractiveArea) {
+					// Click was outside the preview panel and interactive areas, deselect
+					setSelectedClip(null);
+				}
+			}
+		};
+
+		document.addEventListener("mousedown", handleClickOutside);
+		return () => document.removeEventListener("mousedown", handleClickOutside);
+	}, [setSelectedClip]);
+
+	/**
 	 * Load video and image elements for all clips
 	 * Uses mediaClipsKey to avoid re-running when only mute changes
 	 */
@@ -240,8 +291,13 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		const loadMediaElements = async () => {
 			// Use refs to get current layers without dependency issues
 			const currentLayers = layersRef.current;
-			const videoClips = currentLayers.flatMap((layer) => layer.clips).filter((clip) => clip.data?.type === "video");
-			const imageClips = currentLayers.flatMap((layer) => layer.clips).filter((clip) => clip.data?.type === "image");
+			// Check both layer type and clip data type for proper media detection
+			const videoClips = currentLayers.flatMap((layer) =>
+				layer.clips.filter((clip) => layer.type === "video" || clip.data?.type === "video")
+			);
+			const imageClips = currentLayers.flatMap((layer) =>
+				layer.clips.filter((clip) => layer.type === "image" || clip.data?.type === "image")
+			);
 
 			// Create video elements for clips that don't have them
 			for (const clip of videoClips) {
@@ -259,7 +315,22 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 
 					// Wait for video to be ready
 					await new Promise<void>((resolve) => {
-						video.addEventListener("loadeddata", () => resolve(), { once: true });
+						video.addEventListener(
+							"loadeddata",
+							() => {
+								// Store video dimensions in state
+								if (video.videoWidth && video.videoHeight) {
+									setVideoDimensions((prev) =>
+										new Map(prev).set(clip.resourceId, {
+											width: video.videoWidth,
+											height: video.videoHeight,
+										})
+									);
+								}
+								resolve();
+							},
+							{ once: true }
+						);
 					});
 				}
 			}
@@ -318,6 +389,11 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 					video.src = "";
 					video.load(); // Reset the video element
 					videoElementsRef.current.delete(resourceId);
+					setVideoDimensions((prev) => {
+						const newMap = new Map(prev);
+						newMap.delete(resourceId);
+						return newMap;
+					});
 					console.log(`🗑️ Cleaned up video element for resource: ${resourceId}`);
 				}
 			});
@@ -885,7 +961,23 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 							const scaleX = typeof scale === "number" ? scale : scale.x;
 							const scaleY = typeof scale === "number" ? scale : scale.y;
 
-							if (layer.type === "image" || clip.data?.type === "image") {
+							if (layer.type === "video" || clip.data?.type === "video") {
+								const video = videoElementsRef.current.get(clip.resourceId);
+								if (video) {
+									const videoWidth = video.videoWidth || localCanvasSize.width;
+									const videoHeight = video.videoHeight || localCanvasSize.height;
+
+									const clipX = position.x !== 0 ? position.x : (localCanvasSize.width - videoWidth) / 2;
+									const clipY = position.y !== 0 ? position.y : (localCanvasSize.height - videoHeight) / 2;
+									const clipWidth = videoWidth * scaleX;
+									const clipHeight = videoHeight * scaleY;
+
+									if (x >= clipX && x <= clipX + clipWidth && y >= clipY && y <= clipY + clipHeight) {
+										setSelectedClip(clip.id);
+										return;
+									}
+								}
+							} else if (layer.type === "image" || clip.data?.type === "image") {
 								const img = imageElementsRef.current.get(clip.resourceId);
 								if (img) {
 									const imgWidth = img.naturalWidth || localCanvasSize.width;
@@ -946,15 +1038,42 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 					}}
 				/>
 
-				{/* Resize overlay for selected image clip */}
-				{selectedClip && selectedClip.data?.type === "image" && (
+				{/* Resize overlay for selected video clip */}
+				{selectedClip && (selectedClipLayerType === "video" || selectedClip.data?.type === "video") && (
 					<ImageResizeOverlay
 						clip={selectedClip}
 						canvasWidth={displaySize.width}
 						canvasHeight={displaySize.height}
 						onResize={handleResize}
-						imageWidth={imageDimensions.get(selectedClip.resourceId)?.width || localCanvasSize.width}
-						imageHeight={imageDimensions.get(selectedClip.resourceId)?.height || localCanvasSize.height}
+						imageWidth={
+							videoDimensions.get(selectedClip.resourceId)?.width || selectedClip.data?.width || localCanvasSize.width
+						}
+						imageHeight={
+							videoDimensions.get(selectedClip.resourceId)?.height ||
+							selectedClip.data?.height ||
+							localCanvasSize.height
+						}
+						scaleRatio={displaySize.width / localCanvasSize.width}
+						canvasSizeWidth={localCanvasSize.width}
+						canvasSizeHeight={localCanvasSize.height}
+					/>
+				)}
+
+				{/* Resize overlay for selected image clip */}
+				{selectedClip && (selectedClipLayerType === "image" || selectedClip.data?.type === "image") && (
+					<ImageResizeOverlay
+						clip={selectedClip}
+						canvasWidth={displaySize.width}
+						canvasHeight={displaySize.height}
+						onResize={handleResize}
+						imageWidth={
+							imageDimensions.get(selectedClip.resourceId)?.width || selectedClip.data?.width || localCanvasSize.width
+						}
+						imageHeight={
+							imageDimensions.get(selectedClip.resourceId)?.height ||
+							selectedClip.data?.height ||
+							localCanvasSize.height
+						}
 						scaleRatio={displaySize.width / localCanvasSize.width}
 						canvasSizeWidth={localCanvasSize.width}
 						canvasSizeHeight={localCanvasSize.height}
@@ -962,7 +1081,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				)}
 
 				{/* Resize overlay for selected text clip */}
-				{selectedClip && selectedClip.data?.type === "text" && (
+				{selectedClip && (selectedClipLayerType === "text" || selectedClip.data?.type === "text") && (
 					<ImageResizeOverlay
 						clip={selectedClip}
 						canvasWidth={displaySize.width}

@@ -257,8 +257,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			const y = layerY + 5;
 
 			const isSelected = clip.id === selectedClipId;
-			// Only image and text clips can be resized
-			const isResizable = layerType === "image" || layerType === "text";
+			// Image, text, and video clips can be resized (not audio which has fixed duration)
+			const isResizable = layerType === "image" || layerType === "text" || layerType === "video";
 
 			// Draw clip background
 			const clipColor = getClipColor();
@@ -393,7 +393,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 
 	/**
 	 * Check if cursor is near clip edge for resizing
-	 * Only image and text clips can be resized - video and audio have fixed durations
+	 * Image, text, and video clips can be resized - audio has fixed duration
 	 */
 	const getClipEdge = (x: number, y: number): { clip: Clip; edge: "left" | "right"; layerIndex: number } | null => {
 		const EDGE_THRESHOLD = 8; // pixels
@@ -404,8 +404,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		const layer = reversedLayers[layerIndex];
 		const actualLayerIndex = effectiveLayers.length - 1 - layerIndex;
 
-		// Only allow resizing for image and text layers (not video or audio)
-		if (layer.type === "video" || layer.type === "audio") {
+		// Only allow resizing for image, text, and video layers (not audio)
+		if (layer.type === "audio") {
 			return null;
 		}
 

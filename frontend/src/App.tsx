@@ -538,7 +538,7 @@ function AppContent() {
 						style={{ height: `${timelineHeight}px` }}
 						className="shrink-0 flex flex-col overflow-hidden bg-card border-t border-border">
 						{/* Edit Tools Bar */}
-						<div className="border-b border-border bg-muted/30 px-4 py-2">
+						<div className="border-b border-border bg-muted/30 px-4 py-2" data-edit-tools>
 							<EditTools />
 						</div>
 
