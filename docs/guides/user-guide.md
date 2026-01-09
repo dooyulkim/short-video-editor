@@ -89,12 +89,14 @@ Welcome to the Video Editor! This guide will help you create professional videos
 ### Uploading Files
 
 #### Method 1: Drag and Drop
+
 1. Open Resources panel
 2. Drag files from your computer
 3. Drop onto the upload area
 4. Wait for processing
 
 #### Method 2: Click to Upload
+
 1. Click "Upload Media" button
 2. Select files in dialog
 3. Click "Open"
@@ -103,16 +105,19 @@ Welcome to the Video Editor! This guide will help you create professional videos
 ### Supported Formats
 
 **Video**:
+
 - MP4 (recommended)
 - AVI, MOV, MKV
 - WebM, FLV, WMV
 
 **Audio**:
+
 - MP3 (recommended)
 - WAV, AAC, OGG
 - FLAC, M4A
 
 **Images**:
+
 - JPG, PNG (recommended)
 - GIF, BMP, WebP, SVG
 
@@ -136,6 +141,7 @@ Welcome to the Video Editor! This guide will help you create professional videos
 ### Adding Clips to Timeline
 
 1. **Drag from Resources**:
+
    - Select clip in Resources panel
    - Drag to desired position on timeline
    - Release to place
@@ -161,6 +167,8 @@ Welcome to the Video Editor! This guide will help you create professional videos
    - Right edge: Adjust end point
 4. **Visual Feedback**: Duration updates in real-time
 
+**Note**: For video and audio clips, the clip duration cannot exceed the original source duration. For example, a 10-second video clip cannot be extended beyond 10 seconds. Image and text clips have no such limitation and can be resized to any duration.
+
 ### Cutting Clips
 
 1. **Position Playhead**: Move to cut point
@@ -183,16 +191,19 @@ Welcome to the Video Editor! This guide will help you create professional videos
 ### Layer Management
 
 #### Adding Layers
+
 - Click "+ Add Layer" button
 - Choose type: Video, Audio, or Text
 - Layer appears in timeline
 
 #### Reordering Layers
+
 - Drag layer handle to move up/down
 - Higher layers render on top
 - Audio layers mix together
 
 #### Layer Controls
+
 - **Eye Icon**: Show/hide layer
 - **Lock Icon**: Lock/unlock editing
 - **Name**: Double-click to rename
@@ -228,7 +239,7 @@ Welcome to the Video Editor! This guide will help you create professional videos
 #### Applying Transitions
 
 1. **Select Effect**: Click transition in panel
-2. **Drag to Clip**: 
+2. **Drag to Clip**:
    - Drag to clip start for intro
    - Drag to clip end for outro
    - Drag between clips for transition
@@ -276,7 +287,8 @@ Welcome to the Video Editor! This guide will help you create professional videos
 
 #### Volume Control
 
-- **Clip Volume**: 
+- **Clip Volume**:
+
   1. Select audio clip
   2. Use volume slider (0-200%)
   3. See waveform adjust
@@ -288,7 +300,8 @@ Welcome to the Video Editor! This guide will help you create professional videos
 
 #### Audio Fades
 
-- **Fade In**: 
+- **Fade In**:
+
   1. Select audio clip
   2. Open transition panel
   3. Apply "Audio Fade In"
@@ -306,6 +319,7 @@ Welcome to the Video Editor! This guide will help you create professional videos
 ### Keyboard Shortcuts
 
 #### Playback
+
 - `Space`: Play/Pause
 - `S`: Stop
 - `Home`: Go to start
@@ -313,6 +327,7 @@ Welcome to the Video Editor! This guide will help you create professional videos
 - `←/→`: Step backward/forward
 
 #### Editing
+
 - `K`: Cut at playhead
 - `Delete`: Delete selected
 - `Ctrl+C`: Copy
@@ -322,17 +337,20 @@ Welcome to the Video Editor! This guide will help you create professional videos
 - `Ctrl+Y` or `Ctrl+Shift+Z`: Redo
 
 #### View
+
 - `+` or `=`: Zoom in
 - `-`: Zoom out
 - `0`: Reset zoom
 - `F`: Fit timeline to window
 
 #### Tools
+
 - `V`: Selection tool
 - `T`: Text tool
 - `A`: Audio tool
 
 #### General
+
 - `Ctrl+S`: Save project
 - `Ctrl+O`: Open project
 - `Ctrl+E`: Export video
@@ -344,6 +362,7 @@ Welcome to the Video Editor! This guide will help you create professional videos
 
 1. **Click Export**: Button in top toolbar
 2. **Choose Settings**:
+
    - **Resolution**: 1080p, 720p, or 480p
    - **Format**: MP4 (recommended) or WebM
    - **Quality**: High, Medium, or Low
@@ -355,11 +374,11 @@ Welcome to the Video Editor! This guide will help you create professional videos
 
 ### Resolution Guide
 
-| Resolution | Size | Use Case |
-|------------|------|----------|
-| **1080p** (1920x1080) | Large | HD, YouTube, professional |
-| **720p** (1280x720) | Medium | Web, social media |
-| **480p** (854x480) | Small | Mobile, quick sharing |
+| Resolution            | Size   | Use Case                  |
+| --------------------- | ------ | ------------------------- |
+| **1080p** (1920x1080) | Large  | HD, YouTube, professional |
+| **720p** (1280x720)   | Medium | Web, social media         |
+| **480p** (854x480)    | Small  | Mobile, quick sharing     |
 
 ### Quality Settings
 
@@ -417,6 +436,7 @@ Welcome to the Video Editor! This guide will help you create professional videos
 
 **Problem**: File won't upload
 **Solutions**:
+
 - Check file size (max 500MB)
 - Verify format is supported
 - Try different browser
@@ -427,6 +447,7 @@ Welcome to the Video Editor! This guide will help you create professional videos
 
 **Problem**: Preview is choppy
 **Solutions**:
+
 - Lower preview resolution
 - Close other tabs/programs
 - Zoom out on timeline
@@ -437,6 +458,7 @@ Welcome to the Video Editor! This guide will help you create professional videos
 
 **Problem**: Export doesn't complete
 **Solutions**:
+
 - Check available disk space
 - Reduce export quality
 - Shorten video length
@@ -447,6 +469,7 @@ Welcome to the Video Editor! This guide will help you create professional videos
 
 **Problem**: Audio doesn't match video
 **Solutions**:
+
 - Re-upload source files
 - Check clip trim points
 - Adjust audio clip position
@@ -457,6 +480,7 @@ Welcome to the Video Editor! This guide will help you create professional videos
 
 **Problem**: Button/feature not visible
 **Solutions**:
+
 - Check responsive layout (resize window)
 - Look in collapsed panels
 - Update browser
@@ -473,20 +497,21 @@ Welcome to the Video Editor! This guide will help you create professional videos
 
 ### Browser Compatibility
 
-| Browser | Version | Status |
-|---------|---------|--------|
-| Chrome | 90+ | ✅ Fully supported |
-| Firefox | 88+ | ✅ Fully supported |
-| Safari | 14+ | ✅ Fully supported |
-| Edge | 90+ | ✅ Fully supported |
-| Opera | 76+ | ⚠️ Mostly supported |
-| Others | - | ❌ Not tested |
+| Browser | Version | Status              |
+| ------- | ------- | ------------------- |
+| Chrome  | 90+     | ✅ Fully supported  |
+| Firefox | 88+     | ✅ Fully supported  |
+| Safari  | 14+     | ✅ Fully supported  |
+| Edge    | 90+     | ✅ Fully supported  |
+| Opera   | 76+     | ⚠️ Mostly supported |
+| Others  | -       | ❌ Not tested       |
 
 ---
 
 ## Quick Reference Card
 
 ### Essential Shortcuts
+
 ```
 Space      Play/Pause
 Delete     Delete clip
@@ -499,6 +524,7 @@ Ctrl+E     Export
 ```
 
 ### Workflow Checklist
+
 ```
 ☐ Upload media
 ☐ Add clips to timeline

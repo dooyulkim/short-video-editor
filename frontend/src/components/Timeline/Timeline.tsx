@@ -111,6 +111,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	} | null>(null);
 	const [resizeStartTime, setResizeStartTime] = useState<number>(0);
 	const [resizeStartDuration, setResizeStartDuration] = useState<number>(0);
+	const [resizeStartTrimStart, setResizeStartTrimStart] = useState<number>(0);
+	const [resizeStartTrimEnd, setResizeStartTrimEnd] = useState<number>(0);
 	const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
 	const [editingLayerName, setEditingLayerName] = useState<string>("");
 	const [layerSidebarWidth, setLayerSidebarWidth] = useState<number>(150);
@@ -681,6 +683,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			setSelectedClipId(edgeInfo.clip.id);
 			setResizeStartTime(edgeInfo.clip.startTime);
 			setResizeStartDuration(edgeInfo.clip.duration);
+			setResizeStartTrimStart(edgeInfo.clip.trimStart || 0);
+			setResizeStartTrimEnd(edgeInfo.clip.trimEnd || 0);
 			setDragStartX(x);
 			if (timeline) {
 				timeline.setSelectedClip(edgeInfo.clip.id);
@@ -725,27 +729,85 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			const deltaX = x - dragStartX;
 			const deltaTime = deltaX / effectiveZoom;
 
-			if (resizingClip.edge === "left") {
-				// Resize from left edge (change startTime and duration)
-				const newStartTime = Math.max(0, resizeStartTime + deltaTime);
-				const deltaStart = newStartTime - resizeStartTime;
-				const newDuration = Math.max(0.1, resizeStartDuration - deltaStart);
+			// Find the clip being resized to check source duration
+			let resizingClipData: Clip | null = null;
+			for (const layer of effectiveLayers) {
+				const foundClip = layer.clips.find((clip) => clip.id === resizingClip.clipId);
+				if (foundClip) {
+					resizingClipData = foundClip;
+					break;
+				}
+			}
 
-				if (timeline) {
-					const layerIndex = effectiveLayers.findIndex((layer) =>
-						layer.clips.some((clip) => clip.id === resizingClip.clipId)
-					);
-					if (layerIndex !== -1) {
+			// Get source duration for video/audio clips
+			const sourceDuration = resizingClipData?.data?.sourceDuration;
+			const isVideoOrAudio = resizingClipData?.data?.type === "video" || resizingClipData?.data?.type === "audio";
+
+			if (isVideoOrAudio && sourceDuration) {
+				// For video/audio: trim handles slide over the source media
+				// trimStart = how much to skip from beginning
+				// trimEnd = how much to cut from end
+				// duration = sourceDuration - trimStart - trimEnd
+
+				if (resizingClip.edge === "left") {
+					// Left handle: adjust trimStart (and startTime on timeline)
+					// Dragging right = increase trimStart = start later in video
+					// Dragging left = decrease trimStart = start earlier in video
+					const originalEndTime = resizeStartTime + resizeStartDuration;
+					let newTrimStart = resizeStartTrimStart + deltaTime;
+					// Constrain trimStart: min 0, max = sourceDuration - trimEnd - 0.1 (minimum visible duration)
+					const maxTrimStart = sourceDuration - resizeStartTrimEnd - 0.1;
+					newTrimStart = Math.max(0, Math.min(newTrimStart, maxTrimStart));
+
+					const newDuration = sourceDuration - newTrimStart - resizeStartTrimEnd;
+					const newStartTime = originalEndTime - newDuration;
+
+					// Ensure startTime doesn't go negative
+					if (newStartTime >= 0 && timeline) {
 						timeline.moveClip(resizingClip.clipId, newStartTime);
-						timeline.updateClip(resizingClip.clipId, { duration: newDuration });
+						timeline.updateClip(resizingClip.clipId, {
+							duration: newDuration,
+							trimStart: newTrimStart,
+						});
+					}
+				} else {
+					// Right handle: adjust trimEnd (startTime stays fixed)
+					// Dragging right = decrease trimEnd = end later in video
+					// Dragging left = increase trimEnd = end earlier in video
+					let newTrimEnd = resizeStartTrimEnd - deltaTime;
+					// Constrain trimEnd: min 0, max = sourceDuration - trimStart - 0.1
+					const maxTrimEnd = sourceDuration - resizeStartTrimStart - 0.1;
+					newTrimEnd = Math.max(0, Math.min(newTrimEnd, maxTrimEnd));
+
+					const newDuration = sourceDuration - resizeStartTrimStart - newTrimEnd;
+
+					if (timeline) {
+						timeline.updateClip(resizingClip.clipId, {
+							duration: newDuration,
+							trimEnd: newTrimEnd,
+						});
 					}
 				}
 			} else {
-				// Resize from right edge (change duration only)
-				const newDuration = Math.max(0.1, resizeStartDuration + deltaTime);
+				// For images/text: simple duration resize (no trim concept)
+				if (resizingClip.edge === "left") {
+					// Keep end time fixed, change start time
+					const originalEndTime = resizeStartTime + resizeStartDuration;
+					const newStartTime = Math.max(0, resizeStartTime + deltaTime);
+					const constrainedStartTime = Math.min(newStartTime, originalEndTime - 0.1);
+					const newDuration = originalEndTime - constrainedStartTime;
 
-				if (timeline) {
-					timeline.updateClip(resizingClip.clipId, { duration: newDuration });
+					if (timeline) {
+						timeline.moveClip(resizingClip.clipId, constrainedStartTime);
+						timeline.updateClip(resizingClip.clipId, { duration: newDuration });
+					}
+				} else {
+					// Change duration only, start time fixed
+					const newDuration = Math.max(0.1, resizeStartDuration + deltaTime);
+
+					if (timeline) {
+						timeline.updateClip(resizingClip.clipId, { duration: newDuration });
+					}
 				}
 			}
 			setCursorStyle("ew-resize");
@@ -792,6 +854,36 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	};
 
 	/**
+	 * Handle double click on canvas to reset trim on video/audio clips
+	 */
+	const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+		const canvas = canvasRef.current;
+		if (!canvas) return;
+
+		const rect = canvas.getBoundingClientRect();
+		const x = e.clientX - rect.left + (scrollContainerRef.current?.scrollLeft || 0);
+		const y = e.clientY - rect.top + (scrollContainerRef.current?.scrollTop || 0);
+
+		const clipAtPosition = findClipAtPosition(x, y);
+		if (!clipAtPosition) return;
+
+		const clip = clipAtPosition.clip;
+		const isVideoOrAudio = clip.data?.type === "video" || clip.data?.type === "audio";
+		const sourceDuration = clip.data?.sourceDuration;
+
+		// Only reset trim for video/audio clips that have a source duration
+		if (isVideoOrAudio && sourceDuration && timeline) {
+			// Reset trim values and restore original duration
+			timeline.updateClip(clip.id, {
+				trimStart: 0,
+				trimEnd: 0,
+				duration: sourceDuration,
+			});
+			console.log(`Reset trim for clip ${clip.id}, restored duration to ${sourceDuration}s`);
+		}
+	};
+
+	/**
 	 * Handle drop on new layer drop zone
 	 */
 	const handleNewLayerDrop = (e: React.DragEvent, dropTime: number) => {
@@ -823,6 +915,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 						type: resource.type,
 						url: resource.url,
 						name: resource.name,
+						sourceDuration: resource.duration,
 					},
 				};
 
@@ -977,6 +1070,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 					name: resource.name,
 					width: resource.metadata?.width,
 					height: resource.metadata?.height,
+					sourceDuration: resource.duration,
 				},
 			};
 
@@ -1361,6 +1455,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 						onMouseMove={handleCanvasMouseMove}
 						onMouseUp={handleCanvasMouseUp}
 						onMouseLeave={handleCanvasMouseUp}
+						onDoubleClick={handleCanvasDoubleClick}
 					/>
 				</div>
 			</div>
