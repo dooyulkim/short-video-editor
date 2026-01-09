@@ -559,17 +559,22 @@ class ExportService:
             output_path = str(self.output_dir / output_path)
             logger.info(f"Writing video: {output_path}")
             
-            # Use optimized encoding settings for performance
+            # Optimized encoding for fast export
+            # 'ultrafast' preset is ~5-10x faster than 'medium' with slightly larger file
             composite_video.write_videofile(
                 output_path,
                 fps=fps,
                 codec='libx264',
                 audio_codec='aac',
-                preset='medium',  # Balance between speed and quality
-                threads=4,  # Use multiple threads for encoding
+                preset='ultrafast',  # Fastest encoding
+                threads=0,  # Auto-detect optimal thread count
+                ffmpeg_params=[
+                    '-crf', '23',  # Quality (18-28, lower=better)
+                    '-movflags', '+faststart',  # Fast web playback
+                ],
                 temp_audiofile=f'temp-audio-{uuid.uuid4()}.m4a',
                 remove_temp=True,
-                logger=None  # Disable moviepy's verbose logging
+                logger=None
             )
 
             # Clean up clips
