@@ -1,5 +1,6 @@
 """
 Export Service for rendering final video from timeline data.
+Optimized for performance with minimal overhead.
 """
 import uuid
 import logging
@@ -16,7 +17,7 @@ from moviepy.editor import (
 )
 from moviepy.video.fx import fadein, fadeout
 
-# Configure logger
+# Configure logger - set to INFO level for cleaner output
 logger = logging.getLogger("video-editor.export_service")
 
 
@@ -134,27 +135,20 @@ class ExportService:
     def _apply_keyframe_transforms(
         self, clip, clip_data: Dict, original_width: int, original_height: int,
         canvas_width: int, canvas_height: int,
-        source_width: int = None, source_height: int = None,
-        scale_factor_x: float = 1.0, scale_factor_y: float = 1.0
+        source_width: int = None, source_height: int = None
     ):
         """
         Apply keyframe-based transformations to a clip.
-        
-        The frontend preview draws video at original dimensions × user_scale.
-        When exporting to a different resolution, we scale everything proportionally
-        so the video appears the same relative to the canvas.
 
         Args:
             clip: MoviePy clip object
             clip_data: Clip data containing keyframes
             original_width: Original width of the clip
             original_height: Original height of the clip
-            canvas_width: Export canvas width for centering
-            canvas_height: Export canvas height for centering
-            source_width: Original source canvas width (for scaling)
-            source_height: Original source canvas height (for scaling)
-            scale_factor_x: Scale factor for X positions
-            scale_factor_y: Scale factor for Y positions
+            canvas_width: Export canvas width
+            canvas_height: Export canvas height
+            source_width: Source canvas width (for scaling)
+            source_height: Source canvas height (for scaling)
 
         Returns:
             Transformed clip
@@ -171,8 +165,7 @@ class ExportService:
             return self._apply_static_transforms(
                 clip, clip_data, original_width, original_height,
                 canvas_width, canvas_height,
-                source_width=source_width, source_height=source_height,
-                scale_factor_x=scale_factor_x, scale_factor_y=scale_factor_y
+                source_width=source_width, source_height=source_height
             )
 
         # Calculate canvas-to-canvas scale factors
@@ -286,28 +279,21 @@ class ExportService:
     def _apply_static_transforms(
         self, clip, clip_data: Dict, original_width: int, original_height: int,
         canvas_width: int, canvas_height: int,
-        source_width: int = None, source_height: int = None,
-        scale_factor_x: float = 1.0, scale_factor_y: float = 1.0
+        source_width: int = None, source_height: int = None
     ):
         """
-        Apply static (non-keyframed) transformations to a clip.
-        Handles scaling from source canvas (preview) to export canvas dimensions.
-        
-        The frontend preview draws video at original dimensions × user_scale.
-        When exporting to a different resolution, we scale everything proportionally
-        so the video appears the same relative to the canvas.
+        Apply static transformations to a clip.
+        Scales from source canvas (preview) to export canvas dimensions.
 
         Args:
             clip: MoviePy clip object
             clip_data: Clip data
             original_width: Original width of the media
             original_height: Original height of the media
-            canvas_width: Export canvas width for centering
-            canvas_height: Export canvas height for centering
-            source_width: Original source canvas width (for scaling positions)
-            source_height: Original source canvas height (for scaling positions)
-            scale_factor_x: Scale factor for X positions (export_width / source_width)
-            scale_factor_y: Scale factor for Y positions (export_height / source_height)
+            canvas_width: Export canvas width
+            canvas_height: Export canvas height
+            source_width: Source canvas width (for scaling)
+            source_height: Source canvas height (for scaling)
 
         Returns:
             Transformed clip
@@ -332,77 +318,43 @@ class ExportService:
         pos_x = position.get("x", 0) if position else 0
         pos_y = position.get("y", 0) if position else 0
 
-        # ============================================================
-        # FILL MODE: When position is (0,0) and scale is 1 (default/untransformed),
-        # stretch the video to fill the entire export canvas.
-        # This prioritizes the export ratio over the original video ratio.
-        # ============================================================
+        # Check if default transform (fill mode)
         is_default_transform = (
             pos_x == 0 and pos_y == 0
             and user_scale_x == 1 and user_scale_y == 1
         )
-        
-        logger.info(
-            f"         Video: {original_width}x{original_height}, "
-            f"Source canvas: {source_width}x{source_height}, "
-            f"Export canvas: {canvas_width}x{canvas_height}"
-        )
-        logger.info(f"         User scale: x={user_scale_x}, y={user_scale_y}")
-        logger.info(f"         Position: ({pos_x}, {pos_y}), Default transform: {is_default_transform}")
 
         if is_default_transform:
             # FILL MODE: Stretch video to fill entire export canvas
-            # This ignores original aspect ratio and fills the export dimensions
             scaled_width = canvas_width
             scaled_height = canvas_height
             final_pos_x = 0
             final_pos_y = 0
-            
-            logger.info(
-                f"         FILL MODE: Stretching to fill export canvas "
-                f"{scaled_width}x{scaled_height}"
-            )
         else:
-            # PRESERVE MODE: When user has manually positioned or scaled the video,
-            # scale proportionally from preview to export canvas
+            # PRESERVE MODE: Scale proportionally from preview to export canvas
             canvas_scale_x = canvas_width / source_width if source_width > 0 else 1.0
             canvas_scale_y = canvas_height / source_height if source_height > 0 else 1.0
             
-            logger.info(
-                f"         Canvas scale factors: x={canvas_scale_x:.3f}, y={canvas_scale_y:.3f}"
-            )
-
-            # In preview, video is drawn at: original_size * user_scale
-            # In export, we scale that by the canvas ratio
-            # Final size = original_size * user_scale * canvas_scale
             final_scale_x = user_scale_x * canvas_scale_x
             final_scale_y = user_scale_y * canvas_scale_y
             
             scaled_width = int(original_width * final_scale_x)
             scaled_height = int(original_height * final_scale_y)
 
-            logger.info(
-                f"         Final scale: x={final_scale_x:.3f}, y={final_scale_y:.3f}, "
-                f"scaled size={scaled_width}x{scaled_height}"
-            )
-
             # Scale positions proportionally
             final_pos_x = pos_x * canvas_scale_x
             final_pos_y = pos_y * canvas_scale_y
 
-        logger.info(f"         Final position: ({final_pos_x}, {final_pos_y})")
-
         # Resize clip
         clip = clip.resize(width=scaled_width, height=scaled_height)
-
         clip = clip.set_position((final_pos_x, final_pos_y))
 
-        # Apply rotation
+        # Apply rotation if present
         rotation = clip_data.get("rotation")
         if rotation:
             clip = clip.rotate(rotation)
 
-        # Apply opacity
+        # Apply opacity if not 1
         opacity = clip_data.get("opacity")
         if opacity is not None and opacity != 1:
             clip = clip.set_opacity(opacity)
@@ -449,81 +401,52 @@ class ExportService:
         Args:
             timeline_data: Timeline JSON with layers and clips
             output_path: Path for output video file
-            resolution: Resolution preset (1080p, 720p, 480p) - used as fallback
+            resolution: Resolution preset (1080p, 720p, 480p) - fallback
             fps: Frames per second for output video
-            progress_callback: Optional callback function for progress updates
-            width: Optional explicit width (overrides resolution preset)
-            height: Optional explicit height (overrides resolution preset)
+            progress_callback: Optional callback for progress updates
+            width: Optional explicit width
+            height: Optional explicit height
 
         Returns:
             Path to exported video file
         """
-        logger.info(f"🎬 export_timeline called: resolution={resolution}, fps={fps}, output={output_path}")
+        logger.info(f"🎬 Starting export: {width}x{height} @ {fps}fps")
 
         try:
             if progress_callback:
                 progress_callback(0.0)
 
-            # Get resolution dimensions - prefer explicit width/height, then timeline resolution, then preset
-            if width and height:
-                # Use explicit dimensions passed in
-                pass
-            elif timeline_data.get("resolution"):
-                # Use timeline resolution (from frontend canvas size)
-                timeline_res = timeline_data["resolution"]
-                width = timeline_res.get("width", 1080)
-                height = timeline_res.get("height", 1920)
-            else:
-                # Fall back to resolution preset
-                width, height = self.resolutions.get(resolution, (1920, 1080))
+            # Get resolution dimensions
+            if not (width and height):
+                if timeline_data.get("resolution"):
+                    timeline_res = timeline_data["resolution"]
+                    width = timeline_res.get("width", 1080)
+                    height = timeline_res.get("height", 1920)
+                else:
+                    width, height = self.resolutions.get(resolution, (1920, 1080))
             
-            # Get source resolution (original canvas size from preview)
-            # This is needed to scale positions/sizes from preview to export resolution
+            # Get source resolution for scaling positions
             source_res = timeline_data.get("sourceResolution", {})
             source_width = source_res.get("width", width)
             source_height = source_res.get("height", height)
-            
-            # Calculate scale factors from source to export resolution
-            # These are used to transform clip positions and sizes
-            scale_factor_x = width / source_width if source_width > 0 else 1.0
-            scale_factor_y = height / source_height if source_height > 0 else 1.0
-            
-            logger.info(f"   Output dimensions: {width}x{height}")
-            logger.info(f"   Source dimensions: {source_width}x{source_height}")
-            logger.info(f"   Scale factors: x={scale_factor_x:.4f}, y={scale_factor_y:.4f}")
 
-            # Extract layers from timeline data
             layers = timeline_data.get("layers", [])
-            logger.info(f"   Processing {len(layers)} layers")
 
             # Calculate content duration based on the end of the last resource placed
-            # This ensures we only export actual content, not empty timeline space
             content_duration = self._calculate_content_duration(layers)
-
-            # Use content duration if available, otherwise fall back to timeline duration
-            # but ensure we have at least some duration
             timeline_duration = timeline_data.get("duration", 0)
             duration = content_duration if content_duration > 0 else timeline_duration
-            logger.info(
-                f"   Content duration: {content_duration:.2f}s, "
-                f"Timeline duration: {timeline_duration:.2f}s, Using: {duration:.2f}s"
-            )
 
             if duration <= 0:
-                logger.error("   No content to export: timeline has no clips")
                 raise Exception("No content to export: timeline has no clips")
 
             if progress_callback:
                 progress_callback(0.1)
 
-            # Process video layers
-            # Each layer is processed in order (index 0 = bottom, higher index = top)
-            # Within a layer, clips are ordered by start time
+            # Process layers
             video_clips = []
             audio_clips = []
             text_clips = []
-
-            # Track layer index for proper compositing order
             layer_index = 0
 
             for layer in layers:
@@ -532,136 +455,82 @@ class ExportService:
                 visible = layer.get("visible", True)
                 muted = layer.get("muted", False)
 
-                logger.info(
-                    f"   Processing layer {layer_index}: type={layer_type}, "
-                    f"clips={len(clips)}, visible={visible}, muted={muted}"
-                )
-
                 if not visible:
-                    logger.info(f"      Skipping layer {layer_index} (not visible)")
                     layer_index += 1
                     continue
 
                 if layer_type == "video":
                     for clip in clips:
-                        clip_id = clip.get("id", "unknown")
                         resource_id = clip.get("resourceId", "unknown")
-                        # Check if clip data indicates this is actually an image
                         clip_data = clip.get("data", {})
                         actual_clip_type = clip_data.get("type", None)
                         
-                        # If type not explicitly set, try to detect from file extension
+                        # Detect type from file extension if not set
                         if actual_clip_type is None:
                             media_path = self._find_media_file(resource_id)
                             if media_path:
                                 ext = media_path.suffix.lower()
-                                if ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg']:
-                                    actual_clip_type = "image"
-                                    logger.info(f"      Detected image type from extension: {ext}")
-                                else:
-                                    actual_clip_type = "video"
+                                actual_clip_type = "image" if ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'] else "video"
                             else:
                                 actual_clip_type = "video"
-                        
-                        logger.info(f"      Processing clip {clip_id} (resource: {resource_id}, type: {actual_clip_type})")
 
-                        # Process clip with the correct type (image or video)
-                        # Pass scale factors for position/size transformation
                         processed_clip = self._process_video_clip(
                             clip, width, height, fps, muted=True, clip_type=actual_clip_type,
-                            source_width=source_width, source_height=source_height,
-                            scale_factor_x=scale_factor_x, scale_factor_y=scale_factor_y
+                            source_width=source_width, source_height=source_height
                         )
                         if processed_clip:
                             video_clip, start_time, end_time = processed_clip
-                            # Store with layer index for proper z-ordering
                             video_clips.append((video_clip, start_time, end_time, layer_index))
-                            logger.info(f"         Clip processed: start={start_time:.2f}s, end={end_time:.2f}s")
-                        else:
-                            logger.warning(f"         Failed to process clip {clip_id}")
 
-                        # Extract and add audio from video clip if layer is not muted
-                        # Only extract audio from actual video clips, not images
+                        # Extract audio from video clips if layer is not muted
                         if not muted and actual_clip_type == "video":
                             video_audio = self._extract_audio_from_video_clip(clip)
                             if video_audio:
                                 audio_clips.append(video_audio)
-                                logger.info("         Audio extracted from video clip")
-                            else:
-                                logger.info("         No audio in video clip or extraction failed")
 
                 elif layer_type == "image":
-                    # Process image layers - treat images like video clips for compositing
                     for clip in clips:
-                        clip_id = clip.get("id", "unknown")
-                        resource_id = clip.get("resourceId", "unknown")
-                        logger.info(f"      Processing image clip {clip_id} (resource: {resource_id})")
-
-                        # Process image clip (images have no audio)
-                        # Pass scale factors for position/size transformation
                         processed_clip = self._process_video_clip(
                             clip, width, height, fps, muted=True, clip_type="image",
-                            source_width=source_width, source_height=source_height,
-                            scale_factor_x=scale_factor_x, scale_factor_y=scale_factor_y
+                            source_width=source_width, source_height=source_height
                         )
                         if processed_clip:
                             image_clip, start_time, end_time = processed_clip
-                            # Store with layer index for proper z-ordering
                             video_clips.append((image_clip, start_time, end_time, layer_index))
-                            logger.info(f"         Image clip processed: start={start_time:.2f}s, end={end_time:.2f}s")
-                        else:
-                            logger.warning(f"         Failed to process image clip {clip_id}")
 
                 elif layer_type == "audio":
-                    # Process audio layers
                     if not muted:
                         for clip in clips:
-                            clip_id = clip.get("id", "unknown")
-                            logger.info(f"      Processing audio clip {clip_id}")
                             processed_audio = self._process_audio_clip(clip)
                             if processed_audio:
                                 audio_clips.append(processed_audio)
-                                logger.info("         Audio clip processed")
-                            else:
-                                logger.warning(f"         Failed to process audio clip {clip_id}")
 
                 elif layer_type == "text":
                     for clip in clips:
-                        clip_id = clip.get("id", "unknown")
-                        logger.info(f"      Processing text clip {clip_id}")
                         processed_text = self._process_text_clip(
                             clip, width, height, fps,
-                            source_width=source_width, source_height=source_height,
-                            scale_factor_x=scale_factor_x, scale_factor_y=scale_factor_y
+                            source_width=source_width, source_height=source_height
                         )
                         if processed_text:
                             text_clips.append(processed_text)
-                            logger.info("         Text clip processed")
 
                 layer_index += 1
 
-            logger.info(
-                f"   Totals: {len(video_clips)} video clips, "
-                f"{len(audio_clips)} audio clips, {len(text_clips)} text clips"
-            )
+            logger.info(f"Processing: {len(video_clips)} video, {len(audio_clips)} audio, {len(text_clips)} text clips")
 
             if progress_callback:
                 progress_callback(0.3)
 
-            # Sort video clips: first by layer (bottom to top), then by start time within each layer
-            # This ensures proper layering - lower layers render first, higher layers on top
-            video_clips.sort(key=lambda x: (x[3], x[1]))  # Sort by layer_index, then start_time
-            logger.info("   Creating composite video...")
+            # Sort by layer then start time for proper z-ordering
+            video_clips.sort(key=lambda x: (x[3], x[1]))
 
-            # Create composite video with proper layering
+            # Create composite video
             if video_clips:
                 composite_video = self._create_composite_video(
-                    [(clip, start, end) for clip, start, end, _ in video_clips],  # Remove layer_index for composite
+                    [(clip, start, end) for clip, start, end, _ in video_clips],
                     duration, width, height, fps
                 )
             else:
-                # Create blank video if no video clips
-                logger.info("   No video clips, creating blank video")
                 composite_video = ColorClip(
                     size=(width, height),
                     color=(0, 0, 0),
@@ -673,68 +542,39 @@ class ExportService:
 
             # Add text overlays
             if text_clips:
-                logger.info(f"   Adding {len(text_clips)} text overlays...")
-                composite_video = self._add_text_overlays(
-                    composite_video, text_clips
-                )
+                composite_video = self._add_text_overlays(composite_video, text_clips)
 
             if progress_callback:
                 progress_callback(0.7)
 
             # Mix audio tracks
             if audio_clips:
-                logger.info(f"   Mixing {len(audio_clips)} audio tracks...")
                 mixed_audio = self._mix_audio_tracks(audio_clips, duration)
                 composite_video = composite_video.set_audio(mixed_audio)
-                logger.info("   Audio mixed successfully")
-            else:
-                logger.info("   No audio tracks to mix")
 
             if progress_callback:
                 progress_callback(0.8)
 
             # Write final video file
             output_path = str(self.output_dir / output_path)
-            logger.info(f"   Writing final video to: {output_path}")
+            logger.info(f"Writing video: {output_path}")
             
-            # Create a progress logger for moviepy that reports progress from 80% to 98%
-            class ProgressLogger:
-                def __init__(self, callback):
-                    self.callback = callback
-                    self.last_progress = 0
-                    
-                def bars_callback(self, bar_type, progress_info):
-                    """Called by moviepy during rendering."""
-                    if bar_type == 'video' and 't' in progress_info:
-                        # progress_info['t'] is current time, progress_info['total'] is total duration
-                        current = progress_info.get('t', 0)
-                        total = progress_info.get('total', 1)
-                        if total > 0:
-                            # Map 0-100% of video encoding to 80-98% of total progress
-                            video_progress = current / total
-                            overall_progress = 0.8 + (video_progress * 0.18)  # 80% to 98%
-                            # Only update if progress increased by at least 1%
-                            if overall_progress - self.last_progress >= 0.01:
-                                self.callback(overall_progress)
-                                self.last_progress = overall_progress
-            
-            progress_logger = ProgressLogger(progress_callback) if progress_callback else None
-            
+            # Use optimized encoding settings for performance
             composite_video.write_videofile(
                 output_path,
                 fps=fps,
                 codec='libx264',
                 audio_codec='aac',
+                preset='medium',  # Balance between speed and quality
+                threads=4,  # Use multiple threads for encoding
                 temp_audiofile=f'temp-audio-{uuid.uuid4()}.m4a',
                 remove_temp=True,
-                logger='bar' if progress_logger else None
+                logger=None  # Disable moviepy's verbose logging
             )
-            logger.info("   Video file written successfully")
 
             # Clean up clips
-            logger.info("   Cleaning up clips...")
             composite_video.close()
-            for clip, _, _, _ in video_clips:  # 4 values: clip, start_time, end_time, layer_index
+            for clip, _, _, _ in video_clips:
                 clip.close()
             for audio, _, _ in audio_clips:
                 audio.close()
@@ -746,17 +586,16 @@ class ExportService:
             return output_path
 
         except Exception as e:
-            logger.error(f"❌ Export failed: {str(e)}", exc_info=True)
+            logger.error(f"❌ Export failed: {str(e)}")
             raise Exception(f"Export failed: {str(e)}")
 
     def _process_video_clip(
         self, clip_data: Dict, width: int, height: int, fps: int,
         muted: bool = False, clip_type: str = "video",
-        source_width: int = None, source_height: int = None,
-        scale_factor_x: float = 1.0, scale_factor_y: float = 1.0
+        source_width: int = None, source_height: int = None
     ) -> Optional[tuple]:
         """
-        Process a single video or image clip with trimming, transitions, and keyframe transforms.
+        Process a single video or image clip with trimming, transitions, and transforms.
 
         Args:
             clip_data: Clip data from timeline
@@ -764,11 +603,9 @@ class ExportService:
             height: Target/export height
             fps: Target fps
             muted: If True, remove audio from video clip
-            clip_type: Type of clip - "video" or "image" (from layer type)
-            source_width: Original source canvas width (for scaling)
-            source_height: Original source canvas height (for scaling)
-            scale_factor_x: Scale factor for X positions (export_width / source_width)
-            scale_factor_y: Scale factor for Y positions (export_height / source_height)
+            clip_type: Type of clip - "video" or "image"
+            source_width: Source canvas width (for scaling)
+            source_height: Source canvas height (for scaling)
 
         Returns:
             Tuple of (clip, start_time, end_time) or None
@@ -776,7 +613,6 @@ class ExportService:
         try:
             resource_id = clip_data.get("resourceId")
             if not resource_id:
-                logger.warning("         No resourceId in clip data")
                 return None
 
             start_time = clip_data.get("startTime", 0)
@@ -788,53 +624,43 @@ class ExportService:
             # Find media file
             media_path = self._find_media_file(resource_id)
             if not media_path:
-                logger.warning(f"         Media file not found for resource: {resource_id}")
+                logger.warning(f"Media file not found: {resource_id}")
                 return None
-
-            logger.debug(f"         Loading {clip_type} from: {media_path}")
 
             # Load clip based on type
             if clip_type == "image":
-                # Load image as clip
                 clip = ImageClip(str(media_path), duration=duration)
                 original_width = clip.w
                 original_height = clip.h
             else:
-                # Load video clip
                 clip = VideoFileClip(str(media_path))
-
                 # Apply trimming
                 if trim_start > 0 or trim_end > 0:
                     clip = clip.subclip(trim_start, clip.duration - trim_end)
-
                 original_width = clip.w
                 original_height = clip.h
 
-            # Apply keyframe transforms or static transforms
-            # Pass canvas dimensions and scale factors for proper scaling from preview to export
+            # Apply transforms
             clip = self._apply_keyframe_transforms(
                 clip, clip_data, original_width, original_height,
-                width, height,  # Export canvas dimensions
-                source_width=source_width, source_height=source_height,
-                scale_factor_x=scale_factor_x, scale_factor_y=scale_factor_y
+                width, height,
+                source_width=source_width, source_height=source_height
             )
 
             # Apply transitions
             clip = self._apply_transitions_dict(clip, transitions)
 
-            # Remove audio if layer is muted (only for video clips, not images)
+            # Remove audio if muted (only for video clips)
             if muted and clip_type == "video":
                 clip = clip.without_audio()
 
-            # Set fps
             clip = clip.set_fps(fps)
-
             end_time = start_time + clip.duration
 
             return (clip, start_time, end_time)
 
         except Exception as e:
-            logger.error(f"         Error processing video/image clip: {str(e)}", exc_info=True)
+            logger.error(f"Error processing clip: {str(e)}")
             return None
 
     def _extract_audio_from_video_clip(self, clip_data: Dict) -> Optional[tuple]:
@@ -860,26 +686,20 @@ class ExportService:
             data = clip_data.get("data", {})
             clip_type = data.get("type", "video")
 
-            # Only extract audio from video clips, not images
+            # Only extract audio from video clips
             if clip_type != "video":
                 return None
 
-            # Find video file
             video_path = self._find_media_file(resource_id)
             if not video_path:
-                logger.warning(f"         Video file not found for audio extraction: {resource_id}")
                 return None
 
-            # Load video clip to extract audio
             video = VideoFileClip(str(video_path))
 
-            # Check if video has audio
             if video.audio is None:
-                logger.debug("         Video has no audio track")
                 video.close()
                 return None
 
-            # Extract audio
             audio = video.audio
 
             # Apply trimming
@@ -894,13 +714,10 @@ class ExportService:
             if volume != 1.0:
                 audio = audio.volumex(volume)
 
-            # Note: We don't close the video here because the audio references it
-            # It will be closed when the audio is closed during cleanup
-
             return (audio, start_time, volume)
 
         except Exception as e:
-            logger.error(f"         Error extracting audio from video clip: {str(e)}", exc_info=True)
+            logger.error(f"Error extracting audio: {str(e)}")
             return None
 
     def _process_audio_clip(self, clip_data: Dict) -> Optional[tuple]:
@@ -916,7 +733,6 @@ class ExportService:
         try:
             resource_id = clip_data.get("resourceId")
             if not resource_id:
-                logger.warning("         No resourceId in audio clip data")
                 return None
 
             start_time = clip_data.get("startTime", 0)
@@ -924,13 +740,10 @@ class ExportService:
             trim_start = clip_data.get("trimStart", 0)
             trim_end = clip_data.get("trimEnd", 0)
 
-            # Find audio file
             audio_path = self._find_media_file(resource_id)
             if not audio_path:
-                logger.warning(f"         Audio file not found: {resource_id}")
                 return None
 
-            # Load audio clip
             audio = AudioFileClip(str(audio_path))
 
             # Apply trimming
@@ -944,13 +757,12 @@ class ExportService:
             return (audio, start_time, volume)
 
         except Exception as e:
-            logger.error(f"         Error processing audio clip: {str(e)}", exc_info=True)
+            logger.error(f"Error processing audio clip: {str(e)}")
             return None
 
     def _process_text_clip(
         self, clip_data: Dict, width: int, height: int, fps: int,
-        source_width: int = None, source_height: int = None,
-        scale_factor_x: float = 1.0, scale_factor_y: float = 1.0
+        source_width: int = None, source_height: int = None
     ) -> Optional[tuple]:
         """
         Process a single text clip.
@@ -960,24 +772,20 @@ class ExportService:
             width: Export video width
             height: Export video height
             fps: Target fps
-            source_width: Original source canvas width (for scaling positions)
-            source_height: Original source canvas height (for scaling positions)
-            scale_factor_x: Scale factor for X positions
-            scale_factor_y: Scale factor for Y positions
+            source_width: Source canvas width (for scaling)
+            source_height: Source canvas height (for scaling)
 
         Returns:
             Tuple of (text_clip, start_time, end_time) or None
         """
         try:
-            logger.info(f"         _process_text_clip received clip_data: {clip_data}")
-            
-            # Use source dimensions if provided, otherwise use export dimensions
+            # Use source dimensions if provided
             if source_width is None:
                 source_width = width
             if source_height is None:
                 source_height = height
             
-            # Calculate canvas-to-canvas scale for text positioning
+            # Calculate canvas scale
             canvas_scale_x = width / source_width if source_width > 0 else 1.0
             canvas_scale_y = height / source_height if source_height > 0 else 1.0
             
@@ -990,33 +798,26 @@ class ExportService:
             font_size = data.get("fontSize", 50)
             color = data.get("color", "white")
             
-            logger.info(f"         Text content: '{text_content}', font: {font_family}, size: {font_size}, color: {color}")
-            
             # Position can be at clip level or in data
             position = clip_data.get("position") or data.get("position", {"x": source_width // 2, "y": source_height // 2})
             
-            # Handle scale and rotation
+            # Handle scale
             scale = clip_data.get("scale", 1)
             if isinstance(scale, dict):
                 scale_factor = (scale.get("x", 1) + scale.get("y", 1)) / 2
             else:
                 scale_factor = scale
             
-            # Scale font size for export resolution - use average of canvas scales
+            # Scale font size for export resolution
             avg_canvas_scale = (canvas_scale_x + canvas_scale_y) / 2
             scaled_font_size = int(font_size * scale_factor * avg_canvas_scale)
             rotation = clip_data.get("rotation", 0)
             
-            # Scale positions from source to export canvas
-            raw_pos_x = position.get("x", source_width // 2)
-            raw_pos_y = position.get("y", source_height // 2)
-            pos_x = int(raw_pos_x * canvas_scale_x)
-            pos_y = int(raw_pos_y * canvas_scale_y)
-            
-            logger.info(f"         Creating text clip: text='{text_content}', font={font_family}, size={scaled_font_size}, color={color}")
-            logger.info(f"         Position: raw=({raw_pos_x}, {raw_pos_y}), scaled=({pos_x}, {pos_y}), canvas_scale=({canvas_scale_x:.3f}, {canvas_scale_y:.3f})")
+            # Scale positions
+            pos_x = int(position.get("x", source_width // 2) * canvas_scale_x)
+            pos_y = int(position.get("y", source_height // 2) * canvas_scale_y)
 
-            # Try using MoviePy's TextClip (requires ImageMagick)
+            # Create TextClip
             try:
                 txt_clip = TextClip(
                     text_content,
@@ -1025,35 +826,23 @@ class ExportService:
                     font=font_family,
                     method='caption' if len(text_content) > 50 else 'label'
                 )
-                
-                logger.info(f"         TextClip created successfully with ImageMagick, size: {txt_clip.size}")
-                
-            except (OSError, IOError) as e:
+            except (OSError, IOError):
                 # ImageMagick not available, use Pillow fallback
-                logger.warning(f"         ImageMagick not available, using Pillow fallback: {e}")
                 txt_clip = self._create_text_clip_with_pillow(
                     text_content, scaled_font_size, color, font_family
                 )
                 if txt_clip is None:
-                    logger.error("         Pillow fallback also failed")
                     return None
-                logger.info(f"         TextClip created with Pillow, size: {txt_clip.size}")
 
             # Apply rotation if present
             if rotation != 0:
                 txt_clip = txt_clip.rotate(rotation)
-                logger.info(f"         Applied rotation: {rotation} degrees")
 
-            # Set position and duration
-            logger.info(f"         Setting position: ({pos_x}, {pos_y}), duration: {duration}s, start_time: {start_time}s")
-            
             txt_clip = txt_clip.set_position((pos_x, pos_y))
             txt_clip = txt_clip.set_duration(duration)
             txt_clip = txt_clip.set_fps(fps)
 
             end_time = start_time + duration
-            
-            logger.info(f"         Text clip ready: start={start_time}s, end={end_time}s")
 
             return (txt_clip, start_time, end_time)
 
@@ -1171,60 +960,34 @@ class ExportService:
             return clip
             
         except Exception as e:
-            logger.error(f"         Error creating text with Pillow: {str(e)}", exc_info=True)
+            logger.error(f"Error creating text with Pillow: {str(e)}")
             return None
 
-    def _apply_transitions(self, clip: VideoFileClip, transitions: List[Dict]) -> VideoFileClip:
+    def _apply_transitions_dict(self, clip, transitions) -> VideoFileClip:
         """
-        Apply transitions to a video clip (legacy list format).
+        Apply fade transitions to a video clip.
 
         Args:
             clip: Video clip
-            transitions: List of transition effects
+            transitions: Dict with 'in' and 'out' transition objects, or empty list
 
         Returns:
             Video clip with transitions applied
         """
-        for transition in transitions:
-            trans_type = transition.get("type", "")
-            trans_duration = transition.get("duration", 1.0)
-            position = transition.get("position", "start")
-
-            if trans_type == "fadeIn" and position == "start":
-                clip = fadein(clip, trans_duration)
-            elif trans_type == "fadeOut" and position == "end":
-                clip = fadeout(clip, trans_duration)
-
-        return clip
-
-    def _apply_transitions_dict(self, clip, transitions: Dict) -> VideoFileClip:
-        """
-        Apply transitions to a video clip (new dict format with 'in' and 'out').
-
-        Args:
-            clip: Video clip
-            transitions: Dict with 'in' and 'out' transition objects
-
-        Returns:
-            Video clip with transitions applied
-        """
+        if not transitions or not isinstance(transitions, dict):
+            return clip
+            
         # Apply fade in transition
         if transitions.get("in"):
             trans_in = transitions["in"]
-            trans_type = trans_in.get("type", "")
-            trans_duration = trans_in.get("duration", 1.0)
-
-            if trans_type == "fade":
-                clip = fadein(clip, trans_duration)
+            if trans_in.get("type") == "fade":
+                clip = fadein(clip, trans_in.get("duration", 1.0))
 
         # Apply fade out transition
         if transitions.get("out"):
             trans_out = transitions["out"]
-            trans_type = trans_out.get("type", "")
-            trans_duration = trans_out.get("duration", 1.0)
-
-            if trans_type == "fade":
-                clip = fadeout(clip, trans_duration)
+            if trans_out.get("type") == "fade":
+                clip = fadeout(clip, trans_out.get("duration", 1.0))
 
         return clip
 
@@ -1249,32 +1012,22 @@ class ExportService:
         Returns:
             Composite video clip
         """
-        logger.debug(f"   _create_composite_video: {len(video_clips)} clips, duration={duration:.2f}s")
-
-        # Set start times for all clips
         positioned_clips = []
         for clip, start_time, end_time in video_clips:
             clip = clip.set_start(start_time)
             positioned_clips.append(clip)
-            logger.debug(f"      Positioned clip at start={start_time:.2f}s")
 
-        # Create composite
         if positioned_clips:
-            final_clip = CompositeVideoClip(
+            return CompositeVideoClip(
                 positioned_clips,
                 size=(width, height)
             ).set_duration(duration).set_fps(fps)
-            logger.debug(f"   Composite created with {len(positioned_clips)} clips")
         else:
-            # Create blank video
-            logger.debug("   Creating blank video (no clips)")
-            final_clip = ColorClip(
+            return ColorClip(
                 size=(width, height),
                 color=(0, 0, 0),
                 duration=duration
             ).set_fps(fps)
-
-        return final_clip
 
     def _add_text_overlays(
         self, video: CompositeVideoClip, text_clips: List[tuple]
@@ -1290,11 +1043,9 @@ class ExportService:
             Video with text overlays
         """
         all_clips = [video]
-
         for txt_clip, start_time, end_time in text_clips:
             txt_clip = txt_clip.set_start(start_time)
             all_clips.append(txt_clip)
-
         return CompositeVideoClip(all_clips)
 
     def _mix_audio_tracks(
@@ -1310,16 +1061,12 @@ class ExportService:
         Returns:
             Mixed audio clip
         """
-        logger.debug(f"   _mix_audio_tracks: {len(audio_clips)} audio clips, duration={duration:.2f}s")
-
         positioned_audio = []
         for audio, start_time, volume in audio_clips:
             audio = audio.set_start(start_time)
             positioned_audio.append(audio)
-            logger.debug(f"      Audio positioned at start={start_time:.2f}s, volume={volume}")
 
         if positioned_audio:
-            logger.debug(f"   Creating composite audio with {len(positioned_audio)} tracks")
             return CompositeAudioClip(positioned_audio).set_duration(duration)
         return None
 
@@ -1333,7 +1080,6 @@ class ExportService:
         Returns:
             Path to media file or None
         """
-        # Search in uploads directory
         for ext in ['.mp4', '.mov', '.avi', '.mp3', '.wav', '.m4a', '.jpg', '.png']:
             file_path = self.uploads_dir / f"{resource_id}{ext}"
             if file_path.exists():
@@ -1351,6 +1097,5 @@ class ExportService:
             path = Path(file_path)
             if path.exists():
                 path.unlink()
-                logger.info(f"🧹 Cleaned up export file: {file_path}")
         except Exception as e:
             logger.error(f"Error cleaning up file: {str(e)}")
