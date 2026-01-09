@@ -9,6 +9,7 @@ import { EditTools } from "./components/Toolbar/EditTools";
 import { ExportDialog } from "./components/Export";
 import { TextEditor } from "./components/TextTool";
 import { TimelineProvider, useTimeline } from "./context/TimelineContext";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import type { Clip } from "./types/timeline";
 import { Separator } from "./components/ui/separator";
 import { Button } from "./components/ui/button";
@@ -44,6 +45,9 @@ function AppContent() {
 	const [isResizingTimeline, setIsResizingTimeline] = useState(false);
 	const [isMobile, setIsMobile] = useState(false);
 	const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+
+	// Enable keyboard shortcuts (Ctrl+Z for undo, Ctrl+Y for redo, etc.)
+	useKeyboardShortcuts();
 
 	// Create timeline data object for export
 	const timelineData: TimelineType = useMemo(

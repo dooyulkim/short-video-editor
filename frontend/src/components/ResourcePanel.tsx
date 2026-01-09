@@ -249,15 +249,7 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 	};
 
 	return (
-		<div
-			className="h-full flex flex-col p-4 bg-background"
-			tabIndex={-1}
-			onBlur={(e) => {
-				// Check if the new focus target is outside this component
-				if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-					onSelectedResourceClear?.();
-				}
-			}}>
+		<div className="h-full flex flex-col p-4 bg-background">
 			<div className="mb-4">
 				<h2 className="text-2xl font-bold mb-2">Resources</h2>
 				<p className="text-sm text-muted-foreground">Upload media files or drag them to the timeline</p>
