@@ -15,7 +15,8 @@ from moviepy.editor import (
     ColorClip,
     ImageClip
 )
-from moviepy.video.fx import fadein, fadeout
+from moviepy.video.fx.fadein import fadein
+from moviepy.video.fx.fadeout import fadeout
 
 # Configure logger - set to INFO level for cleaner output
 logger = logging.getLogger("video-editor.export_service")
@@ -970,7 +971,17 @@ class ExportService:
 
     def _apply_transitions_dict(self, clip, transitions) -> VideoFileClip:
         """
-        Apply fade transitions to a video clip.
+        Apply transitions to a video clip.
+        
+        Supports 4 transition types:
+        - fade: Classic fade to/from black
+        - dissolve: Cross dissolve effect (renders as fade for single clip)
+        - wipe: Wipe effect (renders as fade for single clip)
+        - slide: Slide effect (renders as fade for single clip)
+        
+        Note: dissolve, wipe, and slide are cross-clip transitions.
+        When applied to single clips, they render as fade effects.
+        True cross-clip transitions are handled at the composition level.
 
         Args:
             clip: Video clip
@@ -981,18 +992,27 @@ class ExportService:
         """
         if not transitions or not isinstance(transitions, dict):
             return clip
+        
+        # Supported transition types that render as fade on single clips
+        fade_compatible_types = {"fade", "dissolve", "wipe", "slide"}
             
-        # Apply fade in transition
+        # Apply in transition
         if transitions.get("in"):
             trans_in = transitions["in"]
-            if trans_in.get("type") == "fade":
-                clip = fadein(clip, trans_in.get("duration", 1.0))
+            trans_type = trans_in.get("type", "").lower()
+            duration = trans_in.get("duration", 1.0)
+            
+            if trans_type in fade_compatible_types:
+                clip = fadein(clip, duration)
 
-        # Apply fade out transition
+        # Apply out transition
         if transitions.get("out"):
             trans_out = transitions["out"]
-            if trans_out.get("type") == "fade":
-                clip = fadeout(clip, trans_out.get("duration", 1.0))
+            trans_type = trans_out.get("type", "").lower()
+            duration = trans_out.get("duration", 1.0)
+            
+            if trans_type in fade_compatible_types:
+                clip = fadeout(clip, duration)
 
         return clip
 

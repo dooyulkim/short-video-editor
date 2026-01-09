@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { TimelineRuler } from "./TimelineRuler";
-import type { TimelineLayer, Clip } from "@/types/timeline";
+import type { TimelineLayer, Clip, Transition } from "@/types/timeline";
 import type { MediaResource } from "@/types/media";
 import { calculateContentDuration } from "@/utils/clipOperations";
 import {
@@ -17,7 +17,15 @@ import {
 	SkipBack,
 	Volume2,
 	VolumeX,
+	CircleFadingPlus,
+	GitMerge,
+	ScanLine,
+	ArrowRightToLine,
 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { useTimeline } from "@/context/TimelineContext";
 import {
 	DropdownMenu,
@@ -109,6 +117,15 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	const [isResizingSidebar, setIsResizingSidebar] = useState<boolean>(false);
 	const [resizeStartX, setResizeStartX] = useState<number>(0);
 	const [resizeStartWidth, setResizeStartWidth] = useState<number>(150);
+
+	// Transition editor state
+	const [transitionEditorOpen, setTransitionEditorOpen] = useState<boolean>(false);
+	const [editingTransition, setEditingTransition] = useState<{
+		clipId: string;
+		position: "in" | "out";
+		transition: Transition;
+	} | null>(null);
+	const [transitionDuration, setTransitionDuration] = useState<number>(1.0);
 
 	const timelineWidth = effectiveDuration * effectiveZoom;
 
@@ -325,6 +342,54 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 					ctx.fillRect(x + width - 5, y, 5, height);
 				}
 			}
+
+			// Draw transition indicators
+			if (clip.transitions) {
+				const transitionHeight = 6;
+				const transitionY = y + height - transitionHeight - 2;
+
+				// Transition in indicator (left side)
+				if (clip.transitions.in) {
+					const transitionWidth = Math.min(clip.transitions.in.duration * effectiveZoom, width * 0.4);
+					const transitionColor = getTransitionColor(clip.transitions.in.type);
+					ctx.fillStyle = transitionColor;
+					ctx.fillRect(x + 2, transitionY, transitionWidth, transitionHeight);
+					// Small icon/label
+					ctx.fillStyle = "#fff";
+					ctx.font = "8px sans-serif";
+					ctx.fillText("▶", x + 4, transitionY + transitionHeight - 1);
+				}
+
+				// Transition out indicator (right side)
+				if (clip.transitions.out) {
+					const transitionWidth = Math.min(clip.transitions.out.duration * effectiveZoom, width * 0.4);
+					const transitionColor = getTransitionColor(clip.transitions.out.type);
+					ctx.fillStyle = transitionColor;
+					ctx.fillRect(x + width - transitionWidth - 2, transitionY, transitionWidth, transitionHeight);
+					// Small icon/label
+					ctx.fillStyle = "#fff";
+					ctx.font = "8px sans-serif";
+					ctx.fillText("◀", x + width - transitionWidth, transitionY + transitionHeight - 1);
+				}
+			}
+		};
+
+		/**
+		 * Get color for transition type
+		 */
+		const getTransitionColor = (type: Transition["type"]): string => {
+			switch (type) {
+				case "fade":
+					return "#3b82f6"; // Blue
+				case "dissolve":
+					return "#a855f7"; // Purple
+				case "wipe":
+					return "#22c55e"; // Green
+				case "slide":
+					return "#f97316"; // Orange
+				default:
+					return "#6b7280"; // Gray
+			}
 		};
 
 		/**
@@ -392,6 +457,72 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	};
 
 	/**
+	 * Check if dropped data is a transition (not a media resource)
+	 */
+	const isTransitionData = (data: string): boolean => {
+		try {
+			const parsed = JSON.parse(data);
+			return (
+				parsed &&
+				typeof parsed.type === "string" &&
+				["fade", "dissolve", "wipe", "slide"].includes(parsed.type) &&
+				typeof parsed.duration === "number" &&
+				!parsed.id // Media resources have 'id', transitions don't
+			);
+		} catch {
+			return false;
+		}
+	};
+
+	/**
+	 * Find clip edge at drop position for transition placement
+	 * Returns clip and whether drop is closer to start or end edge
+	 */
+	const findClipEdgeAtPosition = (
+		x: number,
+		y: number
+	): { clip: Clip; position: "in" | "out"; layerIndex: number } | null => {
+		const clipInfo = findClipAtPosition(x, y);
+		if (!clipInfo) return null;
+
+		const { clip, layerIndex } = clipInfo;
+		const clipStartX = clip.startTime * effectiveZoom;
+		const clipEndX = (clip.startTime + clip.duration) * effectiveZoom;
+		const clipMiddleX = (clipStartX + clipEndX) / 2;
+
+		// Determine if drop is closer to start or end of clip
+		const position = x < clipMiddleX ? "in" : "out";
+
+		return { clip, position, layerIndex };
+	};
+
+	/**
+	 * Apply transition to a clip
+	 */
+	const applyTransitionToClip = (clipId: string, position: "in" | "out", transition: Transition) => {
+		if (!timeline) return;
+
+		// Find the clip to get its current transitions
+		let currentClip: Clip | undefined;
+		for (const layer of effectiveLayers) {
+			currentClip = layer.clips.find((c) => c.id === clipId);
+			if (currentClip) break;
+		}
+
+		if (!currentClip) return;
+
+		// Merge with existing transitions
+		const currentTransitions = currentClip.transitions || {};
+		const updatedTransitions = {
+			...currentTransitions,
+			[position]: transition,
+		};
+
+		timeline.updateClip(clipId, { transitions: updatedTransitions });
+		console.log(`Applied ${transition.type} transition to clip ${clipId} at ${position}`);
+	};
+
+	/**
 	 * Check if cursor is near clip edge for resizing
 	 * Image, text, and video clips can be resized - audio has fixed duration
 	 */
@@ -433,6 +564,98 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	};
 
 	/**
+	 * Check if click is on a transition indicator
+	 */
+	const findTransitionAtPosition = (
+		x: number,
+		y: number
+	): { clip: Clip; position: "in" | "out"; transition: Transition } | null => {
+		const clipInfo = findClipAtPosition(x, y);
+		if (!clipInfo) return null;
+
+		const { clip } = clipInfo;
+		if (!clip.transitions) return null;
+
+		const clipStartX = clip.startTime * effectiveZoom;
+		const clipEndX = (clip.startTime + clip.duration) * effectiveZoom;
+		const transitionClickWidth = 24; // Width of clickable transition area
+
+		// Check if clicking on transition in (left side)
+		if (clip.transitions.in && x >= clipStartX && x <= clipStartX + transitionClickWidth) {
+			return { clip, position: "in", transition: clip.transitions.in };
+		}
+
+		// Check if clicking on transition out (right side)
+		if (clip.transitions.out && x >= clipEndX - transitionClickWidth && x <= clipEndX) {
+			return { clip, position: "out", transition: clip.transitions.out };
+		}
+
+		return null;
+	};
+
+	/**
+	 * Open transition editor dialog
+	 */
+	const openTransitionEditor = (clipId: string, position: "in" | "out", transition: Transition) => {
+		setEditingTransition({ clipId, position, transition });
+		setTransitionDuration(transition.duration);
+		setTransitionEditorOpen(true);
+	};
+
+	/**
+	 * Save transition changes
+	 */
+	const handleTransitionSave = () => {
+		if (!editingTransition || !timeline) return;
+
+		const { clipId, position, transition } = editingTransition;
+
+		// Find current clip transitions
+		let currentClip: Clip | undefined;
+		for (const layer of effectiveLayers) {
+			currentClip = layer.clips.find((c) => c.id === clipId);
+			if (currentClip) break;
+		}
+		if (!currentClip) return;
+
+		const currentTransitions = currentClip.transitions || {};
+		const updatedTransitions = {
+			...currentTransitions,
+			[position]: { ...transition, duration: transitionDuration },
+		};
+
+		timeline.updateClip(clipId, { transitions: updatedTransitions });
+		setTransitionEditorOpen(false);
+		setEditingTransition(null);
+	};
+
+	/**
+	 * Remove transition
+	 */
+	const handleTransitionRemove = () => {
+		if (!editingTransition || !timeline) return;
+
+		const { clipId, position } = editingTransition;
+
+		// Find current clip transitions
+		let currentClip: Clip | undefined;
+		for (const layer of effectiveLayers) {
+			currentClip = layer.clips.find((c) => c.id === clipId);
+			if (currentClip) break;
+		}
+		if (!currentClip) return;
+
+		const currentTransitions = { ...currentClip.transitions };
+		delete currentTransitions[position];
+
+		timeline.updateClip(clipId, {
+			transitions: Object.keys(currentTransitions).length > 0 ? currentTransitions : undefined,
+		});
+		setTransitionEditorOpen(false);
+		setEditingTransition(null);
+	};
+
+	/**
 	 * Handle mouse down on canvas for clip selection
 	 */
 	const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -442,6 +665,14 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		const rect = canvas.getBoundingClientRect();
 		const x = e.clientX - rect.left + (scrollContainerRef.current?.scrollLeft || 0);
 		const y = e.clientY - rect.top + (scrollContainerRef.current?.scrollTop || 0);
+
+		// Check if clicking on a transition indicator FIRST
+		const transitionInfo = findTransitionAtPosition(x, y);
+		if (transitionInfo) {
+			e.stopPropagation();
+			openTransitionEditor(transitionInfo.clip.id, transitionInfo.position, transitionInfo.transition);
+			return;
+		}
 
 		// Check if clicking on clip edge for resizing
 		const edgeInfo = getClipEdge(x, y);
@@ -621,7 +852,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	};
 
 	/**
-	 * Handle drop of media resource onto timeline
+	 * Handle drop of media resource or transition onto timeline
 	 */
 	const handleDrop = (e: React.DragEvent) => {
 		e.preventDefault();
@@ -631,15 +862,32 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			const data = e.dataTransfer.getData("application/json");
 			if (!data) return;
 
-			const resource: MediaResource = JSON.parse(data);
-
-			// Calculate drop time based on position
+			// Calculate drop position
 			const canvas = canvasRef.current;
 			if (!canvas) return;
 
 			const rect = canvas.getBoundingClientRect();
 			const x = e.clientX - rect.left + (scrollContainerRef.current?.scrollLeft || 0);
 			const y = e.clientY - rect.top + (scrollContainerRef.current?.scrollTop || 0);
+
+			// Check if this is a transition drop
+			if (isTransitionData(data)) {
+				const transition: Transition = JSON.parse(data);
+				const clipEdgeInfo = findClipEdgeAtPosition(x, y);
+
+				if (clipEdgeInfo) {
+					applyTransitionToClip(clipEdgeInfo.clip.id, clipEdgeInfo.position, transition);
+					console.log(
+						`Transition ${transition.type} dropped on clip ${clipEdgeInfo.clip.id} at ${clipEdgeInfo.position}`
+					);
+				} else {
+					console.log("Transition dropped but no clip found at position");
+				}
+				return;
+			}
+
+			// Otherwise, handle as media resource drop
+			const resource: MediaResource = JSON.parse(data);
 			const dropTime = Math.max(0, x / effectiveZoom);
 
 			// Determine which layer was dropped onto based on Y position
@@ -1116,6 +1364,91 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 					/>
 				</div>
 			</div>
+
+			{/* Transition Editor Dialog */}
+			<Dialog open={transitionEditorOpen} onOpenChange={setTransitionEditorOpen}>
+				<DialogContent className="sm:max-w-md">
+					<DialogHeader>
+						<DialogTitle className="flex items-center gap-2">
+							{editingTransition && (
+								<>
+									<div
+										className={cn(
+											"p-2 rounded-md text-white",
+											editingTransition.transition.type === "fade" && "bg-blue-500",
+											editingTransition.transition.type === "dissolve" && "bg-purple-500",
+											editingTransition.transition.type === "wipe" && "bg-green-500",
+											editingTransition.transition.type === "slide" && "bg-orange-500"
+										)}>
+										{editingTransition.transition.type === "fade" && <CircleFadingPlus className="size-4" />}
+										{editingTransition.transition.type === "dissolve" && <GitMerge className="size-4" />}
+										{editingTransition.transition.type === "wipe" && <ScanLine className="size-4" />}
+										{editingTransition.transition.type === "slide" && <ArrowRightToLine className="size-4" />}
+									</div>
+									{editingTransition.transition.type.charAt(0).toUpperCase() +
+										editingTransition.transition.type.slice(1)}{" "}
+									{editingTransition.position === "in" ? "In" : "Out"}
+								</>
+							)}
+						</DialogTitle>
+						<DialogDescription>Edit transition properties</DialogDescription>
+					</DialogHeader>
+
+					<div className="space-y-4 py-4">
+						{/* Duration Control */}
+						<div className="space-y-2">
+							<div className="flex items-center justify-between">
+								<Label htmlFor="transition-duration">Duration</Label>
+								<span className="text-sm text-muted-foreground">{transitionDuration.toFixed(2)}s</span>
+							</div>
+							<Slider
+								id="transition-duration"
+								min={0.1}
+								max={3}
+								step={0.1}
+								value={[transitionDuration]}
+								onValueChange={(value) => setTransitionDuration(value[0])}
+							/>
+							<div className="flex justify-between text-xs text-muted-foreground">
+								<span>0.1s</span>
+								<span>3.0s</span>
+							</div>
+						</div>
+
+						{/* Transition Info */}
+						{editingTransition && (
+							<div
+								className={cn(
+									"p-3 rounded-md border-2 bg-muted/50",
+									editingTransition.transition.type === "fade" && "border-blue-500",
+									editingTransition.transition.type === "dissolve" && "border-purple-500",
+									editingTransition.transition.type === "wipe" && "border-green-500",
+									editingTransition.transition.type === "slide" && "border-orange-500"
+								)}>
+								<p className="text-sm">
+									<span className="font-medium">Position:</span>{" "}
+									{editingTransition.position === "in" ? "Clip Start" : "Clip End"}
+								</p>
+								<p className="text-sm">
+									<span className="font-medium">Type:</span>{" "}
+									{editingTransition.transition.type.charAt(0).toUpperCase() +
+										editingTransition.transition.type.slice(1)}
+								</p>
+							</div>
+						)}
+					</div>
+
+					{/* Actions */}
+					<div className="flex justify-between gap-2">
+						<Button variant="destructive" onClick={handleTransitionRemove} className="flex-1">
+							Remove
+						</Button>
+						<Button variant="default" onClick={handleTransitionSave} className="flex-1">
+							Save
+						</Button>
+					</div>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 };

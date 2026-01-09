@@ -495,3 +495,219 @@ class TestTransitionService:
         assert abs(final_clip.duration - 3.0) < 0.1
         final_clip.close()
         del final_clip
+
+    # ==================== SLIDE TRANSITION TESTS ====================
+    
+    def test_apply_slide_left(self):
+        """Test slide transition from right to left"""
+        output_path = self.service.apply_slide(
+            video1_path=self.video1_path,
+            video2_path=self.video2_path,
+            duration=0.5,
+            direction="left"
+        )
+        
+        # Check output file exists
+        assert os.path.exists(output_path)
+        
+        # Verify output is a valid video
+        from moviepy.editor import VideoFileClip
+        output_clip = VideoFileClip(output_path)
+        
+        # Duration should be approximately 3 + 3 - 0.5 = 5.5 seconds
+        assert abs(output_clip.duration - 5.5) < 0.2
+        
+        # Check dimensions match first video
+        assert tuple(output_clip.size) == (640, 480)
+        
+        output_clip.close()
+        del output_clip
+
+    def test_apply_slide_right(self):
+        """Test slide transition from left to right"""
+        output_path = self.service.apply_slide(
+            video1_path=self.video1_path,
+            video2_path=self.video2_path,
+            duration=0.5,
+            direction="right"
+        )
+        
+        assert os.path.exists(output_path)
+        
+        from moviepy.editor import VideoFileClip
+        output_clip = VideoFileClip(output_path)
+        
+        assert abs(output_clip.duration - 5.5) < 0.2
+        assert tuple(output_clip.size) == (640, 480)
+        
+        output_clip.close()
+        del output_clip
+
+    def test_apply_slide_up(self):
+        """Test slide transition from bottom to top"""
+        output_path = self.service.apply_slide(
+            video1_path=self.video1_path,
+            video2_path=self.video2_path,
+            duration=0.5,
+            direction="up"
+        )
+        
+        assert os.path.exists(output_path)
+        
+        from moviepy.editor import VideoFileClip
+        output_clip = VideoFileClip(output_path)
+        
+        assert abs(output_clip.duration - 5.5) < 0.2
+        assert tuple(output_clip.size) == (640, 480)
+        
+        output_clip.close()
+        del output_clip
+
+    def test_apply_slide_down(self):
+        """Test slide transition from top to bottom"""
+        output_path = self.service.apply_slide(
+            video1_path=self.video1_path,
+            video2_path=self.video2_path,
+            duration=0.5,
+            direction="down"
+        )
+        
+        assert os.path.exists(output_path)
+        
+        from moviepy.editor import VideoFileClip
+        output_clip = VideoFileClip(output_path)
+        
+        assert abs(output_clip.duration - 5.5) < 0.2
+        assert tuple(output_clip.size) == (640, 480)
+        
+        output_clip.close()
+        del output_clip
+
+    def test_apply_slide_invalid_direction(self):
+        """Test slide with invalid direction"""
+        with pytest.raises(Exception) as exc_info:
+            self.service.apply_slide(
+                video1_path=self.video1_path,
+                video2_path=self.video2_path,
+                duration=0.5,
+                direction="diagonal"
+            )
+        
+        assert "Error applying slide transition" in str(exc_info.value)
+
+    def test_apply_slide_different_sizes(self):
+        """Test slide with videos of different sizes"""
+        # Create a video with different dimensions
+        video3_path = self.create_test_video(
+            "video3_slide_small.mp4",
+            duration=2,
+            color=(0, 0, 255),
+            has_audio=True
+        )
+        
+        # Resize video3 to different dimensions
+        from moviepy.editor import VideoFileClip
+        clip3 = VideoFileClip(video3_path)
+        resized_clip3 = clip3.resize((320, 240))
+        video3_resized_path = os.path.join(self.test_dir, "video3_slide_resized.mp4")
+        resized_clip3.write_videofile(video3_resized_path, logger=None)
+        clip3.close()
+        resized_clip3.close()
+        
+        # Apply slide
+        output_path = self.service.apply_slide(
+            video1_path=self.video1_path,
+            video2_path=video3_resized_path,
+            duration=0.5,
+            direction="left"
+        )
+        
+        # Check output file exists
+        assert os.path.exists(output_path)
+        
+        # Verify output dimensions match first video
+        from moviepy.editor import VideoFileClip
+        output_clip = VideoFileClip(output_path)
+        assert tuple(output_clip.size) == (640, 480)
+        output_clip.close()
+        del output_clip
+
+    def test_apply_slide_with_audio(self):
+        """Test slide transition preserves audio crossfade"""
+        output_path = self.service.apply_slide(
+            video1_path=self.video1_path,
+            video2_path=self.video2_path,
+            duration=1.0,
+            direction="left"
+        )
+        
+        assert os.path.exists(output_path)
+        
+        from moviepy.editor import VideoFileClip
+        output_clip = VideoFileClip(output_path)
+        
+        # Check has audio
+        assert output_clip.audio is not None
+        
+        output_clip.close()
+        del output_clip
+
+    def test_apply_slide_short_duration(self):
+        """Test slide with very short duration"""
+        output_path = self.service.apply_slide(
+            video1_path=self.video1_path,
+            video2_path=self.video2_path,
+            duration=0.2,
+            direction="right"
+        )
+        
+        assert os.path.exists(output_path)
+        
+        from moviepy.editor import VideoFileClip
+        output_clip = VideoFileClip(output_path)
+        # Duration should be approximately 3 + 3 - 0.2 = 5.8
+        assert abs(output_clip.duration - 5.8) < 0.2
+        output_clip.close()
+        del output_clip
+
+    def test_apply_slide_long_duration(self):
+        """Test slide with longer duration"""
+        output_path = self.service.apply_slide(
+            video1_path=self.video1_path,
+            video2_path=self.video2_path,
+            duration=2.0,
+            direction="up"
+        )
+        
+        assert os.path.exists(output_path)
+        
+        from moviepy.editor import VideoFileClip
+        output_clip = VideoFileClip(output_path)
+        # Duration should be approximately 3 + 3 - 2.0 = 4.0
+        assert abs(output_clip.duration - 4.0) < 0.2
+        output_clip.close()
+        del output_clip
+
+    def test_apply_slide_invalid_video1(self):
+        """Test slide with invalid first video path"""
+        with pytest.raises(Exception) as exc_info:
+            self.service.apply_slide(
+                video1_path="nonexistent_video.mp4",
+                video2_path=self.video2_path,
+                duration=0.5,
+                direction="left"
+            )
+        
+        assert "Error applying slide transition" in str(exc_info.value)
+
+    def test_apply_slide_invalid_video2(self):
+        """Test slide with invalid second video path"""
+        with pytest.raises(Exception) as exc_info:
+            self.service.apply_slide(
+                video1_path=self.video1_path,
+                video2_path="nonexistent_video.mp4",
+                duration=0.5,
+                direction="left"
+            )
+        
+        assert "Error applying slide transition" in str(exc_info.value)

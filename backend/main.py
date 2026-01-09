@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from routers import media, timeline, export
+from routers import media, timeline, export, transitions
 import os
 import logging
 import sys
@@ -104,6 +104,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(media.router, prefix="/api/media", tags=["media"])
 app.include_router(timeline.router, prefix="/api/timeline", tags=["timeline"])
 app.include_router(export.router, prefix="/api/export", tags=["export"])
+app.include_router(transitions.router, prefix="/api/transitions", tags=["transitions"])
 
 
 @app.get("/")

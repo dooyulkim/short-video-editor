@@ -331,6 +331,158 @@ class TransitionService:
         except Exception as e:
             raise Exception(f"Error applying wipe transition: {str(e)}")
     
+    def apply_slide(
+        self,
+        video1_path: str,
+        video2_path: str,
+        duration: float = 1.0,
+        direction: str = "left"
+    ) -> str:
+        """
+        Apply slide transition between two videos.
+        Video2 slides in from the specified direction, pushing video1 out.
+        
+        Args:
+            video1_path: Path to first video file
+            video2_path: Path to second video file
+            duration: Duration of slide in seconds (default: 1.0)
+            direction: Direction video2 slides in from - 'left', 'right', 'up', 'down'
+                (default: 'left')
+            
+        Returns:
+            Path to merged video file with transition
+        """
+        try:
+            # Load video clips
+            clip1 = VideoFileClip(video1_path)
+            clip2 = VideoFileClip(video2_path)
+            
+            # Resize clip2 to match clip1 dimensions
+            target_size = clip1.size
+            if clip2.size != target_size:
+                clip2 = clip2.resize(target_size)
+            
+            # Ensure duration doesn't exceed clip lengths
+            transition_duration = min(duration, clip1.duration, clip2.duration)
+            
+            # Calculate split point
+            split_point = clip1.duration - transition_duration
+            
+            # Split clips
+            clip1_before = clip1.subclip(0, split_point)
+            clip1_transition = clip1.subclip(split_point, clip1.duration)
+            clip2_transition = clip2.subclip(0, transition_duration)
+            clip2_after = clip2.subclip(transition_duration, clip2.duration)
+            
+            # Create slide effect
+            width, height = target_size
+            
+            def make_frame(t):
+                """Generate frame with slide effect"""
+                # Calculate slide progress (0 to 1)
+                progress = t / transition_duration
+                
+                # Get frames from both clips
+                frame1 = clip1_transition.get_frame(t)
+                frame2 = clip2_transition.get_frame(t)
+                
+                # Create output frame
+                result = np.zeros((height, width, 3), dtype=np.uint8)
+                
+                if direction == "left":
+                    # Video2 slides in from right, pushing video1 to left
+                    offset = int(width * progress)
+                    # Video1 moves left (exits)
+                    if offset < width:
+                        result[:, :width - offset] = frame1[:, offset:]
+                    # Video2 enters from right
+                    if offset > 0:
+                        result[:, width - offset:] = frame2[:, :offset]
+                        
+                elif direction == "right":
+                    # Video2 slides in from left, pushing video1 to right
+                    offset = int(width * progress)
+                    # Video1 moves right (exits)
+                    if offset < width:
+                        result[:, offset:] = frame1[:, :width - offset]
+                    # Video2 enters from left
+                    if offset > 0:
+                        result[:, :offset] = frame2[:, width - offset:]
+                        
+                elif direction == "up":
+                    # Video2 slides in from bottom, pushing video1 up
+                    offset = int(height * progress)
+                    # Video1 moves up (exits)
+                    if offset < height:
+                        result[:height - offset, :] = frame1[offset:, :]
+                    # Video2 enters from bottom
+                    if offset > 0:
+                        result[height - offset:, :] = frame2[:offset, :]
+                        
+                elif direction == "down":
+                    # Video2 slides in from top, pushing video1 down
+                    offset = int(height * progress)
+                    # Video1 moves down (exits)
+                    if offset < height:
+                        result[offset:, :] = frame1[:height - offset, :]
+                    # Video2 enters from top
+                    if offset > 0:
+                        result[:offset, :] = frame2[height - offset:, :]
+                else:
+                    raise ValueError(f"Invalid slide direction: {direction}")
+                
+                return result.astype(np.uint8)
+            
+            # Create the slide transition clip
+            from moviepy.editor import VideoClip
+            transition_clip = VideoClip(make_frame, duration=transition_duration)
+            transition_clip = transition_clip.set_fps(clip1.fps)
+            
+            # Handle audio - crossfade between the two clips
+            if clip1_transition.audio is not None and clip2_transition.audio is not None:
+                audio1 = clip1_transition.audio.audio_fadeout(transition_duration)
+                audio2 = clip2_transition.audio.audio_fadein(transition_duration)
+                from moviepy.audio.AudioClip import CompositeAudioClip
+                transition_clip = transition_clip.set_audio(
+                    CompositeAudioClip([audio1, audio2.set_start(0)])
+                )
+            elif clip1_transition.audio is not None:
+                transition_clip = transition_clip.set_audio(clip1_transition.audio)
+            elif clip2_transition.audio is not None:
+                transition_clip = transition_clip.set_audio(clip2_transition.audio)
+            
+            # Concatenate all parts
+            final_clip = concatenate_videoclips([
+                clip1_before,
+                transition_clip,
+                clip2_after
+            ])
+            
+            # Generate output path
+            output_path = self._generate_output_path(f"slide_{direction}")
+            
+            # Write merged video
+            final_clip.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile=str(
+                    self.temp_dir / f'temp_audio_{uuid.uuid4()}.m4a'
+                ),
+                remove_temp=True,
+                logger=None
+            )
+            
+            # Clean up
+            clip1.close()
+            clip2.close()
+            final_clip.close()
+            
+            return output_path
+            
+        except Exception as e:
+            raise Exception(f"Error applying slide transition: {str(e)}")
+
     def cleanup_temp_files(self, max_age_hours: int = 24):
         """
         Clean up old temporary files

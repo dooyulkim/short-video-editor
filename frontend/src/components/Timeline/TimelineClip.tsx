@@ -13,6 +13,7 @@ interface TimelineClipProps {
 	onTrim: (clipId: string, newDuration: number, newTrimStart: number) => void;
 	onTransitionEdit?: (clipId: string, position: "in" | "out", transition: Transition) => void;
 	onTransitionRemove?: (clipId: string, position: "in" | "out") => void;
+	onTransitionAdd?: (clipId: string, position: "in" | "out", transition: Transition) => void;
 	onUpdateClip?: (clipId: string, updates: Partial<Clip>) => void;
 	currentTime: number;
 	showKeyframes?: boolean;
@@ -27,6 +28,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
 	onTrim,
 	onTransitionEdit,
 	onTransitionRemove,
+	onTransitionAdd,
 	onUpdateClip,
 	currentTime,
 	showKeyframes = true,
@@ -36,6 +38,7 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
 	const [isTrimmingRight, setIsTrimmingRight] = useState(false);
 	const [dragStartX, setDragStartX] = useState(0);
 	const [dragStartTime, setDragStartTime] = useState(0);
+	const [transitionDropZone, setTransitionDropZone] = useState<"in" | "out" | null>(null);
 	const clipRef = useRef<HTMLDivElement>(null);
 
 	// Calculate clip width based on duration and zoom
@@ -153,8 +156,95 @@ export const TimelineClip: React.FC<TimelineClipProps> = ({
 		}
 	};
 
+	// Check if dropped data is a transition
+	const isTransitionData = (data: string): boolean => {
+		try {
+			const parsed = JSON.parse(data);
+			// Transitions have a 'type' that is one of the transition types and a 'duration'
+			return (
+				parsed &&
+				typeof parsed.type === "string" &&
+				["fade", "dissolve", "wipe", "slide"].includes(parsed.type) &&
+				typeof parsed.duration === "number"
+			);
+		} catch {
+			return false;
+		}
+	};
+
+	// Handle transition drop on clip edge
+	const handleTransitionDrop = (e: React.DragEvent, position: "in" | "out") => {
+		e.preventDefault();
+		e.stopPropagation();
+		setTransitionDropZone(null);
+
+		const data = e.dataTransfer.getData("application/json");
+		if (!data || !isTransitionData(data)) return;
+
+		try {
+			const transition: Transition = JSON.parse(data);
+			if (onTransitionAdd) {
+				onTransitionAdd(clip.id, position, transition);
+			}
+		} catch (error) {
+			console.error("Failed to parse transition data:", error);
+		}
+	};
+
+	// Handle drag over for transition drop zones
+	const handleTransitionDragOver = (e: React.DragEvent, position: "in" | "out") => {
+		const data = e.dataTransfer.getData("application/json");
+		// Check types array for transition data
+		const hasTransitionData = e.dataTransfer.types.includes("application/json");
+		if (hasTransitionData) {
+			e.preventDefault();
+			e.stopPropagation();
+			setTransitionDropZone(position);
+		}
+	};
+
+	// Handle drag leave for transition drop zones
+	const handleTransitionDragLeave = (e: React.DragEvent) => {
+		e.stopPropagation();
+		setTransitionDropZone(null);
+	};
+
 	return (
 		<div className="relative">
+			{/* Transition drop zone - LEFT (in) */}
+			<div
+				className={cn(
+					"absolute top-0 bottom-0 w-6 z-20",
+					"transition-all duration-150",
+					transitionDropZone === "in"
+						? "bg-blue-500/50 border-2 border-blue-400 border-dashed"
+						: "bg-transparent hover:bg-blue-500/20"
+				)}
+				style={{
+					left: `${clipLeft - 12}px`,
+				}}
+				onDragOver={(e) => handleTransitionDragOver(e, "in")}
+				onDragLeave={handleTransitionDragLeave}
+				onDrop={(e) => handleTransitionDrop(e, "in")}
+			/>
+
+			{/* Transition drop zone - RIGHT (out) */}
+			<div
+				className={cn(
+					"absolute top-0 bottom-0 w-6 z-20",
+					"transition-all duration-150",
+					transitionDropZone === "out"
+						? "bg-orange-500/50 border-2 border-orange-400 border-dashed"
+						: "bg-transparent hover:bg-orange-500/20"
+				)}
+				style={{
+					left: `${clipLeft + clipWidth - 12}px`,
+				}}
+				onDragOver={(e) => handleTransitionDragOver(e, "out")}
+				onDragLeave={handleTransitionDragLeave}
+				onDrop={(e) => handleTransitionDrop(e, "out")}
+			/>
+
 			<div
 				ref={clipRef}
 				className={cn(

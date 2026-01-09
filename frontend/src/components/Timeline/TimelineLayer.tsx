@@ -1,5 +1,5 @@
 import React from "react";
-import type { TimelineLayer as TimelineLayerType, Clip } from "@/types/timeline";
+import type { TimelineLayer as TimelineLayerType, Clip, Transition } from "@/types/timeline";
 import { TimelineClip } from "./TimelineClip";
 import { cn } from "@/lib/utils";
 import { Lock, Unlock, Eye, EyeOff, Volume2, VolumeX } from "lucide-react";
@@ -15,6 +15,9 @@ interface TimelineLayerProps {
 	onToggleVisible: (layerId: string) => void;
 	onToggleMute: (layerId: string) => void;
 	onUpdateClip?: (clipId: string, updates: Partial<Clip>) => void;
+	onTransitionAdd?: (clipId: string, position: "in" | "out", transition: Transition) => void;
+	onTransitionEdit?: (clipId: string, position: "in" | "out", transition: Transition) => void;
+	onTransitionRemove?: (clipId: string, position: "in" | "out") => void;
 	currentTime: number;
 }
 
@@ -29,6 +32,9 @@ export const TimelineLayer: React.FC<TimelineLayerProps> = ({
 	onToggleVisible,
 	onToggleMute,
 	onUpdateClip,
+	onTransitionAdd,
+	onTransitionEdit,
+	onTransitionRemove,
 	currentTime,
 }) => {
 	// Get layer color based on type
@@ -137,6 +143,9 @@ export const TimelineLayer: React.FC<TimelineLayerProps> = ({
 						onMove={onClipMove}
 						onTrim={onClipTrim}
 						onUpdateClip={onUpdateClip}
+						onTransitionAdd={onTransitionAdd}
+						onTransitionEdit={onTransitionEdit}
+						onTransitionRemove={onTransitionRemove}
 						currentTime={currentTime}
 					/>
 				))}
