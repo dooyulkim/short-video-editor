@@ -31,12 +31,19 @@ class TransitionService:
             # Generate output path
             output_path = self._generate_output_path("fade_in")
             
-            # Apply fade in effect using FFmpeg filter
+            # Get input stream
+            input_stream = ffmpeg.input(video_path)
+            
+            # Apply fade in effect to video stream only
+            video = input_stream.video.filter('fade', type='in', duration=duration, start_time=0)
+            
+            # Copy audio stream unchanged
+            audio = input_stream.audio
+            
+            # Output with both video and audio
             (
                 ffmpeg
-                .input(video_path)
-                .filter('fade', type='in', duration=duration, start_time=0)
-                .output(str(output_path), vcodec='libx264', acodec='aac')
+                .output(video, audio, str(output_path), vcodec='libx264', acodec='aac')
                 .overwrite_output()
                 .run(capture_stdout=True, capture_stderr=True, quiet=True)
             )
@@ -68,12 +75,19 @@ class TransitionService:
             # Generate output path
             output_path = self._generate_output_path("fade_out")
             
-            # Apply fade out effect using FFmpeg filter
+            # Get input stream
+            input_stream = ffmpeg.input(video_path)
+            
+            # Apply fade out effect to video stream only
+            video = input_stream.video.filter('fade', type='out', duration=duration, start_time=start_time)
+            
+            # Copy audio stream unchanged
+            audio = input_stream.audio
+            
+            # Output with both video and audio
             (
                 ffmpeg
-                .input(video_path)
-                .filter('fade', type='out', duration=duration, start_time=start_time)
-                .output(str(output_path), vcodec='libx264', acodec='aac')
+                .output(video, audio, str(output_path), vcodec='libx264', acodec='aac')
                 .overwrite_output()
                 .run(capture_stdout=True, capture_stderr=True, quiet=True)
             )
