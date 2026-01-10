@@ -1,4 +1,5 @@
 # Video Editor Development Plan - Step by Step Guide
+
 ## Stack: React + shadcn/ui + TypeScript (Frontend) | Python (Backend)
 
 ---
@@ -6,6 +7,7 @@
 ## Project Setup Phase
 
 ### Step 1: Initialize Frontend Project
+
 ```bash
 # Create React + TypeScript project with Vite
 npm create vite@latest frontend -- --template react-ts
@@ -30,24 +32,21 @@ npm install @ffmpeg/ffmpeg @ffmpeg/util
 ```
 
 **Configure Tailwind CSS in `tailwind.config.js`:**
+
 ```javascript
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: ["class"],
-  content: [
-    './pages/**/*.{ts,tsx}',
-    './components/**/*.{ts,tsx}',
-    './app/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}',
-  ],
-  theme: {
-    extend: {},
-  },
-  plugins: [require("tailwindcss-animate")],
-}
+	darkMode: ["class"],
+	content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
+	theme: {
+		extend: {},
+	},
+	plugins: [require("tailwindcss-animate")],
+};
 ```
 
 **Add to `src/index.css`:**
+
 ```css
 @tailwind base;
 @tailwind components;
@@ -55,6 +54,7 @@ export default {
 ```
 
 **Files to create:**
+
 - `src/types/timeline.ts` - TypeScript interfaces for timeline data
 - `src/types/media.ts` - TypeScript interfaces for media resources
 - `src/lib/utils.ts` - Utility functions
@@ -62,6 +62,7 @@ export default {
 - `vite.config.ts` - Vite configuration with path aliases
 
 **Prompt for Copilot:**
+
 ```
 Create a React + TypeScript + Vite project structure for a video editor application.
 
@@ -100,6 +101,7 @@ export default defineConfig({
 ---
 
 ### Step 2: Initialize Backend Project
+
 ```bash
 # Create Python backend
 mkdir backend
@@ -109,12 +111,13 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install fastapi uvicorn python-multipart
-pip install opencv-python pillow moviepy
+pip install opencv-python pillow ffmpeg-python
 pip install numpy pydantic
 pip freeze > requirements.txt
 ```
 
 **Files to create:**
+
 - `main.py` - FastAPI application entry point
 - `routers/` - API route handlers
 - `services/` - Business logic
@@ -122,6 +125,7 @@ pip freeze > requirements.txt
 - `utils/` - Helper functions
 
 **Prompt for Copilot:**
+
 ```
 Create a FastAPI backend structure for a video editor application.
 Include the following in main.py:
@@ -140,6 +144,7 @@ Create Pydantic models in models/media.py for MediaResource, VideoMetadata, Audi
 **File: `routers/media.py`**
 
 **Prompt for Copilot:**
+
 ```
 Create a FastAPI router in routers/media.py with the following endpoints:
 
@@ -163,11 +168,12 @@ Store files in uploads/ directory with UUID filenames.
 **File: `services/media_service.py`**
 
 **Prompt for Copilot:**
+
 ```
 Create a MediaService class in services/media_service.py with methods:
 
 1. extract_video_metadata(file_path) - Use opencv to get duration, fps, dimensions, codec
-2. extract_audio_metadata(file_path) - Use moviepy to get duration, sample rate, channels
+2. extract_audio_metadata(file_path) - Use ffmpeg-python to get duration, sample rate, channels
 3. generate_thumbnail(video_path, timestamp=0) - Extract frame at timestamp, save as JPEG
 4. generate_waveform(audio_path) - Generate waveform visualization, return as base64 image
 5. save_uploaded_file(file, file_type) - Save file with UUID, return file path and ID
@@ -182,16 +188,17 @@ Handle errors gracefully and return proper status codes.
 **File: `services/audio_service.py`**
 
 **Prompt for Copilot:**
+
 ```
 Create an AudioService class in services/audio_service.py:
 
-1. generate_waveform_data(audio_path, width=1000) - 
-   - Load audio file with moviepy or librosa
+1. generate_waveform_data(audio_path, width=1000) -
+   - Load audio file with ffmpeg-python
    - Extract audio samples
    - Downsample to match width
    - Return array of amplitude values for visualization
 
-2. extract_audio_from_video(video_path) - 
+2. extract_audio_from_video(video_path) -
    - Extract audio track from video
    - Save as separate file
    - Return audio file path
@@ -207,6 +214,7 @@ Return waveform as JSON array of float values between -1 and 1.
 **File: `src/components/ResourcePanel.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create a ResourcePanel component using React + TypeScript + shadcn/ui:
 
@@ -226,6 +234,7 @@ Store resources in React state with Resource interface.
 **File: `src/hooks/useMediaUpload.ts`**
 
 **Prompt for Copilot:**
+
 ```
 Create a custom React hook useMediaUpload in src/hooks/useMediaUpload.ts:
 
@@ -245,6 +254,7 @@ Return TypeScript typed hook with proper return type.
 **File: `src/components/Timeline/Timeline.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create a Timeline component with the following features:
 
@@ -270,6 +280,7 @@ Make timeline scrollable horizontally.
 **File: `src/components/Timeline/TimelineRuler.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create a TimelineRuler component that renders time markers:
 
@@ -292,6 +303,7 @@ Format time as MM:SS or HH:MM:SS.
 **File: `src/components/Timeline/TimelineLayer.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create a TimelineLayer component:
 
@@ -312,6 +324,7 @@ Snap clips to grid when dragging (snap to seconds).
 **File: `src/components/Timeline/TimelineClip.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create a TimelineClip component:
 
@@ -336,6 +349,7 @@ Emit events: onMove(clipId, newStartTime), onTrim(clipId, newDuration)
 **File: `src/hooks/useTimelineDragDrop.ts`**
 
 **Prompt for Copilot:**
+
 ```
 Create a custom hook useTimelineDragDrop for handling drag and drop:
 
@@ -359,6 +373,7 @@ Generate unique clip ID with uuid.
 **File: `src/context/TimelineContext.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create a React Context for timeline state management:
 
@@ -394,27 +409,28 @@ Include TypeScript types for all actions.
 **File: `routers/timeline.py`**
 
 **Prompt for Copilot:**
+
 ```
 Create FastAPI router in routers/timeline.py with endpoints:
 
 1. POST /timeline/cut - Cut video at timestamp
    - Accept: video_id, cut_time
-   - Use moviepy to split video at timestamp
+   - Use ffmpeg-python to split video at timestamp
    - Save two new video files
    - Return IDs of both segments
 
 2. POST /timeline/trim - Trim video
    - Accept: video_id, start_time, end_time
-   - Use moviepy to extract subclip
+   - Use ffmpeg-python to extract subclip
    - Save trimmed video
    - Return new video ID
 
 3. POST /timeline/merge - Merge video clips
    - Accept: list of clip IDs with start times
-   - Concatenate videos using moviepy
+   - Concatenate videos using ffmpeg-python
    - Return merged video ID
 
-Use moviepy VideoFileClip and concatenate_videoclips.
+Use ffmpeg-python for video processing.
 Handle different resolutions by resizing to match first clip.
 Run processing in background thread to avoid blocking.
 ```
@@ -426,6 +442,7 @@ Run processing in background thread to avoid blocking.
 **File: `services/transition_service.py`**
 
 **Prompt for Copilot:**
+
 ```
 Create TransitionService class with methods:
 
@@ -434,7 +451,7 @@ Create TransitionService class with methods:
 3. apply_cross_dissolve(video1_path, video2_path, duration) - Crossfade between videos
 4. apply_wipe(video1_path, video2_path, duration, direction) - Wipe transition
 
-Use moviepy with fadein(), fadeout(), and CompositeVideoClip.
+Use ffmpeg-python with filter_complex for transitions.
 For cross dissolve: overlap last X seconds of video1 with first X seconds of video2.
 Return path to new video file with transition applied.
 Save processed videos in temp directory.
@@ -447,6 +464,7 @@ Save processed videos in temp directory.
 **File: `src/components/TextTool/TextEditor.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create a TextEditor component for adding text to timeline:
 
@@ -470,6 +488,7 @@ Create text clip with type: 'text'.
 **File: `src/components/Timeline/TextClip.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create TextClip component to render text on preview canvas:
 
@@ -491,6 +510,7 @@ Apply transformations based on animation type.
 **File: `src/components/TransitionPanel.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create TransitionPanel component:
 
@@ -509,6 +529,7 @@ Show transition indicator on timeline clip edges.
 **File: `src/components/Timeline/TransitionIndicator.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create TransitionIndicator component:
 
@@ -530,6 +551,7 @@ Show tooltip with transition details on hover.
 **File: `services/audio_mixer.py`**
 
 **Prompt for Copilot:**
+
 ```
 Create AudioMixer class for audio mixing:
 
@@ -547,8 +569,8 @@ Create AudioMixer class for audio mixing:
    - Apply fade in/out to audio
    - Return processed audio path
 
-Use pydub or moviepy for audio processing.
-Combine audio with CompositeAudioClip.
+Use ffmpeg-python for audio processing.
+Combine audio with amix filter.
 Handle different sample rates by resampling.
 ```
 
@@ -559,6 +581,7 @@ Handle different sample rates by resampling.
 **File: `src/components/Timeline/AudioWaveform.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create AudioWaveform component:
 
@@ -577,6 +600,7 @@ Use requestAnimationFrame if animating playhead.
 **File: `src/hooks/useAudioWaveform.ts`**
 
 **Prompt for Copilot:**
+
 ```
 Create custom hook to fetch and manage audio waveform data:
 
@@ -597,6 +621,7 @@ Use useEffect with audioId dependency.
 **File: `src/components/Player/VideoPlayer.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create VideoPlayer component for preview:
 
@@ -616,6 +641,7 @@ Composite multiple layers on single canvas.
 **File: `src/hooks/useVideoPlayback.ts`**
 
 **Prompt for Copilot:**
+
 ```
 Create useVideoPlayback hook for playback control:
 
@@ -638,6 +664,7 @@ Clean up animation frame on unmount.
 **File: `src/components/Toolbar/EditTools.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create EditTools component with buttons:
 
@@ -655,10 +682,11 @@ Implement click handlers that update timeline state.
 **File: `src/utils/clipOperations.ts`**
 
 **Prompt for Copilot:**
+
 ```
 Create utility functions for clip operations:
 
-1. cutClipAtTime(clip, cutTime) 
+1. cutClipAtTime(clip, cutTime)
    - Split clip into two clips
    - Return array of two new clips
 
@@ -685,6 +713,7 @@ Preserve clip properties like transitions.
 **File: `services/export_service.py`**
 
 **Prompt for Copilot:**
+
 ```
 Create ExportService class for final video rendering:
 
@@ -706,7 +735,7 @@ Create ExportService class for final video rendering:
    - Render text at specified times
    - Write final video file
 
-Use moviepy CompositeVideoClip and concatenate_videoclips.
+Use ffmpeg-python with filter_complex for compositing.
 Support resolution options: 1080p, 720p, 480p.
 Show progress with callback function.
 ```
@@ -714,6 +743,7 @@ Show progress with callback function.
 **File: `routers/export.py`**
 
 **Prompt for Copilot:**
+
 ```
 Create FastAPI router for export:
 
@@ -742,6 +772,7 @@ Clean up exported files after download.
 **File: `src/components/Export/ExportDialog.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create ExportDialog component:
 
@@ -769,6 +800,7 @@ Download file when complete using blob URL.
 **File: `src/hooks/useKeyboardShortcuts.ts`**
 
 **Prompt for Copilot:**
+
 ```
 Create useKeyboardShortcuts hook:
 
@@ -796,6 +828,7 @@ Call appropriate timeline actions.
 **File: `src/hooks/useUndoRedo.ts`**
 
 **Prompt for Copilot:**
+
 ```
 Create useUndoRedo hook for timeline history:
 
@@ -817,6 +850,7 @@ Integrate with TimelineContext.
 **File: `src/components/Project/ProjectManager.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create ProjectManager component:
 
@@ -838,6 +872,7 @@ Validate JSON structure on load.
 **File: `src/services/api.ts`**
 
 **Prompt for Copilot:**
+
 ```
 Create API service layer with axios:
 
@@ -865,6 +900,7 @@ Handle file uploads with FormData.
 **File: `src/App.tsx`**
 
 **Prompt for Copilot:**
+
 ```
 Create main App layout:
 
@@ -886,6 +922,7 @@ Responsive: collapse sidebars on small screens.
 ### Step 25: Testing and Optimization
 
 **Prompt for Copilot:**
+
 ```
 Create test files for critical components:
 
@@ -911,6 +948,7 @@ Test user interactions with fireEvent.
 ### Step 26: Frontend Deployment Setup
 
 **Prompt for Copilot:**
+
 ```
 Create production build configuration for Vite:
 
@@ -970,6 +1008,7 @@ EXPOSE 80
 ### Step 27: Backend Deployment Setup
 
 **Prompt for Copilot:**
+
 ```
 Create production deployment files:
 
@@ -1019,6 +1058,7 @@ Set up volume mounts for uploaded files.
 6. **Add detailed comments** to guide Copilot's suggestions
 
 Example workflow:
+
 ```typescript
 // Create a TimelineLayer component:
 // 1. Props: layer (TimelineLayer), zoom, onClipSelect, onClipMove

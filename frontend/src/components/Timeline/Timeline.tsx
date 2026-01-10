@@ -227,8 +227,19 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	// Handle keyboard events for clip deletion
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
-			// Delete key pressed and a clip is selected
-			if ((e.key === "Delete" || e.key === "Backspace") && selectedClipId && timeline) {
+			// Don't handle Delete key if user is in an input, textarea, or dialog
+			const target = e.target as HTMLElement;
+			if (
+				target.tagName === "INPUT" ||
+				target.tagName === "TEXTAREA" ||
+				target.isContentEditable ||
+				(target.closest && target.closest('[role="dialog"]'))
+			) {
+				return;
+			}
+
+			// Only Delete key (not Backspace) should delete selected clip
+			if (e.key === "Delete" && selectedClipId && timeline) {
 				e.preventDefault();
 				timeline.removeClip(selectedClipId);
 			}

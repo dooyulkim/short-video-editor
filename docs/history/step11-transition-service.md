@@ -7,18 +7,21 @@
 Successfully implemented all required transition methods:
 
 #### 1. **apply_fade_in(video_path, duration)** ✓
+
 - Fades video from black
-- Uses moviepy's `fadein()` effect
+- Uses ffmpeg-python fade filter
 - Default duration: 1.0 second
 - Returns path to processed video
 
 #### 2. **apply_fade_out(video_path, duration)** ✓
+
 - Fades video to black
-- Uses moviepy's `fadeout()` effect
+- Uses ffmpeg-python fade filter
 - Default duration: 1.0 second
 - Returns path to processed video
 
 #### 3. **apply_cross_dissolve(video1_path, video2_path, duration)** ✓
+
 - Crossfades between two videos
 - Overlaps last X seconds of video1 with first X seconds of video2
 - Applies fade out to video1's overlap section
@@ -28,6 +31,7 @@ Successfully implemented all required transition methods:
 - Default duration: 1.0 second
 
 #### 4. **apply_wipe(video1_path, video2_path, duration, direction)** ✓
+
 - Creates wipe transitions between two videos
 - Supports 4 directions: 'left', 'right', 'up', 'down'
 - Generates frames dynamically with custom mask compositing
@@ -92,6 +96,7 @@ Successfully implemented all required transition methods:
 ## Implementation Quality:
 
 ### Code Quality:
+
 - ✅ Clean, readable code with comprehensive docstrings
 - ✅ Type hints for parameters and return values
 - ✅ Consistent naming conventions
@@ -99,11 +104,13 @@ Successfully implemented all required transition methods:
 - ✅ Resource management (file cleanup)
 
 ### Performance:
-- ✅ Efficient video processing with moviepy
+
+- ✅ Efficient video processing with ffmpeg-python
 - ✅ Proper memory management (clip closure)
 - ✅ Temporary file management
 
 ### Integration Ready:
+
 - ✅ Service can be easily integrated with FastAPI routers
 - ✅ Methods follow consistent interface patterns
 - ✅ Returns file paths for easy integration with media endpoints
@@ -114,6 +121,7 @@ Successfully implemented all required transition methods:
 ## Next Steps:
 
 1. **Create FastAPI router** (`routers/transitions.py`) with endpoints:
+
    - `POST /transitions/fade-in`
    - `POST /transitions/fade-out`
    - `POST /transitions/cross-dissolve`

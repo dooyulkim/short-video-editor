@@ -13,6 +13,7 @@ This guide will walk you through setting up the Video Editor application on your
 ## System Requirements
 
 ### Minimum Requirements
+
 - **CPU**: Dual-core 2.0 GHz
 - **RAM**: 4 GB
 - **Storage**: 2 GB free space
@@ -20,6 +21,7 @@ This guide will walk you through setting up the Video Editor application on your
 - **Browser**: Chrome 90+, Firefox 88+, Safari 14+, Edge 90+
 
 ### Recommended Requirements
+
 - **CPU**: Quad-core 2.5 GHz or better
 - **RAM**: 16 GB or more
 - **Storage**: 10 GB free space (SSD preferred)
@@ -31,9 +33,10 @@ This guide will walk you through setting up the Video Editor application on your
 ### Required Software
 
 1. **Node.js and npm**
+
    - Version: Node.js 18.0 or higher
    - Download from: https://nodejs.org/
-   
+
    ```bash
    # Verify installation
    node --version  # Should show v18.0.0 or higher
@@ -41,9 +44,10 @@ This guide will walk you through setting up the Video Editor application on your
    ```
 
 2. **Python**
+
    - Version: Python 3.9 or higher
    - Download from: https://python.org/downloads/
-   
+
    ```bash
    # Verify installation
    python --version  # Should show Python 3.9.0 or higher
@@ -56,7 +60,39 @@ This guide will walk you through setting up the Video Editor application on your
 
 ### Installing FFmpeg
 
-#### Windows
+FFmpeg is required for video and audio processing. Choose one of the following installation methods:
+
+#### Option A: Local Installation (Recommended for Windows)
+
+The backend can use FFmpeg binaries from a local `bin/` directory. This is the easiest method for Windows users:
+
+```bash
+# Navigate to backend directory
+cd backend
+
+# Download FFmpeg from GitHub releases
+curl -L -o ffmpeg.zip "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+
+# Extract the archive
+unzip ffmpeg.zip -d ffmpeg_temp
+
+# Create bin directory and copy executables
+mkdir -p bin
+cp ffmpeg_temp/ffmpeg-master-latest-win64-gpl/bin/*.exe bin/
+
+# Clean up temporary files
+rm -rf ffmpeg_temp ffmpeg.zip
+
+# Verify (should show ffmpeg.exe, ffprobe.exe, ffplay.exe)
+ls bin/
+```
+
+> **Note**: The backend automatically adds `backend/bin/` to the system PATH on startup. No manual PATH configuration needed!
+
+#### Option B: System-Wide Installation
+
+##### Windows (Manual)
+
 1. Download from: https://ffmpeg.org/download.html
 2. Extract to `C:\ffmpeg`
 3. Add to PATH:
@@ -65,7 +101,18 @@ This guide will walk you through setting up the Video Editor application on your
    - Add `C:\ffmpeg\bin`
 4. Verify: `ffmpeg -version`
 
-#### macOS
+##### Windows (Chocolatey)
+
+```bash
+# Run as Administrator
+choco install ffmpeg -y
+
+# Verify installation
+ffmpeg -version
+```
+
+##### macOS
+
 ```bash
 # Using Homebrew (recommended)
 brew install ffmpeg
@@ -74,7 +121,8 @@ brew install ffmpeg
 ffmpeg -version
 ```
 
-#### Linux (Ubuntu/Debian)
+##### Linux (Ubuntu/Debian)
+
 ```bash
 sudo apt update
 sudo apt install ffmpeg
@@ -152,6 +200,7 @@ uvicorn main:app --reload --port 8000
 ```
 
 You should see:
+
 ```
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 INFO:     Started reloader process
@@ -171,6 +220,7 @@ npm run dev
 ```
 
 You should see:
+
 ```
   VITE v5.0.0  ready in 500 ms
 
@@ -263,6 +313,7 @@ docker-compose down
 ```
 
 The application will be available at:
+
 - Frontend: http://localhost:5173
 - Backend: http://localhost:8000
 - API Docs: http://localhost:8000/docs
@@ -294,7 +345,9 @@ npm run test
 ### Common Issues
 
 #### Issue: "ModuleNotFoundError: No module named 'fastapi'"
+
 **Solution**: Make sure virtual environment is activated and dependencies are installed
+
 ```bash
 cd backend
 source venv/bin/activate
@@ -302,7 +355,9 @@ pip install -r requirements.txt
 ```
 
 #### Issue: "npm ERR! code ENOENT"
+
 **Solution**: Delete node_modules and reinstall
+
 ```bash
 cd frontend
 rm -rf node_modules package-lock.json
@@ -310,14 +365,18 @@ npm install
 ```
 
 #### Issue: "FFmpeg not found"
+
 **Solution**: Verify FFmpeg is installed and in PATH
+
 ```bash
 ffmpeg -version
 # If not found, reinstall FFmpeg and add to PATH
 ```
 
 #### Issue: "Port 8000 already in use"
+
 **Solution**: Kill process using port or use different port
+
 ```bash
 # Find process
 lsof -i :8000  # macOS/Linux
@@ -332,20 +391,26 @@ uvicorn main:app --port 8001
 ```
 
 #### Issue: "Cannot connect to backend"
-**Solution**: 
+
+**Solution**:
+
 1. Verify backend is running: `curl http://localhost:8000/docs`
 2. Check CORS settings in backend `.env`
 3. Update frontend `.env` with correct API URL
 
 #### Issue: "Upload fails immediately"
-**Solution**: 
+
+**Solution**:
+
 1. Check file size (must be < 500MB)
 2. Verify file format is supported
 3. Check upload directory permissions
 4. Look at backend logs for errors
 
 #### Issue: "Export takes too long"
-**Solution**: 
+
+**Solution**:
+
 1. Reduce video resolution
 2. Lower quality setting
 3. Check available disk space
@@ -356,11 +421,13 @@ uvicorn main:app --port 8001
 If you encounter issues not covered here:
 
 1. **Check Logs**
+
    - Backend: Look at terminal where uvicorn is running
    - Frontend: Check browser console (F12)
    - System: Check system logs for FFmpeg errors
 
 2. **Documentation**
+
    - [README.md](README.md) - General overview
    - [USER_GUIDE.md](USER_GUIDE.md) - User guide
    - [API_DOCUMENTATION.md](API_DOCUMENTATION.md) - API reference
@@ -381,6 +448,7 @@ After successful installation:
 ## Production Deployment
 
 For production deployment, see [DEPLOYMENT.md](DEPLOYMENT.md) for:
+
 - Docker deployment
 - Nginx configuration
 - SSL/TLS setup

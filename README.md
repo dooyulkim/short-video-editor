@@ -29,18 +29,21 @@ A professional browser-based video editor built with React, TypeScript, and Pyth
 ### Installation
 
 1. **Clone the repository**
+
 ```bash
 git clone <repository-url>
 cd "Video editor"
 ```
 
 2. **Install Frontend Dependencies**
+
 ```bash
 cd frontend
 npm install
 ```
 
 3. **Install Backend Dependencies**
+
 ```bash
 cd backend
 python -m venv venv
@@ -48,20 +51,41 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. **Install FFmpeg**
-   - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html)
+4. **Install FFmpeg** (required for video/audio processing)
+
+   **Option A: Install to backend/bin (Recommended for Windows)**
+
+   ```bash
+   cd backend
+   # Download FFmpeg
+   curl -L -o ffmpeg.zip "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+   # Extract and copy binaries
+   unzip ffmpeg.zip -d ffmpeg_temp
+   mkdir -p bin
+   cp ffmpeg_temp/ffmpeg-master-latest-win64-gpl/bin/*.exe bin/
+   # Cleanup
+   rm -rf ffmpeg_temp ffmpeg.zip
+   ```
+
+   The backend automatically adds `backend/bin` to PATH on startup.
+
+   **Option B: System-wide installation**
+
+   - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH
    - **macOS**: `brew install ffmpeg`
    - **Linux**: `sudo apt-get install ffmpeg`
 
 ### Running the Application
 
 1. **Start Backend Server**
+
 ```bash
 cd backend
 uvicorn main:app --reload --port 8000
 ```
 
 2. **Start Frontend Development Server**
+
 ```bash
 cd frontend
 npm run dev
@@ -117,16 +141,16 @@ npm run dev
 
 ### Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `Space` | Play/Pause |
+| Shortcut | Action               |
+| -------- | -------------------- |
+| `Space`  | Play/Pause           |
 | `Delete` | Delete selected clip |
-| `Ctrl+C` | Copy clip |
-| `Ctrl+V` | Paste clip |
-| `Ctrl+Z` | Undo |
-| `Ctrl+Y` | Redo |
-| `←/→` | Move playhead |
-| `+/-` | Zoom in/out |
+| `Ctrl+C` | Copy clip            |
+| `Ctrl+V` | Paste clip           |
+| `Ctrl+Z` | Undo                 |
+| `Ctrl+Y` | Redo                 |
+| `←/→`    | Move playhead        |
+| `+/-`    | Zoom in/out          |
 
 ### Exporting Video
 
@@ -146,6 +170,7 @@ npm run dev
 ## 🧪 Testing
 
 ### Frontend Tests
+
 ```bash
 cd frontend
 npm run test          # Run all tests
@@ -154,6 +179,7 @@ npm run test:coverage # Generate coverage report
 ```
 
 ### Backend Tests
+
 ```bash
 cd backend
 pytest tests/ -v                    # Run all tests
@@ -166,6 +192,7 @@ python run_tests.py                 # Alternative runner
 ## 🏗️ Architecture
 
 ### Frontend Stack
+
 - **React 18** with TypeScript
 - **Vite** for build tooling
 - **shadcn/ui** components
@@ -173,13 +200,15 @@ python run_tests.py                 # Alternative runner
 - **Vitest** for testing
 
 ### Backend Stack
+
 - **FastAPI** for REST API
-- **MoviePy** for video processing
+- **FFmpeg-Python** for video/audio processing
 - **OpenCV** for image/video operations
 - **NumPy** for audio processing
 - **Pytest** for testing
 
 ### Project Structure
+
 ```
 Video editor/
 ├── frontend/              # React frontend
@@ -226,12 +255,13 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Built with [React](https://react.dev/)
 - UI components by [shadcn/ui](https://ui.shadcn.com/)
-- Video processing powered by [MoviePy](https://zulko.github.io/moviepy/)
+- Video processing powered by [FFmpeg](https://ffmpeg.org/) via [ffmpeg-python](https://github.com/kkroening/ffmpeg-python)
 - Icons from [Lucide](https://lucide.dev/)
 
 ## 📧 Support
 
 For issues and questions:
+
 - Open an [Issue](https://github.com/yourusername/video-editor/issues)
 - Check [Documentation](docs/)
 - Review existing [Discussions](https://github.com/yourusername/video-editor/discussions)

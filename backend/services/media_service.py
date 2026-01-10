@@ -167,11 +167,70 @@ class MediaService:
         Returns:
             ImageMetadata object with extracted information
         """
+        file_format = Path(file_path).suffix[1:].lower()
+        
+        # Handle SVG files separately (PIL cannot open SVG)
+        if file_format == 'svg':
+            try:
+                # Parse SVG to extract dimensions
+                import xml.etree.ElementTree as ET
+                tree = ET.parse(file_path)
+                root = tree.getroot()
+                
+                # Try to get width/height from attributes
+                width_attr = root.get('width', '0')
+                height_attr = root.get('height', '0')
+                
+                # Remove units like 'px', 'em', etc. and convert to int
+                def parse_dimension(value: str) -> int:
+                    if not value:
+                        return 0
+                    # Remove common units
+                    value = value.replace('px', '').replace('em', '').replace('pt', '').strip()
+                    try:
+                        return int(float(value))
+                    except ValueError:
+                        return 0
+                
+                width = parse_dimension(width_attr)
+                height = parse_dimension(height_attr)
+                
+                # If width/height not found, try viewBox
+                if width == 0 or height == 0:
+                    viewbox = root.get('viewBox')
+                    if viewbox:
+                        parts = viewbox.split()
+                        if len(parts) >= 4:
+                            width = int(float(parts[2]))
+                            height = int(float(parts[3]))
+                
+                # Default dimensions if nothing found
+                if width == 0:
+                    width = 100
+                if height == 0:
+                    height = 100
+                
+                return ImageMetadata(
+                    width=width,
+                    height=height,
+                    format=file_format,
+                    color_mode='SVG'
+                )
+            except Exception as e:
+                logger.warning(f"Could not parse SVG dimensions: {str(e)}")
+                # Return default dimensions for SVG
+                return ImageMetadata(
+                    width=100,
+                    height=100,
+                    format=file_format,
+                    color_mode='SVG'
+                )
+        
+        # Handle raster images with PIL
         try:
             with Image.open(file_path) as img:
                 width, height = img.size
                 color_mode = img.mode
-                file_format = Path(file_path).suffix[1:].lower()
                 
                 return ImageMetadata(
                     width=width,

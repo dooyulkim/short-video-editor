@@ -7,10 +7,16 @@ import logging
 import sys
 import time
 import traceback
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Add local bin directory to PATH for ffmpeg
+bin_dir = Path(__file__).parent / "bin"
+if bin_dir.exists():
+    os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
 
 # Configure logging - ensure output goes to stdout
 logging.basicConfig(

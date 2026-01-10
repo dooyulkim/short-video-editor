@@ -27,6 +27,9 @@ wheels/
 *.egg
 MANIFEST
 
+# FFmpeg binaries (download separately)
+backend/bin/
+
 # Testing
 htmlcov/
 .coverage

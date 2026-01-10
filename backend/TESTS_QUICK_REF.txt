@@ -61,7 +61,7 @@
 ║                                                              ║
 ║  pytest                         - Test framework             ║
 ║  pytest-cov                     - Coverage reporting         ║
-║  moviepy                        - Video/audio processing     ║
+║  ffmpeg-python                  - Video/audio processing     ║
 ║  opencv-python                  - Video operations           ║
 ║  pillow                         - Image processing           ║
 ║  numpy                          - Numerical operations       ║

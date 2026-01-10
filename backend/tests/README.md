@@ -4,11 +4,13 @@ README for Backend Tests
 ## Running Tests
 
 ### Install pytest
+
 ```bash
 pip install pytest pytest-cov
 ```
 
 ### Run all tests
+
 ```bash
 # From backend directory
 pytest tests/ -v
@@ -18,17 +20,20 @@ python -m pytest tests/ -v
 ```
 
 ### Run specific test file
+
 ```bash
 pytest tests/test_media_service.py -v
 pytest tests/test_audio_service.py -v
 ```
 
 ### Run tests with coverage
+
 ```bash
 pytest tests/ --cov=services --cov-report=html
 ```
 
 ### Run specific test
+
 ```bash
 pytest tests/test_media_service.py::TestMediaService::test_extract_video_metadata_with_audio -v
 ```
@@ -42,6 +47,7 @@ pytest tests/test_media_service.py::TestMediaService::test_extract_video_metadat
 ## Test Coverage
 
 ### MediaService Tests
+
 - File upload and storage
 - Video metadata extraction (with/without audio)
 - Audio metadata extraction
@@ -51,6 +57,7 @@ pytest tests/test_media_service.py::TestMediaService::test_extract_video_metadat
 - Media deletion
 
 ### AudioService Tests
+
 - Waveform data generation (various widths)
 - Audio extraction from video
 - Audio duration retrieval
@@ -61,7 +68,8 @@ pytest tests/test_media_service.py::TestMediaService::test_extract_video_metadat
 ## Requirements
 
 All tests use the same dependencies as the main application:
-- moviepy
+
+- ffmpeg-python (requires FFmpeg binary)
 - opencv-python
 - pillow
 - numpy
