@@ -1,12 +1,6 @@
 import uuid
 from pathlib import Path
-from moviepy.editor import (
-    VideoFileClip,
-    CompositeVideoClip,
-    concatenate_videoclips
-)
-from moviepy.video.fx.fadein import fadein
-from moviepy.video.fx.fadeout import fadeout
+import ffmpeg
 import numpy as np
 
 
@@ -24,7 +18,7 @@ class TransitionService:
     
     def apply_fade_in(self, video_path: str, duration: float = 1.0) -> str:
         """
-        Apply fade in transition from black
+        Apply fade in transition from black using FFmpeg
         
         Args:
             video_path: Path to input video file
@@ -34,39 +28,29 @@ class TransitionService:
             Path to processed video file
         """
         try:
-            # Load video clip
-            clip = VideoFileClip(video_path)
-            
-            # Apply fade in effect
-            faded_clip = fadein(clip, duration)
-            
             # Generate output path
             output_path = self._generate_output_path("fade_in")
             
-            # Write processed video
-            faded_clip.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile=str(
-                    self.temp_dir / f'temp_audio_{uuid.uuid4()}.m4a'
-                ),
-                remove_temp=True,
-                logger=None
+            # Apply fade in effect using FFmpeg filter
+            (
+                ffmpeg
+                .input(video_path)
+                .filter('fade', type='in', duration=duration, start_time=0)
+                .output(str(output_path), vcodec='libx264', acodec='aac')
+                .overwrite_output()
+                .run(capture_stdout=True, capture_stderr=True, quiet=True)
             )
-            
-            # Clean up
-            clip.close()
-            faded_clip.close()
             
             return output_path
             
+        except ffmpeg.Error as e:
+            raise Exception(f"Error applying fade in: {e.stderr.decode() if e.stderr else str(e)}")
         except Exception as e:
             raise Exception(f"Error applying fade in: {str(e)}")
     
     def apply_fade_out(self, video_path: str, duration: float = 1.0) -> str:
         """
-        Apply fade out transition to black
+        Apply fade out transition to black using FFmpeg
         
         Args:
             video_path: Path to input video file
@@ -76,33 +60,28 @@ class TransitionService:
             Path to processed video file
         """
         try:
-            # Load video clip
-            clip = VideoFileClip(video_path)
-            
-            # Apply fade out effect
-            faded_clip = fadeout(clip, duration)
+            # Get video duration first to calculate start time for fade out
+            probe = ffmpeg.probe(video_path)
+            video_duration = float(probe['format']['duration'])
+            start_time = max(0, video_duration - duration)
             
             # Generate output path
             output_path = self._generate_output_path("fade_out")
             
-            # Write processed video
-            faded_clip.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile=str(
-                    self.temp_dir / f'temp_audio_{uuid.uuid4()}.m4a'
-                ),
-                remove_temp=True,
-                logger=None
+            # Apply fade out effect using FFmpeg filter
+            (
+                ffmpeg
+                .input(video_path)
+                .filter('fade', type='out', duration=duration, start_time=start_time)
+                .output(str(output_path), vcodec='libx264', acodec='aac')
+                .overwrite_output()
+                .run(capture_stdout=True, capture_stderr=True, quiet=True)
             )
-            
-            # Clean up
-            clip.close()
-            faded_clip.close()
             
             return output_path
             
+        except ffmpeg.Error as e:
+            raise Exception(f"Error applying fade out: {e.stderr.decode() if e.stderr else str(e)}")
         except Exception as e:
             raise Exception(f"Error applying fade out: {str(e)}")
     
@@ -113,8 +92,7 @@ class TransitionService:
         duration: float = 1.0
     ) -> str:
         """
-        Apply cross dissolve transition between two videos
-        Overlaps last X seconds of video1 with first X seconds of video2
+        Apply cross dissolve transition between two videos using FFmpeg xfade filter
         
         Args:
             video1_path: Path to first video file
@@ -125,74 +103,42 @@ class TransitionService:
             Path to merged video file with transition
         """
         try:
-            # Load video clips
-            clip1 = VideoFileClip(video1_path)
-            clip2 = VideoFileClip(video2_path)
+            # Get durations
+            probe1 = ffmpeg.probe(video1_path)
+            probe2 = ffmpeg.probe(video2_path)
+            duration1 = float(probe1['format']['duration'])
+            duration2 = float(probe2['format']['duration'])
             
             # Ensure duration doesn't exceed clip lengths
-            transition_duration = min(duration, clip1.duration, clip2.duration)
+            transition_duration = min(duration, duration1, duration2)
             
-            # Calculate split point
-            split_point = clip1.duration - transition_duration
-            
-            # Split first clip into two parts
-            clip1_before = clip1.subclip(0, split_point)
-            clip1_overlap = clip1.subclip(split_point, clip1.duration)
-            
-            # Split second clip
-            clip2_overlap = clip2.subclip(0, transition_duration)
-            clip2_after = clip2.subclip(transition_duration, clip2.duration)
-            
-            # Apply fade out to first clip's overlap section
-            clip1_overlap = fadeout(clip1_overlap, transition_duration)
-            
-            # Apply fade in to second clip's overlap section
-            clip2_overlap = fadein(clip2_overlap, transition_duration)
-            
-            # Resize clips to match dimensions if needed
-            target_size = clip1.size
-            if clip2.size != target_size:
-                clip2_overlap = clip2_overlap.resize(target_size)
-                clip2_after = clip2_after.resize(target_size)
-            
-            # Composite the overlapping parts
-            # Set clip2_overlap to start at time 0 (same as clip1_overlap)
-            clip2_overlap = clip2_overlap.set_start(0)
-            
-            # Create composite for the transition
-            transition_composite = CompositeVideoClip(
-                [clip1_overlap, clip2_overlap]
-            )
-            
-            # Concatenate all parts: before + transition + after
-            final_clip = concatenate_videoclips([
-                clip1_before,
-                transition_composite,
-                clip2_after
-            ])
+            # Calculate offset for second video (when to start the transition)
+            offset = duration1 - transition_duration
             
             # Generate output path
             output_path = self._generate_output_path("cross_dissolve")
             
-            # Write merged video
-            final_clip.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile=str(
-                    self.temp_dir / f'temp_audio_{uuid.uuid4()}.m4a'
-                ),
-                remove_temp=True,
-                logger=None
-            )
+            # Create inputs
+            input1 = ffmpeg.input(video1_path)
+            input2 = ffmpeg.input(video2_path)
             
-            # Clean up
-            clip1.close()
-            clip2.close()
-            final_clip.close()
+            # Apply xfade filter for cross dissolve
+            # xfade requires both inputs to be of the same size
+            (
+                ffmpeg
+                .filter([input1, input2], 'xfade', 
+                       transition='fade',
+                       duration=transition_duration,
+                       offset=offset)
+                .output(str(output_path), vcodec='libx264', acodec='aac')
+                .overwrite_output()
+                .run(capture_stdout=True, capture_stderr=True, quiet=True)
+            )
             
             return output_path
             
+        except ffmpeg.Error as e:
+            raise Exception(f"Error applying cross dissolve: {e.stderr.decode() if e.stderr else str(e)}")
         except Exception as e:
             raise Exception(f"Error applying cross dissolve: {str(e)}")
     
@@ -204,7 +150,7 @@ class TransitionService:
         direction: str = "left"
     ) -> str:
         """
-        Apply wipe transition between two videos
+        Apply wipe transition between two videos using FFmpeg xfade filter
         
         Args:
             video1_path: Path to first video file
@@ -217,117 +163,51 @@ class TransitionService:
             Path to merged video file with transition
         """
         try:
-            # Load video clips
-            clip1 = VideoFileClip(video1_path)
-            clip2 = VideoFileClip(video2_path)
-            
-            # Resize clip2 to match clip1 dimensions
-            target_size = clip1.size
-            if clip2.size != target_size:
-                clip2 = clip2.resize(target_size)
+            # Get durations
+            probe1 = ffmpeg.probe(video1_path)
+            probe2 = ffmpeg.probe(video2_path)
+            duration1 = float(probe1['format']['duration'])
+            duration2 = float(probe2['format']['duration'])
             
             # Ensure duration doesn't exceed clip lengths
-            transition_duration = min(duration, clip1.duration, clip2.duration)
+            transition_duration = min(duration, duration1, duration2)
             
-            # Calculate split point
-            split_point = clip1.duration - transition_duration
+            # Calculate offset for second video
+            offset = duration1 - transition_duration
             
-            # Split clips
-            clip1_before = clip1.subclip(0, split_point)
-            clip1_transition = clip1.subclip(split_point, clip1.duration)
-            clip2_transition = clip2.subclip(0, transition_duration)
-            clip2_after = clip2.subclip(transition_duration, clip2.duration)
+            # Map direction to xfade transition type
+            transition_map = {
+                'left': 'wipeleft',
+                'right': 'wiperight',
+                'up': 'wipeup',
+                'down': 'wipedown'
+            }
             
-            # Create wipe effect using mask
-            width, height = target_size
-            
-            def make_frame(t):
-                """Generate frame with wipe effect"""
-                # Calculate wipe progress (0 to 1)
-                progress = t / transition_duration
-                
-                # Get frames from both clips
-                frame1 = clip1_transition.get_frame(t)
-                frame2 = clip2_transition.get_frame(t)
-                
-                # Create mask based on direction
-                mask = np.zeros((height, width), dtype=np.uint8)
-                
-                if direction == "left":
-                    # Wipe from right to left
-                    split_x = int(width * (1 - progress))
-                    mask[:, split_x:] = 255
-                elif direction == "right":
-                    # Wipe from left to right
-                    split_x = int(width * progress)
-                    mask[:, :split_x] = 255
-                elif direction == "up":
-                    # Wipe from bottom to top
-                    split_y = int(height * (1 - progress))
-                    mask[split_y:, :] = 255
-                elif direction == "down":
-                    # Wipe from top to bottom
-                    split_y = int(height * progress)
-                    mask[:split_y, :] = 255
-                else:
-                    raise ValueError(f"Invalid wipe direction: {direction}")
-                
-                # Expand mask to 3 channels
-                mask_3d = np.stack([mask] * 3, axis=2)
-                
-                # Composite frames using mask
-                # Where mask is 255 (white), show frame2; where 0 (black), show frame1
-                result = np.where(mask_3d > 0, frame2, frame1)
-                
-                return result.astype(np.uint8)
-            
-            # Create the wipe transition clip
-            from moviepy.editor import VideoClip
-            transition_clip = VideoClip(make_frame, duration=transition_duration)
-            transition_clip = transition_clip.set_fps(clip1.fps)
-            
-            # Handle audio - crossfade between the two clips
-            if clip1_transition.audio is not None and clip2_transition.audio is not None:
-                audio1 = clip1_transition.audio.audio_fadeout(transition_duration)
-                audio2 = clip2_transition.audio.audio_fadein(transition_duration)
-                from moviepy.audio.AudioClip import CompositeAudioClip
-                transition_clip = transition_clip.set_audio(
-                    CompositeAudioClip([audio1, audio2.set_start(0)])
-                )
-            elif clip1_transition.audio is not None:
-                transition_clip = transition_clip.set_audio(clip1_transition.audio)
-            elif clip2_transition.audio is not None:
-                transition_clip = transition_clip.set_audio(clip2_transition.audio)
-            
-            # Concatenate all parts
-            final_clip = concatenate_videoclips([
-                clip1_before,
-                transition_clip,
-                clip2_after
-            ])
+            transition_type = transition_map.get(direction, 'wipeleft')
             
             # Generate output path
             output_path = self._generate_output_path(f"wipe_{direction}")
             
-            # Write merged video
-            final_clip.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile=str(
-                    self.temp_dir / f'temp_audio_{uuid.uuid4()}.m4a'
-                ),
-                remove_temp=True,
-                logger=None
-            )
+            # Create inputs
+            input1 = ffmpeg.input(video1_path)
+            input2 = ffmpeg.input(video2_path)
             
-            # Clean up
-            clip1.close()
-            clip2.close()
-            final_clip.close()
+            # Apply xfade filter with wipe transition
+            (
+                ffmpeg
+                .filter([input1, input2], 'xfade',
+                       transition=transition_type,
+                       duration=transition_duration,
+                       offset=offset)
+                .output(str(output_path), vcodec='libx264', acodec='aac')
+                .overwrite_output()
+                .run(capture_stdout=True, capture_stderr=True, quiet=True)
+            )
             
             return output_path
             
+        except ffmpeg.Error as e:
+            raise Exception(f"Error applying wipe transition: {e.stderr.decode() if e.stderr else str(e)}")
         except Exception as e:
             raise Exception(f"Error applying wipe transition: {str(e)}")
     
@@ -339,8 +219,7 @@ class TransitionService:
         direction: str = "left"
     ) -> str:
         """
-        Apply slide transition between two videos.
-        Video2 slides in from the specified direction, pushing video1 out.
+        Apply slide transition between two videos using FFmpeg xfade filter
         
         Args:
             video1_path: Path to first video file
@@ -353,133 +232,51 @@ class TransitionService:
             Path to merged video file with transition
         """
         try:
-            # Load video clips
-            clip1 = VideoFileClip(video1_path)
-            clip2 = VideoFileClip(video2_path)
-            
-            # Resize clip2 to match clip1 dimensions
-            target_size = clip1.size
-            if clip2.size != target_size:
-                clip2 = clip2.resize(target_size)
+            # Get durations
+            probe1 = ffmpeg.probe(video1_path)
+            probe2 = ffmpeg.probe(video2_path)
+            duration1 = float(probe1['format']['duration'])
+            duration2 = float(probe2['format']['duration'])
             
             # Ensure duration doesn't exceed clip lengths
-            transition_duration = min(duration, clip1.duration, clip2.duration)
+            transition_duration = min(duration, duration1, duration2)
             
-            # Calculate split point
-            split_point = clip1.duration - transition_duration
+            # Calculate offset for second video
+            offset = duration1 - transition_duration
             
-            # Split clips
-            clip1_before = clip1.subclip(0, split_point)
-            clip1_transition = clip1.subclip(split_point, clip1.duration)
-            clip2_transition = clip2.subclip(0, transition_duration)
-            clip2_after = clip2.subclip(transition_duration, clip2.duration)
+            # Map direction to xfade transition type
+            transition_map = {
+                'left': 'slideleft',
+                'right': 'slideright',
+                'up': 'slideup',
+                'down': 'slidedown'
+            }
             
-            # Create slide effect
-            width, height = target_size
-            
-            def make_frame(t):
-                """Generate frame with slide effect"""
-                # Calculate slide progress (0 to 1)
-                progress = t / transition_duration
-                
-                # Get frames from both clips
-                frame1 = clip1_transition.get_frame(t)
-                frame2 = clip2_transition.get_frame(t)
-                
-                # Create output frame
-                result = np.zeros((height, width, 3), dtype=np.uint8)
-                
-                if direction == "left":
-                    # Video2 slides in from right, pushing video1 to left
-                    offset = int(width * progress)
-                    # Video1 moves left (exits)
-                    if offset < width:
-                        result[:, :width - offset] = frame1[:, offset:]
-                    # Video2 enters from right
-                    if offset > 0:
-                        result[:, width - offset:] = frame2[:, :offset]
-                        
-                elif direction == "right":
-                    # Video2 slides in from left, pushing video1 to right
-                    offset = int(width * progress)
-                    # Video1 moves right (exits)
-                    if offset < width:
-                        result[:, offset:] = frame1[:, :width - offset]
-                    # Video2 enters from left
-                    if offset > 0:
-                        result[:, :offset] = frame2[:, width - offset:]
-                        
-                elif direction == "up":
-                    # Video2 slides in from bottom, pushing video1 up
-                    offset = int(height * progress)
-                    # Video1 moves up (exits)
-                    if offset < height:
-                        result[:height - offset, :] = frame1[offset:, :]
-                    # Video2 enters from bottom
-                    if offset > 0:
-                        result[height - offset:, :] = frame2[:offset, :]
-                        
-                elif direction == "down":
-                    # Video2 slides in from top, pushing video1 down
-                    offset = int(height * progress)
-                    # Video1 moves down (exits)
-                    if offset < height:
-                        result[offset:, :] = frame1[:height - offset, :]
-                    # Video2 enters from top
-                    if offset > 0:
-                        result[:offset, :] = frame2[height - offset:, :]
-                else:
-                    raise ValueError(f"Invalid slide direction: {direction}")
-                
-                return result.astype(np.uint8)
-            
-            # Create the slide transition clip
-            from moviepy.editor import VideoClip
-            transition_clip = VideoClip(make_frame, duration=transition_duration)
-            transition_clip = transition_clip.set_fps(clip1.fps)
-            
-            # Handle audio - crossfade between the two clips
-            if clip1_transition.audio is not None and clip2_transition.audio is not None:
-                audio1 = clip1_transition.audio.audio_fadeout(transition_duration)
-                audio2 = clip2_transition.audio.audio_fadein(transition_duration)
-                from moviepy.audio.AudioClip import CompositeAudioClip
-                transition_clip = transition_clip.set_audio(
-                    CompositeAudioClip([audio1, audio2.set_start(0)])
-                )
-            elif clip1_transition.audio is not None:
-                transition_clip = transition_clip.set_audio(clip1_transition.audio)
-            elif clip2_transition.audio is not None:
-                transition_clip = transition_clip.set_audio(clip2_transition.audio)
-            
-            # Concatenate all parts
-            final_clip = concatenate_videoclips([
-                clip1_before,
-                transition_clip,
-                clip2_after
-            ])
+            transition_type = transition_map.get(direction, 'slideleft')
             
             # Generate output path
             output_path = self._generate_output_path(f"slide_{direction}")
             
-            # Write merged video
-            final_clip.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile=str(
-                    self.temp_dir / f'temp_audio_{uuid.uuid4()}.m4a'
-                ),
-                remove_temp=True,
-                logger=None
-            )
+            # Create inputs
+            input1 = ffmpeg.input(video1_path)
+            input2 = ffmpeg.input(video2_path)
             
-            # Clean up
-            clip1.close()
-            clip2.close()
-            final_clip.close()
+            # Apply xfade filter with slide transition
+            (
+                ffmpeg
+                .filter([input1, input2], 'xfade',
+                       transition=transition_type,
+                       duration=transition_duration,
+                       offset=offset)
+                .output(str(output_path), vcodec='libx264', acodec='aac')
+                .overwrite_output()
+                .run(capture_stdout=True, capture_stderr=True, quiet=True)
+            )
             
             return output_path
             
+        except ffmpeg.Error as e:
+            raise Exception(f"Error applying slide transition: {e.stderr.decode() if e.stderr else str(e)}")
         except Exception as e:
             raise Exception(f"Error applying slide transition: {str(e)}")
 
