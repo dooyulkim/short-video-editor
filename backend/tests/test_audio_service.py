@@ -7,7 +7,7 @@ import tempfile
 import shutil
 import numpy as np
 from pathlib import Path
-from moviepy.editor import ColorClip, AudioClip, VideoFileClip
+from conftest import create_test_video_with_ffmpeg, create_test_audio_with_ffmpeg
 
 from services.audio_service import AudioService
 
@@ -33,40 +33,13 @@ class TestAudioService:
     
     def create_test_audio(self, duration=2, frequency=440):
         """Helper to create a test audio file"""
-        def make_frame(t):
-            return np.sin(2 * np.pi * frequency * t)
-        
-        audio_clip = AudioClip(make_frame, duration=duration, fps=44100)
-        
         audio_path = os.path.join(self.test_dir, "test_audio.mp3")
-        audio_clip.write_audiofile(audio_path, verbose=False, logger=None)
-        audio_clip.close()
-        
-        return audio_path
+        return create_test_audio_with_ffmpeg(audio_path, duration=duration, frequency=frequency)
     
     def create_test_video(self, duration=2, has_audio=True):
         """Helper to create a test video file"""
-        video_clip = ColorClip(size=(640, 480), color=(255, 0, 0), duration=duration)
-        
-        if has_audio:
-            def make_frame(t):
-                return np.sin(2 * np.pi * 440 * t)
-            
-            audio_clip = AudioClip(make_frame, duration=duration, fps=44100)
-            video_clip = video_clip.set_audio(audio_clip)
-        
         video_path = os.path.join(self.test_dir, "test_video.mp4")
-        video_clip.write_videofile(
-            video_path,
-            fps=24,
-            codec='libx264',
-            audio_codec='aac' if has_audio else None,
-            verbose=False,
-            logger=None
-        )
-        video_clip.close()
-        
-        return video_path
+        return create_test_video_with_ffmpeg(video_path, duration=duration, has_audio=has_audio)
     
     # Test generate_waveform_data
     def test_generate_waveform_data_default_width(self):
