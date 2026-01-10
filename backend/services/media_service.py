@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Tuple, Optional
 from PIL import Image
-from moviepy.editor import VideoFileClip, AudioFileClip
+import ffmpeg
 import base64
 from io import BytesIO
 
@@ -58,7 +58,7 @@ class MediaService:
     
     def extract_video_metadata(self, file_path: str) -> VideoMetadata:
         """
-        Extract metadata from video file using OpenCV and MoviePy
+        Extract metadata from video file using ffmpeg.probe()
         
         Args:
             file_path: Path to video file
@@ -67,45 +67,46 @@ class MediaService:
             VideoMetadata object with extracted information
         """
         try:
-            # Open video with OpenCV for quick metadata
-            cap = cv2.VideoCapture(file_path)
+            # Use ffmpeg.probe() to get video metadata
+            probe = ffmpeg.probe(file_path)
             
-            if not cap.isOpened():
-                raise ValueError(f"Could not open video file: {file_path}")
-            
-            # Extract metadata
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            duration = frame_count / fps if fps > 0 else 0
-            
-            # Get codec information
-            fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
-            codec = "".join([chr((fourcc >> 8 * i) & 0xFF) for i in range(4)])
-            
-            cap.release()
-            
-            # Use MoviePy to check for audio
-            has_audio = False
-            try:
-                with VideoFileClip(file_path) as video:
-                    has_audio = video.audio is not None
-                    # More accurate duration from MoviePy
-                    if video.duration:
-                        duration = video.duration
-            except Exception as e:
-                logger.warning(f"Could not check audio track for {file_path}: {e}")
-            
-            # Get file format from extension
+            # Extract format information
+            format_info = probe.get('format', {})
+            duration = float(format_info.get('duration', 0))
             file_format = Path(file_path).suffix[1:].lower()
+            
+            # Find video and audio streams
+            video_stream = None
+            has_audio = False
+            
+            for stream in probe.get('streams', []):
+                if stream.get('codec_type') == 'video' and video_stream is None:
+                    video_stream = stream
+                elif stream.get('codec_type') == 'audio':
+                    has_audio = True
+            
+            if not video_stream:
+                raise ValueError(f"No video stream found in {file_path}")
+            
+            # Extract video metadata from stream
+            width = int(video_stream.get('width', 0))
+            height = int(video_stream.get('height', 0))
+            codec = video_stream.get('codec_name', 'unknown')
+            
+            # Calculate FPS from r_frame_rate or avg_frame_rate
+            fps_str = video_stream.get('r_frame_rate', video_stream.get('avg_frame_rate', '0/1'))
+            if '/' in fps_str:
+                num, den = fps_str.split('/')
+                fps = float(num) / float(den) if float(den) > 0 else 0
+            else:
+                fps = float(fps_str)
             
             return VideoMetadata(
                 duration=duration,
                 width=width,
                 height=height,
                 fps=fps,
-                codec=codec.strip(),
+                codec=codec,
                 format=file_format,
                 has_audio=has_audio
             )
@@ -115,7 +116,7 @@ class MediaService:
     
     def extract_audio_metadata(self, file_path: str) -> AudioMetadata:
         """
-        Extract metadata from audio file using MoviePy
+        Extract metadata from audio file using ffmpeg.probe()
         
         Args:
             file_path: Path to audio file
@@ -124,20 +125,34 @@ class MediaService:
             AudioMetadata object with extracted information
         """
         try:
-            with AudioFileClip(file_path) as audio:
-                duration = audio.duration
-                fps = audio.fps  # Sample rate
-                nchannels = audio.nchannels
-                
-                # Get file format from extension
-                file_format = Path(file_path).suffix[1:].lower()
-                
-                return AudioMetadata(
-                    duration=duration,
-                    sample_rate=fps,
-                    channels=nchannels,
-                    format=file_format
-                )
+            # Use ffmpeg.probe() to get audio metadata
+            probe = ffmpeg.probe(file_path)
+            
+            # Extract format information
+            format_info = probe.get('format', {})
+            duration = float(format_info.get('duration', 0))
+            file_format = Path(file_path).suffix[1:].lower()
+            
+            # Find audio stream
+            audio_stream = None
+            for stream in probe.get('streams', []):
+                if stream.get('codec_type') == 'audio':
+                    audio_stream = stream
+                    break
+            
+            if not audio_stream:
+                raise ValueError(f"No audio stream found in {file_path}")
+            
+            # Extract audio metadata
+            sample_rate = int(audio_stream.get('sample_rate', 0))
+            channels = int(audio_stream.get('channels', 0))
+            
+            return AudioMetadata(
+                duration=duration,
+                sample_rate=sample_rate,
+                channels=channels,
+                format=file_format
+            )
         
         except Exception as e:
             raise ValueError(f"Error extracting audio metadata: {str(e)}")
@@ -237,57 +252,72 @@ class MediaService:
             Base64 encoded image string
         """
         try:
-            # Load audio file
-            with AudioFileClip(audio_path) as audio:
-                # Get audio samples
-                audio_array = audio.to_soundarray(fps=22050)
+            # Use ffmpeg to extract audio samples
+            # Get audio info first
+            probe = ffmpeg.probe(audio_path)
+            audio_stream = None
+            for stream in probe.get('streams', []):
+                if stream.get('codec_type') == 'audio':
+                    audio_stream = stream
+                    break
+            
+            if not audio_stream:
+                raise ValueError("No audio stream found")
+            
+            # Extract raw audio data using ffmpeg
+            # Output as 16-bit PCM at 22050 Hz mono
+            out, _ = (
+                ffmpeg
+                .input(audio_path)
+                .output('pipe:', format='s16le', acodec='pcm_s16le', ac=1, ar='22050')
+                .run(capture_stdout=True, capture_stderr=True, quiet=True)
+            )
+            
+            # Convert bytes to numpy array
+            audio_array = np.frombuffer(out, np.int16).astype(np.float32) / 32768.0
+            
+            # Downsample to match desired width
+            samples_per_pixel = len(audio_array) // width
+            if samples_per_pixel < 1:
+                samples_per_pixel = 1
+            
+            # Calculate RMS (root mean square) for each pixel width
+            waveform_data = []
+            for i in range(0, len(audio_array), samples_per_pixel):
+                chunk = audio_array[i:i + samples_per_pixel]
+                if len(chunk) > 0:
+                    rms = np.sqrt(np.mean(chunk ** 2))
+                    waveform_data.append(rms)
+            
+            # Normalize to 0-1 range
+            if len(waveform_data) > 0:
+                max_val = max(waveform_data) if max(waveform_data) > 0 else 1
+                waveform_data = [val / max_val for val in waveform_data]
+            
+            # Create image
+            img = Image.new('RGB', (width, height), color='white')
+            pixels = img.load()
+            
+            # Draw waveform
+            center_y = height // 2
+            for x, amplitude in enumerate(waveform_data):
+                if x >= width:
+                    break
                 
-                # If stereo, convert to mono by averaging channels
-                if len(audio_array.shape) > 1 and audio_array.shape[1] > 1:
-                    audio_array = np.mean(audio_array, axis=1)
+                # Calculate bar height
+                bar_height = int(amplitude * center_y)
                 
-                # Downsample to match desired width
-                samples_per_pixel = len(audio_array) // width
-                if samples_per_pixel < 1:
-                    samples_per_pixel = 1
-                
-                # Calculate RMS (root mean square) for each pixel width
-                waveform_data = []
-                for i in range(0, len(audio_array), samples_per_pixel):
-                    chunk = audio_array[i:i + samples_per_pixel]
-                    if len(chunk) > 0:
-                        rms = np.sqrt(np.mean(chunk ** 2))
-                        waveform_data.append(rms)
-                
-                # Normalize to 0-1 range
-                if len(waveform_data) > 0:
-                    max_val = max(waveform_data) if max(waveform_data) > 0 else 1
-                    waveform_data = [val / max_val for val in waveform_data]
-                
-                # Create image
-                img = Image.new('RGB', (width, height), color='white')
-                pixels = img.load()
-                
-                # Draw waveform
-                center_y = height // 2
-                for x, amplitude in enumerate(waveform_data):
-                    if x >= width:
-                        break
-                    
-                    # Calculate bar height
-                    bar_height = int(amplitude * center_y)
-                    
-                    # Draw vertical line from center
-                    for y in range(center_y - bar_height, center_y + bar_height):
-                        if 0 <= y < height:
-                            pixels[x, y] = (59, 130, 246)  # Blue color
-                
-                # Convert to base64
-                buffer = BytesIO()
-                img.save(buffer, format="PNG")
-                img_base64 = base64.b64encode(buffer.getvalue()).decode()
-                
-                return f"data:image/png;base64,{img_base64}"
+                # Draw vertical line from center
+                for y in range(center_y - bar_height, center_y + bar_height):
+                    if 0 <= y < height:
+                        pixels[x, y] = (59, 130, 246)  # Blue color
+            
+            # Convert to base64
+            buffer = BytesIO()
+            img.save(buffer, format="PNG")
+            img_base64 = base64.b64encode(buffer.getvalue()).decode()
+            
+            return f"data:image/png;base64,{img_base64}"
         
         except Exception as e:
             raise ValueError(f"Error generating waveform: {str(e)}")

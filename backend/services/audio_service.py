@@ -2,7 +2,7 @@
 Audio Service for waveform generation and audio extraction.
 """
 import numpy as np
-from moviepy.editor import VideoFileClip, AudioFileClip
+import ffmpeg
 from pathlib import Path
 import uuid
 from typing import List
@@ -41,16 +41,17 @@ class AudioService:
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
         
         try:
-            # Load audio file using moviepy
-            audio_clip = AudioFileClip(audio_path)
+            # Use ffmpeg to extract audio samples
+            # Output as 16-bit PCM at 22050 Hz mono
+            out, _ = (
+                ffmpeg
+                .input(audio_path)
+                .output('pipe:', format='s16le', acodec='pcm_s16le', ac=1, ar='22050')
+                .run(capture_stdout=True, capture_stderr=True, quiet=True)
+            )
             
-            # Get audio array (samples x channels)
-            # fps is the sample rate (e.g., 44100 Hz)
-            audio_array = audio_clip.to_soundarray(fps=audio_clip.fps)
-            
-            # Convert to mono if stereo by averaging channels
-            if len(audio_array.shape) > 1 and audio_array.shape[1] > 1:
-                audio_array = np.mean(audio_array, axis=1)
+            # Convert bytes to numpy array and normalize
+            audio_array = np.frombuffer(out, np.int16).astype(np.float32) / 32768.0
             
             # Get total number of samples
             total_samples = len(audio_array)
@@ -84,9 +85,6 @@ class AudioService:
             if max_amplitude > 0:
                 waveform_data = [val / max_amplitude for val in waveform_data]
             
-            # Close the audio clip to free resources
-            audio_clip.close()
-            
             return waveform_data
             
         except Exception as e:
@@ -109,14 +107,16 @@ class AudioService:
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
         
-        video_clip = None
         try:
-            # Load video file
-            video_clip = VideoFileClip(video_path)
+            # Check if video has audio using probe
+            probe = ffmpeg.probe(video_path)
+            has_audio = False
+            for stream in probe.get('streams', []):
+                if stream.get('codec_type') == 'audio':
+                    has_audio = True
+                    break
             
-            # Check if video has audio
-            if video_clip.audio is None:
-                video_clip.close()
+            if not has_audio:
                 raise Exception("Video file has no audio track")
             
             # Generate unique filename for extracted audio
@@ -124,22 +124,20 @@ class AudioService:
             audio_filename = f"{audio_id}.mp3"
             audio_path = self.temp_dir / audio_filename
             
-            # Extract and save audio
-            video_clip.audio.write_audiofile(
-                str(audio_path),
-                codec='mp3',
-                verbose=False,
-                logger=None  # Suppress moviepy logs
+            # Extract audio using ffmpeg
+            (
+                ffmpeg
+                .input(video_path)
+                .output(str(audio_path), acodec='mp3', vn=None)
+                .overwrite_output()
+                .run(capture_stdout=True, capture_stderr=True, quiet=True)
             )
-            
-            # Close the video clip to free resources
-            video_clip.close()
             
             return str(audio_path)
             
+        except ffmpeg.Error as e:
+            raise Exception(f"Failed to extract audio: {e.stderr.decode() if e.stderr else str(e)}")
         except Exception as e:
-            if video_clip is not None:
-                video_clip.close()
             raise Exception(f"Failed to extract audio: {str(e)}")
     
     def get_audio_duration(self, audio_path: str) -> float:
@@ -153,9 +151,8 @@ class AudioService:
             Duration in seconds
         """
         try:
-            audio_clip = AudioFileClip(audio_path)
-            duration = audio_clip.duration
-            audio_clip.close()
+            probe = ffmpeg.probe(audio_path)
+            duration = float(probe['format']['duration'])
             return duration
         except Exception as e:
             raise Exception(f"Failed to get audio duration: {str(e)}")

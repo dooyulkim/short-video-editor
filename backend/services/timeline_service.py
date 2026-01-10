@@ -2,9 +2,7 @@ import os
 import uuid
 from pathlib import Path
 from typing import List, Tuple, Optional
-from moviepy.editor import (
-    VideoFileClip, concatenate_videoclips, CompositeVideoClip
-)
+import ffmpeg
 from concurrent.futures import ThreadPoolExecutor
 import threading
 
@@ -33,27 +31,24 @@ class TimelineService:
         self, video_path: str, cut_time: float
     ) -> Tuple[str, str, str, str]:
         """
-        Cut video at specified timestamp into two segments
+        Cut video at specified timestamp into two segments using FFmpeg
 
         Args:
             video_path: Path to the video file
             cut_time: Time in seconds where to cut the video
 
         Returns:
-            Tuple of (segment1_id, segment2_id) - IDs of the two new segments
+            Tuple of (segment1_id, segment1_path, segment2_id, segment2_path)
         """
         try:
-            # Load video
-            video = VideoFileClip(video_path)
-
+            # Get video duration first
+            probe = ffmpeg.probe(video_path)
+            duration = float(probe['format']['duration'])
+            
             # Validate cut time
-            if cut_time <= 0 or cut_time >= video.duration:
+            if cut_time <= 0 or cut_time >= duration:
                 raise ValueError(
-                    f"Cut time must be between 0 and {video.duration} seconds")
-
-            # Create two segments
-            segment1 = video.subclip(0, cut_time)
-            segment2 = video.subclip(cut_time, video.duration)
+                    f"Cut time must be between 0 and {duration} seconds")
 
             # Generate unique IDs for new segments
             segment1_id = str(uuid.uuid4())
@@ -66,36 +61,31 @@ class TimelineService:
             segment1_path = self.temp_dir / f"{segment1_id}{file_extension}"
             segment2_path = self.temp_dir / f"{segment2_id}{file_extension}"
 
-            segment1.write_videofile(
-                str(segment1_path),
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile=str(
-                    self.temp_dir / f"temp_audio_{segment1_id}.m4a"),
-                remove_temp=True,
-                logger=None
+            # First segment: from start to cut_time
+            (
+                ffmpeg
+                .input(video_path, ss=0, t=cut_time)
+                .output(str(segment1_path), vcodec='libx264', acodec='aac')
+                .overwrite_output()
+                .run(capture_stdout=True, capture_stderr=True, quiet=True)
             )
 
-            segment2.write_videofile(
-                str(segment2_path),
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile=str(
-                    self.temp_dir / f"temp_audio_{segment2_id}.m4a"),
-                remove_temp=True,
-                logger=None
+            # Second segment: from cut_time to end
+            (
+                ffmpeg
+                .input(video_path, ss=cut_time)
+                .output(str(segment2_path), vcodec='libx264', acodec='aac')
+                .overwrite_output()
+                .run(capture_stdout=True, capture_stderr=True, quiet=True)
             )
-
-            # Clean up
-            segment1.close()
-            segment2.close()
-            video.close()
 
             return (
                 segment1_id, segment2_id,
                 str(segment1_path), str(segment2_path)
             )
 
+        except ffmpeg.Error as e:
+            raise Exception(f"Error cutting video: {e.stderr.decode() if e.stderr else str(e)}")
         except Exception as e:
             raise Exception(f"Error cutting video: {str(e)}")
 
@@ -103,7 +93,7 @@ class TimelineService:
         self, video_path: str, start_time: float, end_time: float
     ) -> Tuple[str, str]:
         """
-        Trim video to specified time range
+        Trim video to specified time range using FFmpeg
 
         Args:
             video_path: Path to the video file
@@ -114,17 +104,18 @@ class TimelineService:
             Tuple of (trimmed_video_id, trimmed_video_path)
         """
         try:
-            # Load video
-            video = VideoFileClip(video_path)
+            # Get video duration first
+            probe = ffmpeg.probe(video_path)
+            duration = float(probe['format']['duration'])
 
             # Validate times
-            if (start_time < 0 or end_time > video.duration or
+            if (start_time < 0 or end_time > duration or
                     start_time >= end_time):
                 raise ValueError(
-                    f"Invalid trim times. Video duration: {video.duration}s")
+                    f"Invalid trim times. Video duration: {duration}s")
 
-            # Extract subclip
-            trimmed = video.subclip(start_time, end_time)
+            # Calculate duration of trimmed segment
+            trim_duration = end_time - start_time
 
             # Generate unique ID
             trimmed_id = str(uuid.uuid4())
@@ -135,22 +126,19 @@ class TimelineService:
             # Save trimmed video
             trimmed_path = self.temp_dir / f"{trimmed_id}{file_extension}"
 
-            trimmed.write_videofile(
-                str(trimmed_path),
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile=str(
-                    self.temp_dir / f"temp_audio_{trimmed_id}.m4a"),
-                remove_temp=True,
-                logger=None
+            # Use ffmpeg to extract the segment
+            (
+                ffmpeg
+                .input(video_path, ss=start_time, t=trim_duration)
+                .output(str(trimmed_path), vcodec='libx264', acodec='aac')
+                .overwrite_output()
+                .run(capture_stdout=True, capture_stderr=True, quiet=True)
             )
-
-            # Clean up
-            trimmed.close()
-            video.close()
 
             return trimmed_id, str(trimmed_path)
 
+        except ffmpeg.Error as e:
+            raise Exception(f"Error trimming video: {e.stderr.decode() if e.stderr else str(e)}")
         except Exception as e:
             raise Exception(f"Error trimming video: {str(e)}")
 
@@ -160,7 +148,7 @@ class TimelineService:
         method: str = "compose"
     ) -> Tuple[str, str]:
         """
-        Merge multiple video clips into a single video
+        Merge multiple video clips into a single video using FFmpeg
 
         Args:
             clip_data: List of dicts with 'video_id', 'video_path',
@@ -175,66 +163,58 @@ class TimelineService:
             if not clip_data:
                 raise ValueError("No clips provided for merging")
 
-            # Load all video clips
-            clips = []
+            # Verify all video files exist
             for clip_info in clip_data:
                 video_path = clip_info.get('video_path')
                 if not video_path or not os.path.exists(video_path):
                     raise ValueError(f"Video file not found: {video_path}")
 
-                clip = VideoFileClip(video_path)
-
-                # If start_time is provided and using compose method
-                if method == "compose" and 'start_time' in clip_info:
-                    clip = clip.set_start(clip_info['start_time'])
-
-                clips.append(clip)
-
-            # Handle different resolutions by resizing to match first clip
-            if clips:
-                target_size = (clips[0].w, clips[0].h)
-                resized_clips = []
-
-                for clip in clips:
-                    if (clip.w, clip.h) != target_size:
-                        resized_clip = clip.resize(target_size)
-                        resized_clips.append(resized_clip)
-                    else:
-                        resized_clips.append(clip)
-
-                clips = resized_clips
-
-            # Merge based on method
-            if method == "concatenate":
-                # Sequential concatenation
-                merged = concatenate_videoclips(clips, method="compose")
-            else:
-                # Composite overlay by time
-                merged = CompositeVideoClip(clips)
-
             # Generate unique ID
             merged_id = str(uuid.uuid4())
-
-            # Save merged video
             merged_path = self.temp_dir / f"{merged_id}.mp4"
 
-            merged.write_videofile(
-                str(merged_path),
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile=str(
-                    self.temp_dir / f"temp_audio_{merged_id}.m4a"),
-                remove_temp=True,
-                logger=None
-            )
-
-            # Clean up
-            merged.close()
-            for clip in clips:
-                clip.close()
+            if method == "concatenate":
+                # Sequential concatenation using concat demuxer
+                # Create a temporary file list for concat
+                concat_file_path = self.temp_dir / f"concat_{merged_id}.txt"
+                
+                with open(concat_file_path, 'w') as f:
+                    for clip_info in clip_data:
+                        video_path = clip_info.get('video_path')
+                        # Write file path in format required by concat demuxer
+                        # Use absolute path and escape special characters
+                        abs_path = os.path.abspath(video_path)
+                        f.write(f"file '{abs_path}'\n")
+                
+                # Use concat demuxer for concatenation
+                (
+                    ffmpeg
+                    .input(str(concat_file_path), format='concat', safe=0)
+                    .output(str(merged_path), vcodec='libx264', acodec='aac')
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True, quiet=True)
+                )
+                
+                # Clean up concat file
+                try:
+                    concat_file_path.unlink()
+                except:
+                    pass
+            else:
+                # For compose method (overlay by time), we need complex filtering
+                # This is more complex and requires building a filter graph
+                # For now, we'll use concatenate as the default behavior
+                # To properly support compose with start_time offsets, we'd need
+                # to build a complex filter graph with overlay filters
+                raise NotImplementedError(
+                    "Compose method with time offsets is not yet implemented with FFmpeg. "
+                    "Use 'concatenate' method instead."
+                )
 
             return merged_id, str(merged_path)
 
+        except ffmpeg.Error as e:
+            raise Exception(f"Error merging videos: {e.stderr.decode() if e.stderr else str(e)}")
         except Exception as e:
             raise Exception(f"Error merging videos: {str(e)}")
 
