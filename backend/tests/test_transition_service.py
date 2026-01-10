@@ -205,13 +205,17 @@ class TestTransitionService:
             has_audio=True
         )
         
-        # Resize video3 to different dimensions
-        clip3 = VideoFileClip(video3_path)
-        resized_clip3 = clip3.resize((320, 240))
+        # Resize video3 to different dimensions using ffmpeg
+        import ffmpeg
         video3_resized_path = os.path.join(self.test_dir, "video3_resized.mp4")
-        resized_clip3.write_videofile(video3_resized_path, logger=None)
-        clip3.close()
-        resized_clip3.close()
+        (
+            ffmpeg
+            .input(video3_path)
+            .filter('scale', 320, 240)
+            .output(video3_resized_path, vcodec='libx264', acodec='aac')
+            .overwrite_output()
+            .run(quiet=True)
+        )
         
         # Apply cross dissolve
         output_path = self.service.apply_cross_dissolve(
@@ -361,11 +365,17 @@ class TestTransitionService:
         )
         
         # Resize video3 to different dimensions
-        clip3 = VideoFileClip(video3_path)
-        resized_clip3 = clip3.resize((320, 240))
+        # Resize video3 to different dimensions using ffmpeg
+        import ffmpeg
         video3_resized_path = os.path.join(self.test_dir, "video3_wipe_resized.mp4")
-        resized_clip3.write_videofile(video3_resized_path, logger=None)
-        clip3.close()
+        (
+            ffmpeg
+            .input(video3_path)
+            .filter("scale", 320, 240)
+            .output(video3_resized_path, vcodec="libx264", acodec="aac")
+            .overwrite_output()
+            .run(quiet=True)
+        )
         resized_clip3.close()
         
         # Apply wipe
@@ -468,10 +478,10 @@ class TestTransitionService:
         assert os.path.exists(fade_in_output)
         assert os.path.exists(fade_out_output)
         
-        final_clip = VideoFileClip(fade_out_output)
-        assert abs(final_clip.duration - 3.0) < 0.1
-        final_clip.close()
-        del final_clip
+        import ffmpeg
+        probe = ffmpeg.probe(fade_out_output)
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 3.0) < 0.1
 
     # ==================== SLIDE TRANSITION TESTS ====================
     
@@ -587,11 +597,17 @@ class TestTransitionService:
         )
         
         # Resize video3 to different dimensions
-        clip3 = VideoFileClip(video3_path)
-        resized_clip3 = clip3.resize((320, 240))
+        # Resize video3 to different dimensions using ffmpeg
+        import ffmpeg
         video3_resized_path = os.path.join(self.test_dir, "video3_slide_resized.mp4")
-        resized_clip3.write_videofile(video3_resized_path, logger=None)
-        clip3.close()
+        (
+            ffmpeg
+            .input(video3_path)
+            .filter("scale", 320, 240)
+            .output(video3_resized_path, vcodec="libx264", acodec="aac")
+            .overwrite_output()
+            .run(quiet=True)
+        )
         resized_clip3.close()
         
         # Apply slide
