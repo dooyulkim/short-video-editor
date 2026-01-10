@@ -7,7 +7,7 @@ import tempfile
 import shutil
 import numpy as np
 from pathlib import Path
-from conftest import create_test_video_with_ffmpeg, create_test_audio_with_ffmpeg
+from tests.conftest import create_test_video_with_ffmpeg, create_test_audio_with_ffmpeg
 
 from services.audio_service import AudioService
 

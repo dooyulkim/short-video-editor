@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 import numpy as np
 from PIL import Image
-from conftest import create_test_video_with_ffmpeg, create_test_audio_with_ffmpeg
+from tests.conftest import create_test_video_with_ffmpeg, create_test_audio_with_ffmpeg
 
 from services.media_service import MediaService
 from models.media import VideoMetadata, AudioMetadata, ImageMetadata

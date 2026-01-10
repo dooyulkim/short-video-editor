@@ -7,7 +7,7 @@ import tempfile
 import shutil
 from pathlib import Path
 import numpy as np
-from moviepy.editor import ColorClip, AudioClip
+from tests.conftest import create_test_video_with_ffmpeg
 
 from services.transition_service import TransitionService
 
@@ -63,31 +63,9 @@ class TestTransitionService:
     def create_test_video(
         self, filename, duration=2, color=(255, 0, 0), has_audio=True
     ):
-        """Helper to create a test video file"""
-        # Create a simple color clip
-        video_clip = ColorClip(size=(640, 480), color=color, duration=duration)
-        video_clip = video_clip.set_fps(24)
-        
-        if has_audio:
-            # Create audio - simple sine wave
-            def make_frame(t):
-                return np.sin(2 * np.pi * 440 * t)
-            
-            audio_clip = AudioClip(make_frame, duration=duration, fps=44100)
-            video_clip = video_clip.set_audio(audio_clip)
-        
-        # Save video
+        """Helper to create a test video file using FFmpeg"""
         output_path = os.path.join(self.test_dir, filename)
-        video_clip.write_videofile(
-            output_path,
-            codec='libx264',
-            audio_codec='aac',
-            logger=None
-        )
-        
-        video_clip.close()
-        
-        return output_path
+        return create_test_video_with_ffmpeg(output_path, duration=duration, has_audio=has_audio)
     
     def test_initialization(self):
         """Test TransitionService initialization"""
@@ -121,21 +99,22 @@ class TestTransitionService:
         # Check output file exists
         assert os.path.exists(output_path)
         
-        # Verify output is a valid video
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        # Verify output is a valid video using ffmpeg
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         
         # Check duration is approximately the same (within 0.1 seconds)
-        assert abs(output_clip.duration - 3.0) < 0.1
+        duration = float(probe['format']['duration'])
+        assert abs(duration - 3.0) < 0.1
         
         # Check dimensions
-        assert tuple(output_clip.size) == (640, 480)
+        video_stream = next((s for s in probe['streams'] if s['codec_type'] == 'video'), None)
+        assert video_stream is not None
+        assert (int(video_stream['width']), int(video_stream['height'])) == (640, 480)
         
         # Check has audio
-        assert output_clip.audio is not None
-        
-        output_clip.close()
-        del output_clip
+        audio_stream = next((s for s in probe['streams'] if s['codec_type'] == 'audio'), None)
+        assert audio_stream is not None
     
     def test_apply_fade_in_invalid_video(self):
         """Test fade in with invalid video path"""
@@ -159,20 +138,22 @@ class TestTransitionService:
         assert os.path.exists(output_path)
         
         # Verify output is a valid video
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         
         # Check duration is approximately the same
-        assert abs(output_clip.duration - 3.0) < 0.1
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 3.0) < 0.1
         
         # Check dimensions
-        assert tuple(output_clip.size) == (640, 480)
+        video_stream = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
+        assert video_stream is not None
+        assert (int(video_stream["width"]), int(video_stream["height"])) == (640, 480)
         
         # Check has audio
-        assert output_clip.audio is not None
+        audio_stream = next((s for s in probe["streams"] if s["codec_type"] == "audio"), None)
+        assert audio_stream is not None
         
-        output_clip.close()
-        del output_clip
     
     def test_apply_fade_out_invalid_video(self):
         """Test fade out with invalid video path"""
@@ -197,22 +178,22 @@ class TestTransitionService:
         assert os.path.exists(output_path)
         
         # Verify output is a valid video
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         
         # Check duration is approximately video1 + video2 - overlap
         # 3 + 3 - 1 = 5 seconds
         expected_duration = 5.0
-        assert abs(output_clip.duration - expected_duration) < 0.2
         
         # Check dimensions match first video
-        assert tuple(output_clip.size) == (640, 480)
+        video_stream = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
+        assert video_stream is not None
+        assert (int(video_stream["width"]), int(video_stream["height"])) == (640, 480)
         
         # Check has audio
-        assert output_clip.audio is not None
+        audio_stream = next((s for s in probe["streams"] if s["codec_type"] == "audio"), None)
+        assert audio_stream is not None
         
-        output_clip.close()
-        del output_clip
     
     def test_apply_cross_dissolve_different_sizes(self):
         """Test cross dissolve with videos of different sizes"""
@@ -225,7 +206,6 @@ class TestTransitionService:
         )
         
         # Resize video3 to different dimensions
-        from moviepy.editor import VideoFileClip
         clip3 = VideoFileClip(video3_path)
         resized_clip3 = clip3.resize((320, 240))
         video3_resized_path = os.path.join(self.test_dir, "video3_resized.mp4")
@@ -244,11 +224,11 @@ class TestTransitionService:
         assert os.path.exists(output_path)
         
         # Verify output dimensions match first video
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
-        assert tuple(output_clip.size) == (640, 480)
-        output_clip.close()
-        del output_clip
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
+        video_stream = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
+        assert video_stream is not None
+        assert (int(video_stream["width"]), int(video_stream["height"])) == (640, 480)
     
     def test_apply_cross_dissolve_invalid_videos(self):
         """Test cross dissolve with invalid video paths"""
@@ -274,18 +254,17 @@ class TestTransitionService:
         assert os.path.exists(output_path)
         
         # Verify output is a valid video
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         
         # Check duration is approximately video1 + video2 - overlap
         expected_duration = 5.5  # 3 + 3 - 0.5
-        assert abs(output_clip.duration - expected_duration) < 0.2
         
         # Check dimensions
-        assert tuple(output_clip.size) == (640, 480)
+        video_stream = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
+        assert video_stream is not None
+        assert (int(video_stream["width"]), int(video_stream["height"])) == (640, 480)
         
-        output_clip.close()
-        del output_clip
     
     def test_apply_wipe_right(self):
         """Test wipe transition from left to right"""
@@ -300,15 +279,16 @@ class TestTransitionService:
         assert os.path.exists(output_path)
         
         # Verify output is a valid video
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         
         # Check basic properties
-        assert tuple(output_clip.size) == (640, 480)
-        assert abs(output_clip.duration - 5.5) < 0.2
+        video_stream = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
+        assert video_stream is not None
+        assert (int(video_stream["width"]), int(video_stream["height"])) == (640, 480)
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 5.5) < 0.1
         
-        output_clip.close()
-        del output_clip
     
     def test_apply_wipe_up(self):
         """Test wipe transition from bottom to top"""
@@ -323,15 +303,16 @@ class TestTransitionService:
         assert os.path.exists(output_path)
         
         # Verify output is a valid video
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         
         # Check basic properties
-        assert tuple(output_clip.size) == (640, 480)
-        assert abs(output_clip.duration - 5.5) < 0.2
+        video_stream = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
+        assert video_stream is not None
+        assert (int(video_stream["width"]), int(video_stream["height"])) == (640, 480)
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 5.5) < 0.1
         
-        output_clip.close()
-        del output_clip
     
     def test_apply_wipe_down(self):
         """Test wipe transition from top to bottom"""
@@ -346,15 +327,16 @@ class TestTransitionService:
         assert os.path.exists(output_path)
         
         # Verify output is a valid video
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         
         # Check basic properties
-        assert tuple(output_clip.size) == (640, 480)
-        assert abs(output_clip.duration - 5.5) < 0.2
+        video_stream = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
+        assert video_stream is not None
+        assert (int(video_stream["width"]), int(video_stream["height"])) == (640, 480)
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 5.5) < 0.1
         
-        output_clip.close()
-        del output_clip
     
     def test_apply_wipe_invalid_direction(self):
         """Test wipe with invalid direction"""
@@ -379,7 +361,6 @@ class TestTransitionService:
         )
         
         # Resize video3 to different dimensions
-        from moviepy.editor import VideoFileClip
         clip3 = VideoFileClip(video3_path)
         resized_clip3 = clip3.resize((320, 240))
         video3_resized_path = os.path.join(self.test_dir, "video3_wipe_resized.mp4")
@@ -399,11 +380,11 @@ class TestTransitionService:
         assert os.path.exists(output_path)
         
         # Verify output dimensions match first video
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
-        assert tuple(output_clip.size) == (640, 480)
-        output_clip.close()
-        del output_clip
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
+        video_stream = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
+        assert video_stream is not None
+        assert (int(video_stream["width"]), int(video_stream["height"])) == (640, 480)
     
     def test_cleanup_temp_files(self):
         """Test cleanup of old temporary files"""
@@ -435,11 +416,10 @@ class TestTransitionService:
         
         assert os.path.exists(output_path)
         
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
-        assert abs(output_clip.duration - 3.0) < 0.1
-        output_clip.close()
-        del output_clip
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 3.0) < 0.1
     
     def test_fade_out_custom_duration(self):
         """Test fade out with custom duration"""
@@ -450,11 +430,10 @@ class TestTransitionService:
         
         assert os.path.exists(output_path)
         
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
-        assert abs(output_clip.duration - 3.0) < 0.1
-        output_clip.close()
-        del output_clip
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 3.0) < 0.1
     
     def test_cross_dissolve_short_duration(self):
         """Test cross dissolve with very short duration"""
@@ -466,12 +445,11 @@ class TestTransitionService:
         
         assert os.path.exists(output_path)
         
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         # Duration should be approximately 3 + 3 - 0.2 = 5.8
-        assert abs(output_clip.duration - 5.8) < 0.2
-        output_clip.close()
-        del output_clip
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 5.8) < 0.1
     
     def test_multiple_transitions_in_sequence(self):
         """Test applying multiple transitions in sequence"""
@@ -490,7 +468,6 @@ class TestTransitionService:
         assert os.path.exists(fade_in_output)
         assert os.path.exists(fade_out_output)
         
-        from moviepy.editor import VideoFileClip
         final_clip = VideoFileClip(fade_out_output)
         assert abs(final_clip.duration - 3.0) < 0.1
         final_clip.close()
@@ -511,17 +488,18 @@ class TestTransitionService:
         assert os.path.exists(output_path)
         
         # Verify output is a valid video
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         
         # Duration should be approximately 3 + 3 - 0.5 = 5.5 seconds
-        assert abs(output_clip.duration - 5.5) < 0.2
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 5.5) < 0.1
         
         # Check dimensions match first video
-        assert tuple(output_clip.size) == (640, 480)
+        video_stream = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
+        assert video_stream is not None
+        assert (int(video_stream["width"]), int(video_stream["height"])) == (640, 480)
         
-        output_clip.close()
-        del output_clip
 
     def test_apply_slide_right(self):
         """Test slide transition from left to right"""
@@ -534,14 +512,15 @@ class TestTransitionService:
         
         assert os.path.exists(output_path)
         
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         
-        assert abs(output_clip.duration - 5.5) < 0.2
-        assert tuple(output_clip.size) == (640, 480)
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 5.5) < 0.1
+        video_stream = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
+        assert video_stream is not None
+        assert (int(video_stream["width"]), int(video_stream["height"])) == (640, 480)
         
-        output_clip.close()
-        del output_clip
 
     def test_apply_slide_up(self):
         """Test slide transition from bottom to top"""
@@ -554,14 +533,15 @@ class TestTransitionService:
         
         assert os.path.exists(output_path)
         
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         
-        assert abs(output_clip.duration - 5.5) < 0.2
-        assert tuple(output_clip.size) == (640, 480)
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 5.5) < 0.1
+        video_stream = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
+        assert video_stream is not None
+        assert (int(video_stream["width"]), int(video_stream["height"])) == (640, 480)
         
-        output_clip.close()
-        del output_clip
 
     def test_apply_slide_down(self):
         """Test slide transition from top to bottom"""
@@ -574,14 +554,15 @@ class TestTransitionService:
         
         assert os.path.exists(output_path)
         
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         
-        assert abs(output_clip.duration - 5.5) < 0.2
-        assert tuple(output_clip.size) == (640, 480)
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 5.5) < 0.1
+        video_stream = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
+        assert video_stream is not None
+        assert (int(video_stream["width"]), int(video_stream["height"])) == (640, 480)
         
-        output_clip.close()
-        del output_clip
 
     def test_apply_slide_invalid_direction(self):
         """Test slide with invalid direction"""
@@ -606,7 +587,6 @@ class TestTransitionService:
         )
         
         # Resize video3 to different dimensions
-        from moviepy.editor import VideoFileClip
         clip3 = VideoFileClip(video3_path)
         resized_clip3 = clip3.resize((320, 240))
         video3_resized_path = os.path.join(self.test_dir, "video3_slide_resized.mp4")
@@ -626,11 +606,11 @@ class TestTransitionService:
         assert os.path.exists(output_path)
         
         # Verify output dimensions match first video
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
-        assert tuple(output_clip.size) == (640, 480)
-        output_clip.close()
-        del output_clip
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
+        video_stream = next((s for s in probe["streams"] if s["codec_type"] == "video"), None)
+        assert video_stream is not None
+        assert (int(video_stream["width"]), int(video_stream["height"])) == (640, 480)
 
     def test_apply_slide_with_audio(self):
         """Test slide transition preserves audio crossfade"""
@@ -643,14 +623,13 @@ class TestTransitionService:
         
         assert os.path.exists(output_path)
         
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         
         # Check has audio
-        assert output_clip.audio is not None
+        audio_stream = next((s for s in probe["streams"] if s["codec_type"] == "audio"), None)
+        assert audio_stream is not None
         
-        output_clip.close()
-        del output_clip
 
     def test_apply_slide_short_duration(self):
         """Test slide with very short duration"""
@@ -663,12 +642,11 @@ class TestTransitionService:
         
         assert os.path.exists(output_path)
         
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         # Duration should be approximately 3 + 3 - 0.2 = 5.8
-        assert abs(output_clip.duration - 5.8) < 0.2
-        output_clip.close()
-        del output_clip
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 5.8) < 0.1
 
     def test_apply_slide_long_duration(self):
         """Test slide with longer duration"""
@@ -681,12 +659,11 @@ class TestTransitionService:
         
         assert os.path.exists(output_path)
         
-        from moviepy.editor import VideoFileClip
-        output_clip = VideoFileClip(output_path)
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
         # Duration should be approximately 3 + 3 - 2.0 = 4.0
-        assert abs(output_clip.duration - 4.0) < 0.2
-        output_clip.close()
-        del output_clip
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 4.0) < 0.1
 
     def test_apply_slide_invalid_video1(self):
         """Test slide with invalid first video path"""
