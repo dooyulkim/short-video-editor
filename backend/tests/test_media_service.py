@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 import numpy as np
 from PIL import Image
-from moviepy.editor import ColorClip, AudioClip, VideoFileClip
+from conftest import create_test_video_with_ffmpeg, create_test_audio_with_ffmpeg
 
 from services.media_service import MediaService
 from models.media import VideoMetadata, AudioMetadata, ImageMetadata
@@ -39,45 +39,13 @@ class TestMediaService:
     
     def create_test_video(self, duration=2, has_audio=True):
         """Helper to create a test video file"""
-        # Create a simple color clip
-        video_clip = ColorClip(size=(640, 480), color=(255, 0, 0), duration=duration)
-        
-        if has_audio:
-            # Create audio
-            def make_frame(t):
-                return np.sin(2 * np.pi * 440 * t)
-            
-            audio_clip = AudioClip(make_frame, duration=duration, fps=44100)
-            video_clip = video_clip.set_audio(audio_clip)
-        
-        # Save test video
         video_path = os.path.join(self.test_dir, "test_video.mp4")
-        video_clip.write_videofile(
-            video_path,
-            fps=24,
-            codec='libx264',
-            audio_codec='aac' if has_audio else None,
-            verbose=False,
-            logger=None
-        )
-        video_clip.close()
-        
-        return video_path
+        return create_test_video_with_ffmpeg(video_path, duration=duration, has_audio=has_audio)
     
     def create_test_audio(self, duration=2):
         """Helper to create a test audio file"""
-        # Create audio clip
-        def make_frame(t):
-            return np.sin(2 * np.pi * 440 * t)
-        
-        audio_clip = AudioClip(make_frame, duration=duration, fps=44100)
-        
-        # Save test audio
         audio_path = os.path.join(self.test_dir, "test_audio.mp3")
-        audio_clip.write_audiofile(audio_path, verbose=False, logger=None)
-        audio_clip.close()
-        
-        return audio_path
+        return create_test_audio_with_ffmpeg(audio_path, duration=duration)
     
     def create_test_image(self, width=800, height=600):
         """Helper to create a test image file"""
