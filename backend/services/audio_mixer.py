@@ -1,19 +1,13 @@
 """
 Audio Mixer Service for mixing multiple audio tracks with volume
-adjustments and effects.
+adjustments and effects using ffmpeg-python.
 """
-from moviepy.editor import (
-    VideoFileClip,
-    AudioFileClip,
-    CompositeAudioClip
-)
-from moviepy.audio.fx.volumex import volumex
-from moviepy.audio.fx.audio_fadein import audio_fadein
-from moviepy.audio.fx.audio_fadeout import audio_fadeout
+import subprocess
 from pathlib import Path
 from typing import List, Optional
 import uuid
 import os
+import ffmpeg
 
 
 class AudioClipConfig:
@@ -51,7 +45,7 @@ class AudioClipConfig:
 
 
 class AudioMixer:
-    """Service for audio mixing operations."""
+    """Service for audio mixing operations using FFmpeg."""
     
     def __init__(self, temp_dir: str = "temp_audio"):
         """
@@ -62,6 +56,40 @@ class AudioMixer:
         """
         self.temp_dir = Path(temp_dir)
         self.temp_dir.mkdir(exist_ok=True)
+    
+    def _get_audio_duration(self, audio_path: str) -> float:
+        """
+        Get the duration of an audio file using ffprobe.
+        
+        Args:
+            audio_path: Path to the audio file
+            
+        Returns:
+            Duration in seconds
+        """
+        try:
+            probe = ffmpeg.probe(audio_path)
+            duration = float(probe['format'].get('duration', 0))
+            return duration
+        except Exception:
+            return 0.0
+    
+    def _has_audio_stream(self, file_path: str) -> bool:
+        """
+        Check if a file has an audio stream.
+        
+        Args:
+            file_path: Path to the media file
+            
+        Returns:
+            True if the file has an audio stream
+        """
+        try:
+            probe = ffmpeg.probe(file_path)
+            audio_streams = [s for s in probe['streams'] if s['codec_type'] == 'audio']
+            return len(audio_streams) > 0
+        except Exception:
+            return False
     
     def mix_audio_tracks(
         self,
@@ -96,66 +124,6 @@ class AudioMixer:
                 )
         
         try:
-            # Process each audio clip
-            processed_clips = []
-            max_end_time = 0.0
-            
-            for clip_config in audio_clips:
-                # Load the audio clip
-                audio_clip = AudioFileClip(clip_config.audio_path)
-                
-                # Apply trimming
-                if clip_config.trim_start > 0:
-                    audio_clip = audio_clip.subclip(clip_config.trim_start)
-                
-                if clip_config.trim_end is not None:
-                    end_time = (
-                        clip_config.trim_end - clip_config.trim_start
-                    )
-                    audio_clip = audio_clip.subclip(0, end_time)
-                
-                # Apply volume adjustment
-                if clip_config.volume != 1.0:
-                    audio_clip = audio_clip.fx(volumex, clip_config.volume)
-                
-                # Apply fade in
-                if clip_config.fade_in > 0:
-                    audio_clip = audio_clip.fx(
-                        audio_fadein, clip_config.fade_in
-                    )
-                
-                # Apply fade out
-                if clip_config.fade_out > 0:
-                    audio_clip = audio_clip.fx(
-                        audio_fadeout, clip_config.fade_out
-                    )
-                
-                # Set start time for this clip in the mix
-                audio_clip = audio_clip.set_start(clip_config.start_time)
-                
-                processed_clips.append(audio_clip)
-                
-                # Track the maximum end time
-                clip_end_time = clip_config.start_time + audio_clip.duration
-                max_end_time = max(max_end_time, clip_end_time)
-            
-            # Determine final duration
-            final_duration = duration if duration is not None else max_end_time
-            
-            # Create composite audio clip
-            if len(processed_clips) == 1:
-                # Single clip case
-                composite = processed_clips[0]
-                # For single clips, set duration before writing
-                if duration is not None:
-                    composite = composite.set_duration(final_duration)
-            else:
-                # Multiple clips - composite them
-                composite = CompositeAudioClip(processed_clips)
-                # Set duration if specified
-                if duration is not None:
-                    composite = composite.set_duration(final_duration)
-            
             # Generate output path if not provided
             if output_path is None:
                 output_filename = f"mixed_audio_{uuid.uuid4()}.mp3"
@@ -164,23 +132,163 @@ class AudioMixer:
             # Ensure output directory exists
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             
-            # Write the mixed audio to file
-            composite.write_audiofile(
-                output_path,
-                fps=44100,  # Standard audio sample rate
-                nbytes=2,   # 16-bit audio
-                codec='libmp3lame',
-                bitrate='192k',
-                verbose=False,
-                logger=None
-            )
+            # Calculate max end time and process clips
+            max_end_time = 0.0
+            temp_files = []
             
-            # Close all clips to free resources
-            for clip in processed_clips:
-                clip.close()
-            composite.close()
-            
-            return output_path
+            try:
+                processed_clips = []
+                
+                for idx, clip_config in enumerate(audio_clips):
+                    # Get original duration
+                    original_duration = self._get_audio_duration(clip_config.audio_path)
+                    
+                    # Calculate effective duration after trimming
+                    if clip_config.trim_end is not None:
+                        effective_duration = clip_config.trim_end - clip_config.trim_start
+                    else:
+                        effective_duration = original_duration - clip_config.trim_start
+                    
+                    # Track max end time
+                    clip_end_time = clip_config.start_time + effective_duration
+                    max_end_time = max(max_end_time, clip_end_time)
+                    
+                    # Create temp file for processed clip
+                    temp_clip = str(self.temp_dir / f"temp_clip_{idx}_{uuid.uuid4()}.mp3")
+                    temp_files.append(temp_clip)
+                    
+                    # Build FFmpeg command for this clip
+                    cmd = ['ffmpeg', '-y']
+                    
+                    # Input with trimming
+                    if clip_config.trim_start > 0:
+                        cmd.extend(['-ss', str(clip_config.trim_start)])
+                    
+                    cmd.extend(['-i', clip_config.audio_path])
+                    
+                    if clip_config.trim_end is not None:
+                        trim_duration = clip_config.trim_end - clip_config.trim_start
+                        cmd.extend(['-t', str(trim_duration)])
+                    
+                    # Build audio filter chain
+                    filters = []
+                    
+                    # Volume adjustment
+                    if clip_config.volume != 1.0:
+                        filters.append(f"volume={clip_config.volume}")
+                    
+                    # Fade in
+                    if clip_config.fade_in > 0:
+                        filters.append(f"afade=t=in:st=0:d={clip_config.fade_in}")
+                    
+                    # Fade out
+                    if clip_config.fade_out > 0:
+                        fade_out_start = effective_duration - clip_config.fade_out
+                        filters.append(f"afade=t=out:st={fade_out_start}:d={clip_config.fade_out}")
+                    
+                    if filters:
+                        cmd.extend(['-af', ','.join(filters)])
+                    
+                    cmd.extend([
+                        '-c:a', 'libmp3lame',
+                        '-b:a', '192k',
+                        '-ar', '44100',
+                        temp_clip
+                    ])
+                    
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        raise Exception(f"FFmpeg error processing clip: {result.stderr}")
+                    
+                    processed_clips.append({
+                        'path': temp_clip,
+                        'start_time': clip_config.start_time,
+                        'duration': effective_duration
+                    })
+                
+                # Determine final duration
+                final_duration = duration if duration is not None else max_end_time
+                
+                # Mix all clips together
+                if len(processed_clips) == 1:
+                    # Single clip - just apply delay if needed and output
+                    clip_info = processed_clips[0]
+                    delay_ms = int(clip_info['start_time'] * 1000)
+                    
+                    cmd = ['ffmpeg', '-y', '-i', clip_info['path']]
+                    
+                    filters = []
+                    if delay_ms > 0:
+                        filters.append(f"adelay={delay_ms}|{delay_ms}")
+                    
+                    # Pad to final duration if specified
+                    if duration is not None:
+                        filters.append(f"apad=whole_dur={final_duration}")
+                    
+                    if filters:
+                        cmd.extend(['-af', ','.join(filters)])
+                    
+                    if duration is not None:
+                        cmd.extend(['-t', str(final_duration)])
+                    
+                    cmd.extend([
+                        '-c:a', 'libmp3lame',
+                        '-b:a', '192k',
+                        '-ar', '44100',
+                        output_path
+                    ])
+                    
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        raise Exception(f"FFmpeg error: {result.stderr}")
+                else:
+                    # Multiple clips - mix with delays
+                    input_args = []
+                    filter_parts = []
+                    
+                    for idx, clip_info in enumerate(processed_clips):
+                        input_args.extend(['-i', clip_info['path']])
+                        delay_ms = int(clip_info['start_time'] * 1000)
+                        filter_parts.append(f"[{idx}:a]adelay={delay_ms}|{delay_ms}[a{idx}]")
+                    
+                    # Build mix filter
+                    mix_inputs = "".join([f"[a{i}]" for i in range(len(processed_clips))])
+                    
+                    # If duration is specified and longer than longest clip, pad to reach it
+                    if duration is not None and duration > max_end_time:
+                        filter_parts.append(f"{mix_inputs}amix=inputs={len(processed_clips)}:duration=longest,apad=whole_dur={final_duration}[aout]")
+                    else:
+                        filter_parts.append(f"{mix_inputs}amix=inputs={len(processed_clips)}:duration=longest[aout]")
+                    
+                    cmd = ['ffmpeg', '-y']
+                    cmd.extend(input_args)
+                    cmd.extend(['-filter_complex', ';'.join(filter_parts)])
+                    cmd.extend(['-map', '[aout]'])
+                    
+                    if duration is not None:
+                        cmd.extend(['-t', str(final_duration)])
+                    
+                    cmd.extend([
+                        '-c:a', 'libmp3lame',
+                        '-b:a', '192k',
+                        '-ar', '44100',
+                        output_path
+                    ])
+                    
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        raise Exception(f"FFmpeg error: {result.stderr}")
+                
+                return output_path
+                
+            finally:
+                # Cleanup temp files
+                for temp_file in temp_files:
+                    try:
+                        if os.path.exists(temp_file):
+                            os.unlink(temp_file)
+                    except OSError:
+                        pass
             
         except Exception as e:
             raise Exception(f"Failed to mix audio tracks: {str(e)}")
@@ -206,16 +314,11 @@ class AudioMixer:
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
         
-        # Load video file
-        video_clip = VideoFileClip(video_path)
-        
         # Check if video has audio
-        if video_clip.audio is None:
-            video_clip.close()
+        if not self._has_audio_stream(video_path):
             raise ValueError(f"Video file has no audio track: {video_path}")
         
         try:
-            
             # Generate output path if not provided
             if output_path is None:
                 output_filename = f"extracted_audio_{uuid.uuid4()}.mp3"
@@ -224,22 +327,25 @@ class AudioMixer:
             # Ensure output directory exists
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             
-            # Extract and write audio
-            video_clip.audio.write_audiofile(
-                output_path,
-                fps=44100,
-                nbytes=2,
-                codec='libmp3lame',
-                bitrate='192k',
-                verbose=False,
-                logger=None
-            )
+            # Extract audio using FFmpeg
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', video_path,
+                '-vn',  # No video
+                '-c:a', 'libmp3lame',
+                '-b:a', '192k',
+                '-ar', '44100',
+                output_path
+            ]
             
-            # Close the video clip to free resources
-            video_clip.close()
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise Exception(f"FFmpeg error: {result.stderr}")
             
             return output_path
             
+        except ValueError:
+            raise
         except Exception as e:
             raise Exception(f"Failed to extract audio from video: {str(e)}")
     
@@ -277,27 +383,17 @@ class AudioMixer:
         if fade_in == 0.0 and fade_out == 0.0:
             return audio_path
         
-        # Load audio file
-        audio_clip = AudioFileClip(audio_path)
+        # Get audio duration
+        audio_duration = self._get_audio_duration(audio_path)
         
         # Validate fade durations don't exceed audio duration
-        if fade_in + fade_out > audio_clip.duration:
-            audio_clip.close()
+        if fade_in + fade_out > audio_duration:
             raise ValueError(
                 f"Combined fade durations ({fade_in + fade_out}s) exceed "
-                f"audio duration ({audio_clip.duration}s)"
+                f"audio duration ({audio_duration}s)"
             )
         
         try:
-            
-            # Apply fade in
-            if fade_in > 0:
-                audio_clip = audio_clip.fx(audio_fadein, fade_in)
-            
-            # Apply fade out
-            if fade_out > 0:
-                audio_clip = audio_clip.fx(audio_fadeout, fade_out)
-            
             # Generate output path if not provided
             if output_path is None:
                 output_filename = f"faded_audio_{uuid.uuid4()}.mp3"
@@ -306,22 +402,34 @@ class AudioMixer:
             # Ensure output directory exists
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             
-            # Write the processed audio
-            audio_clip.write_audiofile(
-                output_path,
-                fps=44100,
-                nbytes=2,
-                codec='libmp3lame',
-                bitrate='192k',
-                verbose=False,
-                logger=None
-            )
+            # Build filter chain
+            filters = []
             
-            # Close clip to free resources
-            audio_clip.close()
+            if fade_in > 0:
+                filters.append(f"afade=t=in:st=0:d={fade_in}")
+            
+            if fade_out > 0:
+                fade_out_start = audio_duration - fade_out
+                filters.append(f"afade=t=out:st={fade_out_start}:d={fade_out}")
+            
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', audio_path,
+                '-af', ','.join(filters),
+                '-c:a', 'libmp3lame',
+                '-b:a', '192k',
+                '-ar', '44100',
+                output_path
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise Exception(f"FFmpeg error: {result.stderr}")
             
             return output_path
             
+        except ValueError:
+            raise
         except Exception as e:
             raise Exception(f"Failed to apply audio fade: {str(e)}")
     
@@ -355,12 +463,6 @@ class AudioMixer:
             raise ValueError("Target volume must be positive")
         
         try:
-            # Load audio file
-            audio_clip = AudioFileClip(audio_path)
-            
-            # Apply volume normalization
-            audio_clip = audio_clip.fx(volumex, target_volume)
-            
             # Generate output path if not provided
             if output_path is None:
                 output_filename = f"normalized_audio_{uuid.uuid4()}.mp3"
@@ -369,21 +471,23 @@ class AudioMixer:
             # Ensure output directory exists
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             
-            # Write the normalized audio
-            audio_clip.write_audiofile(
-                output_path,
-                fps=44100,
-                nbytes=2,
-                codec='libmp3lame',
-                bitrate='192k',
-                verbose=False,
-                logger=None
-            )
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', audio_path,
+                '-af', f'volume={target_volume}',
+                '-c:a', 'libmp3lame',
+                '-b:a', '192k',
+                '-ar', '44100',
+                output_path
+            ]
             
-            # Close clip to free resources
-            audio_clip.close()
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise Exception(f"FFmpeg error: {result.stderr}")
             
             return output_path
             
+        except ValueError:
+            raise
         except Exception as e:
             raise Exception(f"Failed to normalize audio: {str(e)}")

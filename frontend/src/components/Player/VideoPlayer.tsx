@@ -33,6 +33,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	const isScrubbingRef = useRef<boolean>(false);
 	const scrubTimeoutRef = useRef<number | undefined>(undefined);
 	const canvasSizeRef = useRef({ width: initialWidth || 1080, height: initialHeight || 1920 });
+	// Track which clips are currently active to detect transitions
+	const activeClipsRef = useRef<Set<string>>(new Set());
 	const [isReady, setIsReady] = useState(false);
 	const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 });
 	const [localCanvasSize, setLocalCanvasSize] = useState({
@@ -866,7 +868,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	useEffect(() => {
 		if (!isReady) return;
 
-		// If not playing, pause all videos immediately
+		// If not playing, pause all videos immediately and clear active clips
 		if (!isPlaying) {
 			videoElementsRef.current.forEach((video) => {
 				if (!video.paused) {
@@ -874,6 +876,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				}
 				video.muted = true;
 			});
+			activeClipsRef.current.clear();
 			return;
 		}
 
@@ -896,6 +899,9 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			}
 		}
 
+		// Track current visible clip IDs to detect transitions
+		const currentVisibleClipIds = new Set(visibleVideoClips.map(({ clip }) => clip.id));
+
 		// Play all visible video clips (don't touch mute state - handled by mute sync effect)
 		visibleVideoClips.forEach(({ clip, resourceId }) => {
 			const video = videoElementsRef.current.get(resourceId);
@@ -904,11 +910,17 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			const localTime = time - clip.startTime;
 			const videoTime = localTime + clip.trimStart;
 
-			// Only seek if video is significantly out of sync (> 0.5s)
-			// This prevents constant seeking during normal playback
-			// Small drifts are acceptable and less disruptive than seeking
+			// Check if this clip just became visible (transitioning into view)
+			const isNewlyVisible = !activeClipsRef.current.has(clip.id);
+
+			// Calculate time difference
 			const timeDiff = Math.abs(video.currentTime - videoTime);
-			if (timeDiff > 0.5) {
+
+			// Always seek if:
+			// 1. Clip just became visible (transitioning from another clip) - need exact sync
+			// 2. Video is significantly out of sync (> 0.3s) - prevents drift
+			// Use tighter threshold (0.3s) for better sync during transitions
+			if (isNewlyVisible || timeDiff > 0.3) {
 				video.currentTime = videoTime;
 			}
 
@@ -919,6 +931,9 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				});
 			}
 		});
+
+		// Update active clips reference for next frame
+		activeClipsRef.current = currentVisibleClipIds;
 
 		// Pause and mute all videos not currently visible
 		videoElementsRef.current.forEach((video, resourceId) => {

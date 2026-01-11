@@ -1,11 +1,12 @@
 """
-Tests for the AudioMixer service.
+Tests for the AudioMixer service using ffmpeg-python.
 """
 import pytest
 import os
 import shutil
+import subprocess
 from services.audio_mixer import AudioMixer, AudioClipConfig
-from moviepy.editor import AudioFileClip
+import ffmpeg
 import numpy as np
 
 
@@ -31,110 +32,106 @@ class TestAudioMixer:
     @pytest.fixture
     def sample_audio_file(self, temp_dir):
         """
-        Create a sample audio file for testing.
+        Create a sample audio file for testing using FFmpeg.
         Returns path to a 2-second audio file with a 440Hz tone.
         """
-        from moviepy.editor import AudioClip
-
-        def make_frame(t):
-            """Generate a 440Hz sine wave (musical note A)."""
-            return [np.sin(440 * 2 * np.pi * t)]
-
-        # Create a 2-second audio clip
-        audio = AudioClip(make_frame, duration=2.0, fps=44100)
-        audio_path = temp_dir / "sample_audio.mp3"
-
-        audio.write_audiofile(
-            str(audio_path),
-            fps=44100,
-            nbytes=2,
-            codec='libmp3lame',
-            verbose=False,
-            logger=None
-        )
-        audio.close()
-
-        return str(audio_path)
+        audio_path = str(temp_dir / "sample_audio.mp3")
+        
+        # Generate 2-second 440Hz sine wave using FFmpeg
+        cmd = [
+            'ffmpeg', '-y',
+            '-f', 'lavfi',
+            '-i', 'sine=frequency=440:duration=2',
+            '-c:a', 'libmp3lame',
+            '-b:a', '192k',
+            '-ar', '44100',
+            audio_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            pytest.skip(f"FFmpeg not available or error: {result.stderr}")
+        
+        return audio_path
 
     @pytest.fixture
     def sample_audio_file_2(self, temp_dir):
         """
         Create a second sample audio file for testing mixing.
-        Returns path to a 1.5-second audio file with a 880Hz tone.
+        Returns path to a 1.5-second audio file with an 880Hz tone.
         """
-        from moviepy.editor import AudioClip
-
-        def make_frame(t):
-            """Generate an 880Hz sine wave (one octave above A)."""
-            return [np.sin(880 * 2 * np.pi * t)]
-
-        # Create a 1.5-second audio clip
-        audio = AudioClip(make_frame, duration=1.5, fps=44100)
-        audio_path = temp_dir / "sample_audio_2.mp3"
-
-        audio.write_audiofile(
-            str(audio_path),
-            fps=44100,
-            nbytes=2,
-            codec='libmp3lame',
-            verbose=False,
-            logger=None
-        )
-        audio.close()
-
-        return str(audio_path)
+        audio_path = str(temp_dir / "sample_audio_2.mp3")
+        
+        # Generate 1.5-second 880Hz sine wave using FFmpeg
+        cmd = [
+            'ffmpeg', '-y',
+            '-f', 'lavfi',
+            '-i', 'sine=frequency=880:duration=1.5',
+            '-c:a', 'libmp3lame',
+            '-b:a', '192k',
+            '-ar', '44100',
+            audio_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            pytest.skip(f"FFmpeg not available or error: {result.stderr}")
+        
+        return audio_path
 
     @pytest.fixture
     def sample_video_with_audio(self, temp_dir):
         """
         Create a sample video file with audio for testing extraction.
         """
-        from moviepy.editor import ColorClip, AudioClip
-
-        def make_frame(t):
-            """Generate a 440Hz sine wave."""
-            return [np.sin(440 * 2 * np.pi * t)]
-
-        # Create a 2-second video with audio
-        video = ColorClip(size=(640, 480), color=(255, 0, 0), duration=2.0)
-        audio = AudioClip(make_frame, duration=2.0, fps=44100)
-        video = video.set_audio(audio)
-
-        video_path = temp_dir / "sample_video.mp4"
-        video.write_videofile(
-            str(video_path),
-            fps=24,
-            codec='libx264',
-            audio_codec='aac',
-            verbose=False,
-            logger=None
-        )
-        video.close()
-        audio.close()
-
-        return str(video_path)
+        video_path = str(temp_dir / "sample_video.mp4")
+        
+        # Generate 2-second video with audio using FFmpeg
+        cmd = [
+            'ffmpeg', '-y',
+            '-f', 'lavfi', '-i', 'color=c=red:s=640x480:d=2:r=24',
+            '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2',
+            '-c:v', 'libx264', '-preset', 'ultrafast',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-shortest',
+            video_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            pytest.skip(f"FFmpeg not available or error: {result.stderr}")
+        
+        return video_path
 
     @pytest.fixture
     def sample_video_no_audio(self, temp_dir):
         """
         Create a sample video file without audio for testing.
         """
-        from moviepy.editor import ColorClip
+        video_path = str(temp_dir / "sample_video_no_audio.mp4")
+        
+        # Generate 2-second video without audio using FFmpeg
+        cmd = [
+            'ffmpeg', '-y',
+            '-f', 'lavfi', '-i', 'color=c=green:s=640x480:d=2:r=24',
+            '-c:v', 'libx264', '-preset', 'ultrafast',
+            '-an',  # No audio
+            video_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            pytest.skip(f"FFmpeg not available or error: {result.stderr}")
+        
+        return video_path
 
-        # Create a 2-second video without audio
-        video = ColorClip(size=(640, 480), color=(0, 255, 0), duration=2.0)
-
-        video_path = temp_dir / "sample_video_no_audio.mp4"
-        video.write_videofile(
-            str(video_path),
-            fps=24,
-            codec='libx264',
-            verbose=False,
-            logger=None
-        )
-        video.close()
-
-        return str(video_path)
+    def _get_audio_duration(self, audio_path):
+        """Helper to get audio duration using ffprobe."""
+        try:
+            probe = ffmpeg.probe(audio_path)
+            return float(probe['format'].get('duration', 0))
+        except Exception:
+            return 0.0
 
     # ==================== Tests for mix_audio_tracks ====================
 
@@ -151,10 +148,9 @@ class TestAudioMixer:
         assert os.path.exists(result_path)
 
         # Verify the output audio file
-        audio = AudioFileClip(result_path)
-        assert audio.duration > 0
-        assert audio.duration >= 1.5  # Should be around 2 seconds
-        audio.close()
+        duration = self._get_audio_duration(result_path)
+        assert duration > 0
+        assert duration >= 1.5  # Should be around 2 seconds
 
     def test_mix_multiple_audio_tracks(self, audio_mixer, sample_audio_file, sample_audio_file_2):
         """Test mixing multiple audio tracks at different start times."""
@@ -176,10 +172,9 @@ class TestAudioMixer:
         assert os.path.exists(result_path)
 
         # Verify the output audio file
-        audio = AudioFileClip(result_path)
+        duration = self._get_audio_duration(result_path)
         # Duration should be at least 1.0 (start of second clip) + 1.5 (duration of second clip)
-        assert audio.duration >= 2.0
-        audio.close()
+        assert duration >= 2.0
 
     def test_mix_with_volume_adjustment(self, audio_mixer, sample_audio_file):
         """Test mixing with volume adjustment."""
@@ -194,9 +189,8 @@ class TestAudioMixer:
         assert os.path.exists(result_path)
 
         # Verify the file was created
-        audio = AudioFileClip(result_path)
-        assert audio.duration > 0
-        audio.close()
+        duration = self._get_audio_duration(result_path)
+        assert duration > 0
 
     def test_mix_with_trimming(self, audio_mixer, sample_audio_file):
         """Test mixing with trim_start and trim_end."""
@@ -213,9 +207,8 @@ class TestAudioMixer:
         assert os.path.exists(result_path)
 
         # Verify the duration is approximately 1 second (1.5 - 0.5)
-        audio = AudioFileClip(result_path)
-        assert 0.8 <= audio.duration <= 1.2  # Allow some tolerance
-        audio.close()
+        duration = self._get_audio_duration(result_path)
+        assert 0.8 <= duration <= 1.2  # Allow some tolerance
 
     def test_mix_with_fades(self, audio_mixer, sample_audio_file):
         """Test mixing with fade in and fade out."""
@@ -232,9 +225,8 @@ class TestAudioMixer:
         assert os.path.exists(result_path)
 
         # Verify the file was created with correct duration
-        audio = AudioFileClip(result_path)
-        assert audio.duration >= 1.5
-        audio.close()
+        duration = self._get_audio_duration(result_path)
+        assert duration >= 1.5
 
     def test_mix_with_custom_output_path(self, audio_mixer, sample_audio_file, temp_dir):
         """Test mixing with a custom output path."""
@@ -274,9 +266,8 @@ class TestAudioMixer:
         assert os.path.exists(result_path)
 
         # Verify duration is approximately 5 seconds
-        audio = AudioFileClip(result_path)
-        assert 4.5 <= audio.duration <= 5.5  # Allow some tolerance
-        audio.close()
+        duration = self._get_audio_duration(result_path)
+        assert 4.5 <= duration <= 5.5  # Allow some tolerance
 
     def test_mix_empty_clips_list(self, audio_mixer):
         """Test mixing with empty clips list raises ValueError."""
@@ -314,9 +305,8 @@ class TestAudioMixer:
         assert os.path.exists(result_path)
 
         # Verify the output
-        audio = AudioFileClip(result_path)
-        assert audio.duration >= 1.5  # Should cover both clips
-        audio.close()
+        duration = self._get_audio_duration(result_path)
+        assert duration >= 1.5  # Should cover both clips
 
     # ==================== Tests for extract_audio ====================
 
@@ -328,10 +318,9 @@ class TestAudioMixer:
         assert result_path.endswith('.mp3')
 
         # Verify the extracted audio
-        audio = AudioFileClip(result_path)
-        assert audio.duration > 0
-        assert audio.duration >= 1.5  # Should be around 2 seconds
-        audio.close()
+        duration = self._get_audio_duration(result_path)
+        assert duration > 0
+        assert duration >= 1.5  # Should be around 2 seconds
 
     def test_extract_audio_with_custom_output(self, audio_mixer, sample_video_with_audio, temp_dir):
         """Test extracting audio with custom output path."""
@@ -363,9 +352,8 @@ class TestAudioMixer:
         assert os.path.exists(result_path)
 
         # Verify the output
-        audio = AudioFileClip(result_path)
-        assert audio.duration > 0
-        audio.close()
+        duration = self._get_audio_duration(result_path)
+        assert duration > 0
 
     def test_apply_fade_out(self, audio_mixer, sample_audio_file):
         """Test applying fade out effect."""
@@ -375,9 +363,8 @@ class TestAudioMixer:
         assert os.path.exists(result_path)
 
         # Verify the output
-        audio = AudioFileClip(result_path)
-        assert audio.duration > 0
-        audio.close()
+        duration = self._get_audio_duration(result_path)
+        assert duration > 0
 
     def test_apply_both_fades(self, audio_mixer, sample_audio_file):
         """Test applying both fade in and fade out."""
@@ -387,9 +374,8 @@ class TestAudioMixer:
         assert os.path.exists(result_path)
 
         # Verify the output
-        audio = AudioFileClip(result_path)
-        assert audio.duration > 0
-        audio.close()
+        duration = self._get_audio_duration(result_path)
+        assert duration > 0
 
     def test_apply_no_fades_returns_original(self, audio_mixer, sample_audio_file):
         """Test applying no fades returns the original path."""
@@ -437,9 +423,8 @@ class TestAudioMixer:
         assert os.path.exists(result_path)
 
         # Verify the output
-        audio = AudioFileClip(result_path)
-        assert audio.duration > 0
-        audio.close()
+        duration = self._get_audio_duration(result_path)
+        assert duration > 0
 
     def test_normalize_audio_decrease_volume(self, audio_mixer, sample_audio_file):
         """Test normalizing audio with decreased volume."""
@@ -449,9 +434,8 @@ class TestAudioMixer:
         assert os.path.exists(result_path)
 
         # Verify the output
-        audio = AudioFileClip(result_path)
-        assert audio.duration > 0
-        audio.close()
+        duration = self._get_audio_duration(result_path)
+        assert duration > 0
 
     def test_normalize_audio_with_custom_output(self, audio_mixer, sample_audio_file, temp_dir):
         """Test normalizing audio with custom output path."""

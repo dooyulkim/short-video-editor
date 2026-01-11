@@ -41,7 +41,7 @@ class ExportSettings(BaseModel):
 
 class ExportRequest(BaseModel):
     """Request model for starting an export."""
-    timeline: Dict  # Timeline data from frontend
+    timeline: Optional[Dict] = None  # Timeline data from frontend
     settings: Optional[ExportSettings] = None
     # Legacy support
     timeline_data: Optional[Dict] = None
@@ -270,6 +270,8 @@ async def start_export(
             message="Export task started"
         )
         
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start export: {str(e)}")
 

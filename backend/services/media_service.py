@@ -92,6 +92,7 @@ class MediaService:
             width = int(video_stream.get('width', 0))
             height = int(video_stream.get('height', 0))
             codec = video_stream.get('codec_name', 'unknown')
+            bitrate = int(video_stream.get('bit_rate', format_info.get('bit_rate', 0)) or 0)
             
             # Calculate FPS from r_frame_rate or avg_frame_rate
             fps_str = video_stream.get('r_frame_rate', video_stream.get('avg_frame_rate', '0/1'))
@@ -107,6 +108,7 @@ class MediaService:
                 height=height,
                 fps=fps,
                 codec=codec,
+                bitrate=bitrate,
                 format=file_format,
                 has_audio=has_audio
             )
@@ -146,12 +148,16 @@ class MediaService:
             # Extract audio metadata
             sample_rate = int(audio_stream.get('sample_rate', 0))
             channels = int(audio_stream.get('channels', 0))
+            codec = audio_stream.get('codec_name', 'unknown')
+            bitrate = int(audio_stream.get('bit_rate', format_info.get('bit_rate', 0)) or 0)
             
             return AudioMetadata(
                 duration=duration,
                 sample_rate=sample_rate,
                 channels=channels,
-                format=file_format
+                format=file_format,
+                bitrate=bitrate,
+                codec=codec
             )
         
         except Exception as e:
@@ -356,6 +362,9 @@ class MediaService:
             # Create image
             img = Image.new('RGB', (width, height), color='white')
             pixels = img.load()
+            
+            if pixels is None:
+                raise ValueError("Failed to load image pixels")
             
             # Draw waveform
             center_y = height // 2

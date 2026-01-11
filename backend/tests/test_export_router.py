@@ -5,8 +5,8 @@ import pytest
 import os
 import tempfile
 import shutil
+import subprocess
 from fastapi.testclient import TestClient
-from moviepy.editor import ColorClip
 
 # Import app
 from main import app
@@ -36,19 +36,18 @@ def setup_test_dirs():
     uploads_dir = os.path.join(test_dir, "uploads")
     os.makedirs(uploads_dir)
     
-    # Create a simple test video
-    video_clip = ColorClip(
-        size=(640, 480), color=(255, 0, 0), duration=1
-    ).set_fps(24)
+    # Create a simple test video using FFmpeg
     video_path = os.path.join(uploads_dir, "test_video.mp4")
-    video_clip.write_videofile(
-        video_path,
-        fps=24,
-        codec='libx264',
-        verbose=False,
-        logger=None
-    )
-    video_clip.close()
+    cmd = [
+        'ffmpeg', '-y',
+        '-f', 'lavfi', '-i', 'color=c=red:s=640x480:d=1:r=24',
+        '-c:v', 'libx264', '-preset', 'ultrafast',
+        '-pix_fmt', 'yuv420p',
+        video_path
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        pytest.skip(f"FFmpeg not available or error: {result.stderr}")
     
     yield {
         "test_dir": test_dir,
@@ -80,7 +79,7 @@ class TestExportRouter:
         
         # Make request
         response = client.post(
-            "/export/start",
+            "/api/export/start",
             json={
                 "timeline_data": timeline_data,
                 "resolution": "480p",
@@ -109,7 +108,7 @@ class TestExportRouter:
         }
         
         response = client.post(
-            "/export/start",
+            "/api/export/start",
             json={
                 "timeline_data": timeline_data,
                 "resolution": "720p",
@@ -143,14 +142,14 @@ class TestExportRouter:
             }
         
         # Make request
-        response = client.get(f"/export/status/{task_id}")
+        response = client.get(f"/api/export/status/{task_id}")
         
         # Verify response
         assert response.status_code == 200
         data = response.json()
         assert data["task_id"] == task_id
         assert data["status"] == "pending"
-        assert data["progress"] == 0.0
+        assert data["progress"] == 0.0  # 0.0 * 100 = 0.0
         assert data["output_path"] is None
     
     def test_get_export_status_processing(self, client):
@@ -167,12 +166,12 @@ class TestExportRouter:
                 "completed_at": None
             }
         
-        response = client.get(f"/export/status/{task_id}")
+        response = client.get(f"/api/export/status/{task_id}")
         
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "processing"
-        assert data["progress"] == 0.5
+        assert data["progress"] == 50.0  # 0.5 * 100 = 50.0
     
     def test_get_export_status_completed(self, client):
         """Test export status for completed task"""
@@ -188,12 +187,12 @@ class TestExportRouter:
                 "completed_at": "2026-01-05T12:05:00"
             }
         
-        response = client.get(f"/export/status/{task_id}")
+        response = client.get(f"/api/export/status/{task_id}")
         
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "completed"
-        assert data["progress"] == 1.0
+        assert data["progress"] == 100.0  # 1.0 * 100 = 100.0
         assert data["output_path"] == "/path/to/export.mp4"
         assert data["completed_at"] is not None
     
@@ -211,7 +210,7 @@ class TestExportRouter:
                 "completed_at": "2026-01-05T12:01:00"
             }
         
-        response = client.get(f"/export/status/{task_id}")
+        response = client.get(f"/api/export/status/{task_id}")
         
         assert response.status_code == 200
         data = response.json()
@@ -220,7 +219,7 @@ class TestExportRouter:
     
     def test_get_export_status_not_found(self, client):
         """Test export status for non-existent task"""
-        response = client.get("/export/status/nonexistent-task")
+        response = client.get("/api/export/status/nonexistent-task")
         
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
@@ -247,7 +246,7 @@ class TestExportRouter:
             }
         
         try:
-            response = client.get(f"/export/download/{task_id}")
+            response = client.get(f"/api/export/download/{task_id}")
             
             assert response.status_code == 200
             assert response.headers["content-type"] == "video/mp4"
@@ -273,14 +272,14 @@ class TestExportRouter:
                 "completed_at": None
             }
         
-        response = client.get(f"/export/download/{task_id}")
+        response = client.get(f"/api/export/download/{task_id}")
         
         assert response.status_code == 400
         assert "not completed" in response.json()["detail"].lower()
     
     def test_download_export_not_found(self, client):
         """Test download for non-existent task"""
-        response = client.get("/export/download/nonexistent-task")
+        response = client.get("/api/export/download/nonexistent-task")
         
         assert response.status_code == 404
     
@@ -299,7 +298,7 @@ class TestExportRouter:
                 "output_filename": "test.mp4"
             }
         
-        response = client.get(f"/export/download/{task_id}")
+        response = client.get(f"/api/export/download/{task_id}")
         
         assert response.status_code == 404
         assert "file not found" in response.json()["detail"].lower()
@@ -318,7 +317,7 @@ class TestExportRouter:
                 "completed_at": None
             }
         
-        response = client.delete(f"/export/cancel/{task_id}")
+        response = client.delete(f"/api/export/cancel/{task_id}")
         
         assert response.status_code == 200
         data = response.json()
@@ -342,14 +341,14 @@ class TestExportRouter:
                 "completed_at": "2026-01-05T12:05:00"
             }
         
-        response = client.delete(f"/export/cancel/{task_id}")
+        response = client.delete(f"/api/export/cancel/{task_id}")
         
         assert response.status_code == 400
         assert "cannot cancel" in response.json()["detail"].lower()
     
     def test_cancel_nonexistent_export(self, client):
         """Test cancelling non-existent task"""
-        response = client.delete("/export/cancel/nonexistent-task")
+        response = client.delete("/api/export/cancel/nonexistent-task")
         
         assert response.status_code == 404
     
@@ -376,7 +375,7 @@ class TestExportRouter:
                 "completed_at": "2026-01-05T12:05:00"
             }
         
-        response = client.get("/export/tasks")
+        response = client.get("/api/export/tasks")
         
         assert response.status_code == 200
         data = response.json()
@@ -387,7 +386,7 @@ class TestExportRouter:
     
     def test_list_export_tasks_empty(self, client):
         """Test listing tasks when none exist"""
-        response = client.get("/export/tasks")
+        response = client.get("/api/export/tasks")
         
         assert response.status_code == 200
         data = response.json()
@@ -429,7 +428,7 @@ class TestExportRouter:
             }
         
         try:
-            response = client.delete("/export/cleanup")
+            response = client.delete("/api/export/cleanup")
             
             assert response.status_code == 200
             data = response.json()
@@ -456,7 +455,7 @@ class TestExportRouter:
                 "completed_at": None
             }
         
-        response = client.delete("/export/cleanup")
+        response = client.delete("/api/export/cleanup")
         
         assert response.status_code == 200
         data = response.json()
@@ -466,14 +465,14 @@ class TestExportRouter:
         """Test export request with invalid data"""
         # Missing timeline_data
         response = client.post(
-            "/export/start",
+            "/api/export/start",
             json={
                 "resolution": "480p",
                 "fps": 24
             }
         )
         
-        assert response.status_code == 422  # Validation error
+        assert response.status_code == 400  # HTTPException from missing timeline data
     
     def test_export_with_custom_fps(self, client):
         """Test export with custom FPS setting"""
@@ -483,7 +482,7 @@ class TestExportRouter:
         }
         
         response = client.post(
-            "/export/start",
+            "/api/export/start",
             json={
                 "timeline_data": timeline_data,
                 "resolution": "720p",
@@ -505,7 +504,7 @@ class TestExportRouter:
         task_ids = []
         for i in range(3):
             response = client.post(
-                "/export/start",
+                "/api/export/start",
                 json={
                     "timeline_data": timeline_data,
                     "resolution": "480p",
