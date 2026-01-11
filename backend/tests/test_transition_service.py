@@ -364,7 +364,6 @@ class TestTransitionService:
             has_audio=True
         )
         
-        # Resize video3 to different dimensions
         # Resize video3 to different dimensions using ffmpeg
         import ffmpeg
         video3_resized_path = os.path.join(self.test_dir, "video3_wipe_resized.mp4")
@@ -376,7 +375,6 @@ class TestTransitionService:
             .overwrite_output()
             .run(quiet=True)
         )
-        resized_clip3.close()
         
         # Apply wipe
         output_path = self.service.apply_wipe(
@@ -596,7 +594,6 @@ class TestTransitionService:
             has_audio=True
         )
         
-        # Resize video3 to different dimensions
         # Resize video3 to different dimensions using ffmpeg
         import ffmpeg
         video3_resized_path = os.path.join(self.test_dir, "video3_slide_resized.mp4")
@@ -608,7 +605,6 @@ class TestTransitionService:
             .overwrite_output()
             .run(quiet=True)
         )
-        resized_clip3.close()
         
         # Apply slide
         output_path = self.service.apply_slide(

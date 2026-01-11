@@ -2,9 +2,12 @@ import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Transition } from "@/types/timeline";
 import { CircleFadingPlus, GitMerge, ScanLine, ArrowRightToLine } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+type WipeDirection = "left" | "right" | "up" | "down";
 
 interface TransitionPreset {
 	type: Transition["type"];
@@ -12,6 +15,7 @@ interface TransitionPreset {
 	icon: React.ComponentType<{ className?: string }>;
 	color: string;
 	description: string;
+	hasDirection?: boolean;
 }
 
 const transitionPresets: TransitionPreset[] = [
@@ -35,6 +39,7 @@ const transitionPresets: TransitionPreset[] = [
 		icon: ScanLine,
 		color: "bg-green-500",
 		description: "Directional wipe transition",
+		hasDirection: true,
 	},
 	{
 		type: "slide",
@@ -42,7 +47,15 @@ const transitionPresets: TransitionPreset[] = [
 		icon: ArrowRightToLine,
 		color: "bg-orange-500",
 		description: "Slide in/out transition",
+		hasDirection: true,
 	},
+];
+
+const directionOptions: { value: WipeDirection; label: string }[] = [
+	{ value: "left", label: "← Left" },
+	{ value: "right", label: "→ Right" },
+	{ value: "up", label: "↑ Up" },
+	{ value: "down", label: "↓ Down" },
 ];
 
 interface TransitionPanelProps {
@@ -52,15 +65,27 @@ interface TransitionPanelProps {
 export const TransitionPanel: React.FC<TransitionPanelProps> = ({ onTransitionSelect }) => {
 	const [selectedTransition, setSelectedTransition] = useState<Transition["type"] | null>(null);
 	const [duration, setDuration] = useState<number>(1); // Default 1 second
+	const [direction, setDirection] = useState<WipeDirection>("left"); // Default direction
 	const [draggedTransition, setDraggedTransition] = useState<Transition["type"] | null>(null);
 
-	// Handle drag start for transition preset
-	const handleDragStart = (e: React.DragEvent, type: Transition["type"]) => {
-		setDraggedTransition(type);
+	// Build transition object with properties
+	const buildTransition = (type: Transition["type"]): Transition => {
+		const preset = transitionPresets.find((p) => p.type === type);
 		const transition: Transition = {
 			type,
 			duration,
 		};
+		// Add direction property for wipe and slide
+		if (preset?.hasDirection) {
+			transition.properties = { direction };
+		}
+		return transition;
+	};
+
+	// Handle drag start for transition preset
+	const handleDragStart = (e: React.DragEvent, type: Transition["type"]) => {
+		setDraggedTransition(type);
+		const transition = buildTransition(type);
 		// Store transition data in drag event
 		if (e.dataTransfer) {
 			e.dataTransfer.setData("application/json", JSON.stringify(transition));
@@ -77,10 +102,7 @@ export const TransitionPanel: React.FC<TransitionPanelProps> = ({ onTransitionSe
 	const handlePresetClick = (type: Transition["type"]) => {
 		setSelectedTransition(type);
 		if (onTransitionSelect) {
-			const transition: Transition = {
-				type,
-				duration,
-			};
+			const transition = buildTransition(type);
 			onTransitionSelect(transition);
 		}
 	};
@@ -89,6 +111,11 @@ export const TransitionPanel: React.FC<TransitionPanelProps> = ({ onTransitionSe
 	const handleDurationChange = (value: number[]) => {
 		setDuration(value[0]);
 	};
+
+	// Check if selected transition has direction
+	const selectedPreset = transitionPresets.find((p) => p.type === selectedTransition);
+	const showDirectionControl =
+		selectedPreset?.hasDirection || transitionPresets.find((p) => p.type === draggedTransition)?.hasDirection;
 
 	return (
 		<div className="h-full flex flex-col gap-4 p-4 bg-background">
@@ -159,6 +186,28 @@ export const TransitionPanel: React.FC<TransitionPanelProps> = ({ onTransitionSe
 						<span>0.1s</span>
 						<span>3.0s</span>
 					</div>
+				</CardContent>
+			</Card>
+
+			{/* Direction Control - Only for wipe/slide */}
+			<Card>
+				<CardHeader className="p-3 pb-2">
+					<CardTitle className="text-sm font-medium">Wipe/Slide Direction</CardTitle>
+				</CardHeader>
+				<CardContent className="p-3 pt-0 space-y-2">
+					<Select value={direction} onValueChange={(value) => setDirection(value as WipeDirection)}>
+						<SelectTrigger className="w-full">
+							<SelectValue placeholder="Select direction" />
+						</SelectTrigger>
+						<SelectContent>
+							{directionOptions.map((opt) => (
+								<SelectItem key={opt.value} value={opt.value}>
+									{opt.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+					<p className="text-xs text-muted-foreground">Direction applies to Wipe and Slide transitions</p>
 				</CardContent>
 			</Card>
 

@@ -982,12 +982,8 @@ class ExportService:
         Supports 4 transition types:
         - fade: Classic fade to/from black
         - dissolve: Cross dissolve effect (renders as fade for single clip)
-        - wipe: Wipe effect (renders as fade for single clip)
-        - slide: Slide effect (renders as fade for single clip)
-        
-        Note: dissolve, wipe, and slide are cross-clip transitions.
-        When applied to single clips, they render as fade effects.
-        True cross-clip transitions are handled at the composition level.
+        - wipe: Directional wipe effect (left, right, up, down)
+        - slide: Slide effect (left, right, up, down)
 
         Args:
             clip: Video clip
@@ -999,28 +995,222 @@ class ExportService:
         if not transitions or not isinstance(transitions, dict):
             return clip
         
-        # Supported transition types that render as fade on single clips
-        fade_compatible_types = {"fade", "dissolve", "wipe", "slide"}
-            
         # Apply in transition
         if transitions.get("in"):
             trans_in = transitions["in"]
             trans_type = trans_in.get("type", "").lower()
             duration = trans_in.get("duration", 1.0)
+            properties = trans_in.get("properties", {})
+            direction = properties.get("direction", "left")
             
-            if trans_type in fade_compatible_types:
+            if trans_type == "fade" or trans_type == "dissolve":
                 clip = fadein(clip, duration)
+            elif trans_type in ("wipe", "slide"):
+                clip = self._apply_directional_wipe_in(clip, duration, direction, trans_type)
 
         # Apply out transition
         if transitions.get("out"):
             trans_out = transitions["out"]
             trans_type = trans_out.get("type", "").lower()
             duration = trans_out.get("duration", 1.0)
+            properties = trans_out.get("properties", {})
+            direction = properties.get("direction", "left")
             
-            if trans_type in fade_compatible_types:
+            if trans_type == "fade" or trans_type == "dissolve":
                 clip = fadeout(clip, duration)
+            elif trans_type in ("wipe", "slide"):
+                clip = self._apply_directional_wipe_out(clip, duration, direction, trans_type)
 
         return clip
+    
+    def _apply_directional_wipe_in(self, clip, duration: float, direction: str, transition_type: str):
+        """
+        Apply a directional wipe-in transition (reveal from black).
+        
+        Args:
+            clip: MoviePy video clip
+            duration: Transition duration in seconds
+            direction: Direction of wipe (left, right, up, down)
+            transition_type: 'wipe' or 'slide'
+            
+        Returns:
+            Clip with wipe-in transition applied
+        """
+        import subprocess
+        import tempfile
+        import os
+        
+        # Add FFmpeg to PATH if needed
+        ffmpeg_bin = Path(__file__).parent.parent / "bin"
+        if ffmpeg_bin.exists():
+            os.environ["PATH"] = str(ffmpeg_bin) + os.pathsep + os.environ.get("PATH", "")
+        
+        try:
+            # Create temp files
+            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_input:
+                input_path = tmp_input.name
+            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_output:
+                output_path = tmp_output.name
+            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_black:
+                black_path = tmp_black.name
+            
+            # Save clip to temp file
+            clip.write_videofile(
+                input_path, codec='libx264', audio_codec='aac',
+                preset='ultrafast', logger=None
+            )
+            
+            # Get clip properties
+            width, height = clip.size
+            clip_fps = clip.fps or 24
+            
+            # Create black video for duration of transition
+            subprocess.run([
+                'ffmpeg', '-y',
+                '-f', 'lavfi', '-i', f'color=c=black:s={width}x{height}:d={duration}:r={clip_fps}',
+                '-c:v', 'libx264', '-preset', 'ultrafast',
+                black_path
+            ], capture_output=True)
+            
+            # Map direction to xfade transition type
+            if transition_type == "wipe":
+                transition_map = {'left': 'wipeleft', 'right': 'wiperight', 'up': 'wipeup', 'down': 'wipedown'}
+            else:  # slide
+                transition_map = {'left': 'slideleft', 'right': 'slideright', 'up': 'slideup', 'down': 'slidedown'}
+            xfade_transition = transition_map.get(direction, 'wipeleft')
+            
+            # Apply xfade: black video -> clip video (wipe in = reveal clip)
+            filter_complex = f'[0:v][1:v]xfade=transition={xfade_transition}:duration={duration}:offset=0[vout]'
+            
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', black_path,  # First video (black)
+                '-i', input_path,  # Second video (the actual clip)
+                '-filter_complex', filter_complex,
+                '-map', '[vout]',
+                '-c:v', 'libx264', '-preset', 'ultrafast',
+                output_path
+            ]
+            
+            # Add audio if present
+            if clip.audio:
+                cmd.extend(['-i', input_path, '-map', '2:a', '-c:a', 'aac'])
+            
+            subprocess.run(cmd, capture_output=True)
+            
+            # Load result back as MoviePy clip
+            result_clip = VideoFileClip(output_path)
+            if clip.audio:
+                result_clip = result_clip.set_audio(clip.audio)
+            
+            # Clean up temp files
+            for f in [input_path, black_path]:
+                try:
+                    os.unlink(f)
+                except:
+                    pass
+            # Note: output_path is being used by result_clip, will be cleaned up later
+            
+            return result_clip
+            
+        except Exception as e:
+            logger.warning(f"Directional wipe-in failed, falling back to fade: {e}")
+            return fadein(clip, duration)
+    
+    def _apply_directional_wipe_out(self, clip, duration: float, direction: str, transition_type: str):
+        """
+        Apply a directional wipe-out transition (wipe to black).
+        
+        Args:
+            clip: MoviePy video clip
+            duration: Transition duration in seconds
+            direction: Direction of wipe (left, right, up, down)
+            transition_type: 'wipe' or 'slide'
+            
+        Returns:
+            Clip with wipe-out transition applied
+        """
+        import subprocess
+        import tempfile
+        import os
+        
+        # Add FFmpeg to PATH if needed
+        ffmpeg_bin = Path(__file__).parent.parent / "bin"
+        if ffmpeg_bin.exists():
+            os.environ["PATH"] = str(ffmpeg_bin) + os.pathsep + os.environ.get("PATH", "")
+        
+        try:
+            # Create temp files
+            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_input:
+                input_path = tmp_input.name
+            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_output:
+                output_path = tmp_output.name
+            with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_black:
+                black_path = tmp_black.name
+            
+            # Save clip to temp file
+            clip.write_videofile(
+                input_path, codec='libx264', audio_codec='aac',
+                preset='ultrafast', logger=None
+            )
+            
+            # Get clip properties
+            width, height = clip.size
+            clip_fps = clip.fps or 24
+            clip_duration = clip.duration
+            
+            # Create black video for duration of transition
+            subprocess.run([
+                'ffmpeg', '-y',
+                '-f', 'lavfi', '-i', f'color=c=black:s={width}x{height}:d={duration}:r={clip_fps}',
+                '-c:v', 'libx264', '-preset', 'ultrafast',
+                black_path
+            ], capture_output=True)
+            
+            # Map direction to xfade transition type
+            if transition_type == "wipe":
+                transition_map = {'left': 'wipeleft', 'right': 'wiperight', 'up': 'wipeup', 'down': 'wipedown'}
+            else:  # slide
+                transition_map = {'left': 'slideleft', 'right': 'slideright', 'up': 'slideup', 'down': 'slidedown'}
+            xfade_transition = transition_map.get(direction, 'wipeleft')
+            
+            # Calculate offset (when transition starts)
+            offset = max(0, clip_duration - duration)
+            
+            # Apply xfade: clip video -> black video (wipe out = cover with black)
+            filter_complex = f'[0:v][1:v]xfade=transition={xfade_transition}:duration={duration}:offset={offset}[vout]'
+            
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', input_path,  # First video (the actual clip)
+                '-i', black_path,  # Second video (black)
+                '-filter_complex', filter_complex,
+                '-map', '[vout]',
+                '-c:v', 'libx264', '-preset', 'ultrafast',
+                output_path
+            ]
+            
+            subprocess.run(cmd, capture_output=True)
+            
+            # Load result back as MoviePy clip
+            result_clip = VideoFileClip(output_path)
+            if clip.audio:
+                # Trim audio to match video duration
+                audio_duration = min(clip.audio.duration, result_clip.duration)
+                result_clip = result_clip.set_audio(clip.audio.subclip(0, audio_duration))
+            
+            # Clean up temp files
+            for f in [input_path, black_path]:
+                try:
+                    os.unlink(f)
+                except:
+                    pass
+            
+            return result_clip
+            
+        except Exception as e:
+            logger.warning(f"Directional wipe-out failed, falling back to fade: {e}")
+            return fadeout(clip, duration)
 
     def _create_composite_video(
         self,

@@ -1,15 +1,55 @@
 """
-Test suite for ExportService
+Test suite for ExportService - Using FFmpeg
 """
 import pytest
 import os
 import tempfile
 import shutil
+import subprocess
+import json
 from pathlib import Path
-import numpy as np
-from moviepy.editor import ColorClip, AudioClip, VideoFileClip
 
 from services.export_service import ExportService
+
+
+def get_video_info(video_path: str) -> dict:
+    """Get video information using ffprobe."""
+    cmd = [
+        'ffprobe', '-v', 'quiet',
+        '-print_format', 'json',
+        '-show_format', '-show_streams',
+        video_path
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return {}
+    return json.loads(result.stdout)
+
+
+def get_video_duration(video_path: str) -> float:
+    """Get video duration using ffprobe."""
+    info = get_video_info(video_path)
+    if 'format' in info and 'duration' in info['format']:
+        return float(info['format']['duration'])
+    return 0.0
+
+
+def get_video_dimensions(video_path: str) -> tuple:
+    """Get video width and height using ffprobe."""
+    info = get_video_info(video_path)
+    for stream in info.get('streams', []):
+        if stream.get('codec_type') == 'video':
+            return stream.get('width', 0), stream.get('height', 0)
+    return 0, 0
+
+
+def has_audio_stream(video_path: str) -> bool:
+    """Check if video has audio stream using ffprobe."""
+    info = get_video_info(video_path)
+    for stream in info.get('streams', []):
+        if stream.get('codec_type') == 'audio':
+            return True
+    return False
 
 
 class TestExportService:
@@ -33,52 +73,61 @@ class TestExportService:
         
         yield
         
-        # Cleanup
-        if os.path.exists(self.test_dir):
-            shutil.rmtree(self.test_dir)
+        # Cleanup with retry for Windows file locks
+        import time
+        import gc
+        gc.collect()  # Force garbage collection to release file handles
+        
+        for attempt in range(3):
+            try:
+                if os.path.exists(self.test_dir):
+                    shutil.rmtree(self.test_dir)
+                break
+            except PermissionError:
+                time.sleep(0.5)  # Wait for file handles to be released
     
     def create_test_video(self, filename, duration=2, has_audio=True):
-        """Helper to create a test video file"""
-        # Create a simple color clip
-        video_clip = ColorClip(
-            size=(640, 480), color=(255, 0, 0), duration=duration
-        ).set_fps(24)
+        """Helper to create a test video file using FFmpeg."""
+        video_path = os.path.join(self.uploads_dir, filename)
         
         if has_audio:
-            # Create audio
-            def make_frame(t):
-                return np.sin(2 * np.pi * 440 * t)
-            
-            audio_clip = AudioClip(make_frame, duration=duration, fps=44100)
-            video_clip = video_clip.set_audio(audio_clip)
+            # Create video with audio using lavfi sources
+            cmd = [
+                'ffmpeg', '-y',
+                '-f', 'lavfi', '-i', f'color=c=red:s=640x480:d={duration}:r=24',
+                '-f', 'lavfi', '-i', f'sine=frequency=440:duration={duration}',
+                '-c:v', 'libx264', '-preset', 'ultrafast',
+                '-c:a', 'aac', '-b:a', '128k',
+                '-pix_fmt', 'yuv420p',
+                '-shortest',
+                video_path
+            ]
+        else:
+            # Create video without audio
+            cmd = [
+                'ffmpeg', '-y',
+                '-f', 'lavfi', '-i', f'color=c=red:s=640x480:d={duration}:r=24',
+                '-c:v', 'libx264', '-preset', 'ultrafast',
+                '-pix_fmt', 'yuv420p',
+                '-an',
+                video_path
+            ]
         
-        # Save test video
-        video_path = os.path.join(self.uploads_dir, filename)
-        video_clip.write_videofile(
-            video_path,
-            fps=24,
-            codec='libx264',
-            audio_codec='aac' if has_audio else None,
-            verbose=False,
-            logger=None
-        )
-        video_clip.close()
-        
+        subprocess.run(cmd, capture_output=True, check=True)
         return video_path
     
     def create_test_audio(self, filename, duration=2):
-        """Helper to create a test audio file"""
-        # Create audio clip
-        def make_frame(t):
-            return np.sin(2 * np.pi * 440 * t)
-        
-        audio_clip = AudioClip(make_frame, duration=duration, fps=44100)
-        
-        # Save test audio
+        """Helper to create a test audio file using FFmpeg."""
         audio_path = os.path.join(self.uploads_dir, filename)
-        audio_clip.write_audiofile(audio_path, verbose=False, logger=None)
-        audio_clip.close()
         
+        cmd = [
+            'ffmpeg', '-y',
+            '-f', 'lavfi', '-i', f'sine=frequency=440:duration={duration}',
+            '-c:a', 'libmp3lame', '-b:a', '128k',
+            audio_path
+        ]
+        
+        subprocess.run(cmd, capture_output=True, check=True)
         return audio_path
     
     def test_export_service_initialization(self):
@@ -135,12 +184,12 @@ class TestExportService:
         # Verify output
         assert os.path.exists(output_path)
         
-        # Verify video properties
-        video = VideoFileClip(output_path)
-        assert video.duration > 0
-        assert video.w == 854
-        assert video.h == 480
-        video.close()
+        # Verify video properties using ffprobe
+        duration = get_video_duration(output_path)
+        width, height = get_video_dimensions(output_path)
+        assert duration > 0
+        assert width == 854
+        assert height == 480
     
     def test_export_with_trimmed_clip(self):
         """Test exporting timeline with trimmed video clip"""
@@ -180,10 +229,9 @@ class TestExportService:
         # Verify output
         assert os.path.exists(output_path)
         
-        # Verify video duration
-        video = VideoFileClip(output_path)
-        assert 1.8 <= video.duration <= 2.2  # Allow small margin
-        video.close()
+        # Verify video duration using ffprobe
+        duration = get_video_duration(output_path)
+        assert 1.8 <= duration <= 2.2  # Allow small margin
     
     def test_export_with_fade_transitions(self):
         """Test exporting video with fade transitions"""
@@ -280,10 +328,9 @@ class TestExportService:
         # Verify output
         assert os.path.exists(output_path)
         
-        # Verify video duration
-        video = VideoFileClip(output_path)
-        assert 3.8 <= video.duration <= 4.2  # Allow small margin
-        video.close()
+        # Verify video duration using ffprobe
+        duration = get_video_duration(output_path)
+        assert 3.8 <= duration <= 4.2  # Allow small margin
     
     def test_export_with_audio_track(self):
         """Test exporting timeline with audio track"""
@@ -339,10 +386,8 @@ class TestExportService:
         # Verify output
         assert os.path.exists(output_path)
         
-        # Verify video has audio
-        video = VideoFileClip(output_path)
-        assert video.audio is not None
-        video.close()
+        # Verify video has audio using ffprobe
+        assert has_audio_stream(output_path)
     
     def test_export_with_text_overlay(self):
         """Test exporting timeline with text overlay"""
@@ -516,10 +561,9 @@ class TestExportService:
         # Verify output
         assert os.path.exists(output_path)
         
-        # Verify blank video was created
-        video = VideoFileClip(output_path)
-        assert video.duration > 0
-        video.close()
+        # Verify blank video was created using ffprobe
+        duration = get_video_duration(output_path)
+        assert duration > 0
     
     def test_find_media_file(self):
         """Test finding media files by resource ID"""
@@ -586,14 +630,13 @@ class TestExportService:
             
             assert os.path.exists(output_path)
             
-            # Verify resolution
-            video = VideoFileClip(output_path)
+            # Verify resolution using ffprobe
+            width, height = get_video_dimensions(output_path)
             expected_width, expected_height = self.service.resolutions[
                 resolution
             ]
             # Video might be smaller if original is smaller
-            assert video.h <= expected_height
-            video.close()
+            assert height <= expected_height
     
     def test_export_error_handling(self):
         """Test error handling for invalid timeline data"""
