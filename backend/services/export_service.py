@@ -936,10 +936,15 @@ class ExportService:
                 bbox = dummy_draw.textbbox((0, 0), text, font=font)
                 text_width = bbox[2] - bbox[0]
                 text_height = bbox[3] - bbox[1]
+                # Store the top offset - textbbox can return non-zero top for fonts with descenders
+                text_offset_x = bbox[0]
+                text_offset_y = bbox[1]
             else:
                 # Estimate size without font metrics
                 text_width = len(text) * font_size // 2
                 text_height = font_size
+                text_offset_x = 0
+                text_offset_y = 0
             
             # Add padding
             padding = 10
@@ -951,9 +956,10 @@ class ExportService:
             draw = ImageDraw.Draw(img)
             
             # Draw text with color and alpha
+            # Adjust position by the bounding box offset to ensure text is fully visible
             text_color = rgb_color + (255,)  # Add full alpha
             if font:
-                draw.text((padding, padding), text, font=font, fill=text_color)
+                draw.text((padding - text_offset_x, padding - text_offset_y), text, font=font, fill=text_color)
             else:
                 draw.text((padding, padding), text, fill=text_color)
             
