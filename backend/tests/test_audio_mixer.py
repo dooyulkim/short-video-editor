@@ -7,7 +7,6 @@ import shutil
 import subprocess
 from services.audio_mixer import AudioMixer, AudioClipConfig
 import ffmpeg
-import numpy as np
 
 
 class TestAudioMixer:
