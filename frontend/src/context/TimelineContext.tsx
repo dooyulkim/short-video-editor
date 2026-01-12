@@ -5,6 +5,68 @@ import type { TimelineLayer, Clip } from "@/types/timeline";
 import { useUndoRedo } from "@/hooks/useUndoRedo";
 import { calculateContentDuration } from "@/utils/clipOperations";
 
+// LocalStorage keys for persisting timeline state
+const TIMELINE_STATE_KEY = "videoEditor_timelineState";
+const CURRENT_PROJECT_KEY = "videoEditor_currentProject";
+
+// Helper to get current project ID from localStorage
+const getCurrentProjectId = (): string | null => {
+	try {
+		const stored = localStorage.getItem(CURRENT_PROJECT_KEY);
+		if (stored) {
+			const { projectId } = JSON.parse(stored);
+			return projectId || null;
+		}
+	} catch (error) {
+		console.error("Failed to get current project ID:", error);
+	}
+	return null;
+};
+
+// Helper to save timeline state to localStorage
+const saveTimelineState = (state: TimelineState): void => {
+	const projectId = getCurrentProjectId();
+	if (!projectId) return;
+
+	try {
+		const stateToSave = {
+			projectId,
+			layers: state.layers,
+			duration: state.duration,
+			zoom: state.zoom,
+			canvasSize: state.canvasSize,
+		};
+		localStorage.setItem(TIMELINE_STATE_KEY, JSON.stringify(stateToSave));
+	} catch (error) {
+		console.error("Failed to save timeline state:", error);
+	}
+};
+
+// Helper to load timeline state from localStorage
+const loadTimelineState = (): Partial<TimelineState> | null => {
+	const projectId = getCurrentProjectId();
+	if (!projectId) return null;
+
+	try {
+		const stored = localStorage.getItem(TIMELINE_STATE_KEY);
+		if (stored) {
+			const parsed = JSON.parse(stored);
+			// Only restore if it matches the current project
+			if (parsed.projectId === projectId) {
+				return {
+					layers: parsed.layers || [],
+					duration: parsed.duration || 120,
+					zoom: parsed.zoom || 20,
+					canvasSize: parsed.canvasSize || { width: 1080, height: 1920 },
+				};
+			}
+		}
+	} catch (error) {
+		console.error("Failed to load timeline state:", error);
+	}
+	return null;
+};
+
 // State interface
 export interface TimelineState {
 	layers: TimelineLayer[];
@@ -297,11 +359,26 @@ interface TimelineProviderProps {
 	initialState?: Partial<TimelineState>;
 }
 
+// Helper to create initial state with localStorage restoration
+const createInitialState = (customInitialState?: Partial<TimelineState>): TimelineState => {
+	// First, try to restore from localStorage
+	const savedState = loadTimelineState();
+	if (savedState) {
+		return {
+			...initialState,
+			...savedState,
+			// Always reset these transient states
+			currentTime: 0,
+			selectedClipId: null,
+			isPlaying: false,
+		};
+	}
+	// Fall back to custom or default initial state
+	return customInitialState ? { ...initialState, ...customInitialState } : initialState;
+};
+
 export function TimelineProvider({ children, initialState: customInitialState }: TimelineProviderProps) {
-	const [state, dispatch] = useReducer(
-		timelineReducer,
-		customInitialState ? { ...initialState, ...customInitialState } : initialState
-	);
+	const [state, dispatch] = useReducer(timelineReducer, customInitialState, createInitialState);
 
 	// Ref to track current time for playback without triggering re-renders
 	const currentTimeRef = useRef(state.currentTime);
@@ -369,6 +446,15 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [state.layers, state.duration, addToHistory]);
+
+	// Persist timeline state to localStorage (debounced)
+	useEffect(() => {
+		const timeoutId = setTimeout(() => {
+			saveTimelineState(state);
+		}, 500);
+
+		return () => clearTimeout(timeoutId);
+	}, [state.layers, state.duration, state.zoom, state.canvasSize]);
 
 	// Playback loop - update currentTime during playback
 	useEffect(() => {
@@ -499,6 +585,12 @@ export function TimelineProvider({ children, initialState: customInitialState }:
 	}, []);
 
 	const resetTimeline = useCallback(() => {
+		// Clear saved state from localStorage
+		try {
+			localStorage.removeItem(TIMELINE_STATE_KEY);
+		} catch (error) {
+			console.error("Failed to clear timeline state from localStorage:", error);
+		}
 		dispatch({ type: "RESTORE_STATE", payload: { state: initialState } });
 	}, []);
 

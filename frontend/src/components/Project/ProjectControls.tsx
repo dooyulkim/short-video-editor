@@ -32,6 +32,9 @@ import type { RecentProject } from "@/types/project";
 import { deleteProject } from "@/services/api";
 import { Save, FolderOpen, FileDown, FilePlus, Loader2, ChevronDown, Pencil, FolderCog, Trash2 } from "lucide-react";
 
+// LocalStorage key for persisting current project
+const CURRENT_PROJECT_KEY = "videoEditor_currentProject";
+
 // Generate a unique project ID
 const generateProjectId = () => `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -45,9 +48,31 @@ export function ProjectControls({ onExport, onProjectChange }: ProjectControlsPr
 	const { toast } = useToast();
 	const [isPending, startTransition] = useTransition();
 
-	// Project state - initialize with a unique project ID
-	const [projectName, setProjectName] = useState("Untitled Project");
-	const [currentProjectId, setCurrentProjectId] = useState<string>(() => generateProjectId());
+	// Project state - initialize from localStorage or generate new ID
+	const [projectName, setProjectName] = useState(() => {
+		try {
+			const stored = localStorage.getItem(CURRENT_PROJECT_KEY);
+			if (stored) {
+				const { projectName } = JSON.parse(stored);
+				if (projectName) return projectName;
+			}
+		} catch (error) {
+			console.error("Failed to load project name from localStorage:", error);
+		}
+		return "Untitled Project";
+	});
+	const [currentProjectId, setCurrentProjectId] = useState<string>(() => {
+		try {
+			const stored = localStorage.getItem(CURRENT_PROJECT_KEY);
+			if (stored) {
+				const { projectId } = JSON.parse(stored);
+				if (projectId) return projectId;
+			}
+		} catch (error) {
+			console.error("Failed to load project ID from localStorage:", error);
+		}
+		return generateProjectId();
+	});
 
 	// Dialog states
 	const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -63,11 +88,40 @@ export function ProjectControls({ onExport, onProjectChange }: ProjectControlsPr
 	const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
 	const [projectToDelete, setProjectToDelete] = useState<RecentProject | null>(null);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const [isFirstLaunch, setIsFirstLaunch] = useState(() => {
+		// Check if this is first launch (no saved project)
+		try {
+			const stored = localStorage.getItem(CURRENT_PROJECT_KEY);
+			return !stored;
+		} catch {
+			return false;
+		}
+	});
+
+	// Show new project dialog on first launch (no saved project)
+	useEffect(() => {
+		if (isFirstLaunch) {
+			setTempProjectName("");
+			setShowNewProjectDialog(true);
+		}
+	}, []); // Only run on mount
 
 	// Notify parent when project changes
 	useEffect(() => {
 		onProjectChange?.(currentProjectId, projectName);
 	}, [currentProjectId, projectName, onProjectChange]);
+
+	// Persist current project to localStorage (skip on first launch until user creates project)
+	useEffect(() => {
+		// Don't persist until user has created their first project
+		if (isFirstLaunch) return;
+
+		try {
+			localStorage.setItem(CURRENT_PROJECT_KEY, JSON.stringify({ projectId: currentProjectId, projectName }));
+		} catch (error) {
+			console.error("Failed to save project to localStorage:", error);
+		}
+	}, [currentProjectId, projectName, isFirstLaunch]);
 
 	// Handle Save
 	const handleSave = useCallback(() => {
@@ -170,6 +224,7 @@ export function ProjectControls({ onExport, onProjectChange }: ProjectControlsPr
 		// Generate new project ID for new project
 		setCurrentProjectId(generateProjectId());
 		setShowNewProjectDialog(false);
+		setIsFirstLaunch(false);
 
 		toast({
 			title: "New Project Created",
@@ -340,12 +395,20 @@ export function ProjectControls({ onExport, onProjectChange }: ProjectControlsPr
 			</Dialog>
 
 			{/* New Project Dialog */}
-			<Dialog open={showNewProjectDialog} onOpenChange={setShowNewProjectDialog}>
-				<DialogContent>
+			<Dialog
+				open={showNewProjectDialog}
+				onOpenChange={(open) => {
+					// Prevent closing on first launch
+					if (!open && isFirstLaunch) return;
+					setShowNewProjectDialog(open);
+				}}>
+				<DialogContent onPointerDownOutside={(e) => isFirstLaunch && e.preventDefault()}>
 					<DialogHeader>
-						<DialogTitle>Create New Project</DialogTitle>
+						<DialogTitle>{isFirstLaunch ? "Welcome! Create Your First Project" : "Create New Project"}</DialogTitle>
 						<DialogDescription>
-							Enter a name for your new project. Any unsaved changes in the current project will be lost.
+							{isFirstLaunch
+								? "Enter a name to get started with your new video project."
+								: "Enter a name for your new project. Any unsaved changes in the current project will be lost."}
 						</DialogDescription>
 					</DialogHeader>
 					<div className="grid gap-4 py-4">
@@ -366,11 +429,13 @@ export function ProjectControls({ onExport, onProjectChange }: ProjectControlsPr
 						</div>
 					</div>
 					<DialogFooter>
-						<Button variant="outline" onClick={() => setShowNewProjectDialog(false)}>
-							Cancel
-						</Button>
+						{!isFirstLaunch && (
+							<Button variant="outline" onClick={() => setShowNewProjectDialog(false)}>
+								Cancel
+							</Button>
+						)}
 						<Button onClick={handleNewConfirm} disabled={!tempProjectName.trim()}>
-							Create Project
+							{isFirstLaunch ? "Get Started" : "Create Project"}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

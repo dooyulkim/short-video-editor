@@ -28,6 +28,9 @@ import type { MediaResource } from "./types/media";
 import type { Timeline as TimelineType } from "./types/timeline";
 import { cn } from "./lib/utils";
 
+// LocalStorage key for persisting current project
+const CURRENT_PROJECT_KEY = "videoEditor_currentProject";
+
 // Generate a unique project ID
 const generateProjectId = () => `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -45,11 +48,24 @@ function AppContent() {
 	const [isResizingTimeline, setIsResizingTimeline] = useState(false);
 	const [isMobile, setIsMobile] = useState(false);
 	const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
-	// Project state - initialize with a unique project ID
-	const [currentProjectId, setCurrentProjectId] = useState<string>(() => generateProjectId());
+	// Project state - initialize from localStorage or generate new ID
+	const [currentProjectId, setCurrentProjectId] = useState<string>(() => {
+		try {
+			const stored = localStorage.getItem(CURRENT_PROJECT_KEY);
+			if (stored) {
+				const { projectId } = JSON.parse(stored);
+				if (projectId) return projectId;
+			}
+		} catch (error) {
+			console.error("Failed to load project from localStorage:", error);
+		}
+		return generateProjectId();
+	});
 
 	// Enable keyboard shortcuts (Ctrl+Z for undo, Ctrl+Y for redo, etc.)
 	useKeyboardShortcuts();
+
+	// Note: Project persistence (projectId + projectName) is handled by ProjectControls component
 
 	// Create timeline data object for export
 	const timelineData: TimelineType = useMemo(
