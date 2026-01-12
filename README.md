@@ -92,7 +92,7 @@ npm run dev
 ```
 
 3. **Open Browser**
-   - Navigate to `http://localhost:5173`
+   - Navigate to `http://localhost:3000`
    - Backend API: `http://localhost:8000`
    - API Documentation: `http://localhost:8000/docs`
 

@@ -30,6 +30,7 @@ VITE_ENV=development
 ```
 
 Available environment files:
+
 - `.env.development` - Development settings (auto-loaded in dev mode)
 - `.env.production` - Production settings (auto-loaded in build)
 - `.env.local` - Local overrides (gitignored, highest priority)
@@ -38,6 +39,7 @@ Available environment files:
 ### Axios Configuration
 
 The API service creates a configured axios instance with:
+
 - Base URL from environment variable
 - 30-second default timeout
 - JSON content-type headers
@@ -49,54 +51,63 @@ The API service creates a configured axios instance with:
 ### Media API
 
 #### `uploadMedia(file: File, onProgress?: callback)`
+
 Upload a media file (video, audio, or image).
 
 **Parameters:**
+
 - `file` - The file to upload
 - `onProgress` - Optional callback for upload progress tracking
 
 **Returns:** `Promise<UploadMediaResponse>`
 
 **Example:**
+
 ```typescript
-import { uploadMedia } from '@/services/api';
+import { uploadMedia } from "@/services/api";
 
 const handleUpload = async (file: File) => {
-  try {
-    const result = await uploadMedia(file, (progress) => {
-      console.log(`Upload progress: ${progress.progress}%`);
-    });
-    console.log('Media uploaded:', result);
-  } catch (error) {
-    console.error('Upload failed:', error);
-  }
+	try {
+		const result = await uploadMedia(file, (progress) => {
+			console.log(`Upload progress: ${progress.progress}%`);
+		});
+		console.log("Media uploaded:", result);
+	} catch (error) {
+		console.error("Upload failed:", error);
+	}
 };
 ```
 
 #### `getMediaMetadata(id: string)`
+
 Get metadata for a media resource.
 
 **Returns:** `Promise<MediaMetadataResponse>`
 
 #### `getWaveform(id: string, width?: number)`
+
 Get waveform data for audio/video visualization.
 
 **Parameters:**
+
 - `id` - Media resource ID
 - `width` - Optional width for waveform sampling (default: 1000)
 
 **Returns:** `Promise<WaveformResponse>`
 
 #### `getThumbnail(id: string, timestamp?: number)`
+
 Get thumbnail image for video.
 
 **Parameters:**
+
 - `id` - Media resource ID
 - `timestamp` - Optional timestamp in seconds (default: 0)
 
 **Returns:** `Promise<Blob>`
 
 #### `deleteMedia(id: string)`
+
 Delete a media resource.
 
 **Returns:** `Promise<void>`
@@ -106,28 +117,33 @@ Delete a media resource.
 ### Timeline/Video Editing API
 
 #### `cutVideo(id: string, cutTime: number)`
+
 Cut a video at a specific timestamp into two segments.
 
 **Parameters:**
+
 - `id` - Video ID
 - `cutTime` - Time in seconds to cut the video
 
 **Returns:** `Promise<CutVideoResponse>`
 
 **Example:**
-```typescript
-import { cutVideo } from '@/services/api';
 
-const result = await cutVideo('video-123', 30.5);
-console.log('Segments:', result.segment1_id, result.segment2_id);
+```typescript
+import { cutVideo } from "@/services/api";
+
+const result = await cutVideo("video-123", 30.5);
+console.log("Segments:", result.segment1_id, result.segment2_id);
 ```
 
 #### `trimVideo(id: string, startTime: number, endTime: number)`
+
 Trim video to a specific time range.
 
 **Returns:** `Promise<TrimVideoResponse>`
 
 #### `mergeVideos(clipIds: string[], startTimes: number[])`
+
 Merge multiple video clips into one.
 
 **Returns:** `Promise<MergeVideosResponse>`
@@ -137,57 +153,63 @@ Merge multiple video clips into one.
 ### Export API
 
 #### `startExport(timelineData: Timeline, settings: ExportSettings)`
+
 Start exporting the timeline to a video file.
 
 **Parameters:**
+
 - `timelineData` - Complete timeline data with all clips and layers
 - `settings` - Export settings (resolution, format, quality, filename)
 
 **Returns:** `Promise<ExportResponse>`
 
 **Example:**
+
 ```typescript
-import { startExport, getExportStatus, downloadExport, downloadBlob } from '@/services/api';
+import { startExport, getExportStatus, downloadExport, downloadBlob } from "@/services/api";
 
 // Start export
 const exportResponse = await startExport(timeline, {
-  resolution: '1080p',
-  format: 'MP4',
-  quality: 'high',
-  filename: 'my-video.mp4'
+	resolution: "1080p",
+	format: "MP4",
+	quality: "high",
+	filename: "my-video.mp4",
 });
 
 const taskId = exportResponse.task_id;
 
 // Poll for status
 const checkStatus = setInterval(async () => {
-  const status = await getExportStatus(taskId);
-  console.log(`Progress: ${status.progress}%`);
-  
-  if (status.status === 'completed') {
-    clearInterval(checkStatus);
-    
-    // Download the file
-    const blob = await downloadExport(taskId);
-    downloadBlob(blob, 'my-video.mp4');
-  } else if (status.status === 'failed') {
-    clearInterval(checkStatus);
-    console.error('Export failed:', status.error);
-  }
+	const status = await getExportStatus(taskId);
+	console.log(`Progress: ${status.progress}%`);
+
+	if (status.status === "completed") {
+		clearInterval(checkStatus);
+
+		// Download the file
+		const blob = await downloadExport(taskId);
+		downloadBlob(blob, "my-video.mp4");
+	} else if (status.status === "failed") {
+		clearInterval(checkStatus);
+		console.error("Export failed:", status.error);
+	}
 }, 2000);
 ```
 
 #### `getExportStatus(taskId: string)`
+
 Get the status of an export task.
 
 **Returns:** `Promise<ExportStatusResponse>`
 
 #### `downloadExport(taskId: string)`
+
 Download the exported video file.
 
 **Returns:** `Promise<Blob>`
 
 #### `cancelExport(taskId: string)`
+
 Cancel an ongoing export task.
 
 **Returns:** `Promise<void>`
@@ -197,11 +219,13 @@ Cancel an ongoing export task.
 ### Audio API
 
 #### `extractAudio(videoId: string)`
+
 Extract audio track from a video.
 
 **Returns:** `Promise<{ id: string; audio_path: string }>`
 
 #### `mixAudio(tracks: Array<{id, startTime, volume}>)`
+
 Mix multiple audio tracks into one.
 
 **Returns:** `Promise<{ id: string; output_path: string }>`
@@ -211,9 +235,11 @@ Mix multiple audio tracks into one.
 ### Transition API
 
 #### `applyTransition(clip1Id, clip2Id, transitionType, duration)`
+
 Apply a transition effect between two clips.
 
 **Parameters:**
+
 - `clip1Id` - First clip ID
 - `clip2Id` - Second clip ID
 - `transitionType` - 'fade' | 'dissolve' | 'wipe' | 'slide'
@@ -228,6 +254,7 @@ Apply a transition effect between two clips.
 ### Request Interceptor
 
 Automatically applied to all requests:
+
 - Adds authentication token from localStorage
 - Adds request timestamp for duration tracking
 - Logs requests in development mode
@@ -235,6 +262,7 @@ Automatically applied to all requests:
 ### Response Interceptor
 
 Automatically applied to all responses:
+
 - Calculates and logs request duration
 - Formats error messages consistently
 - Handles common HTTP error codes:
@@ -251,31 +279,32 @@ All API methods return typed `ApiError` objects on failure:
 
 ```typescript
 interface ApiError {
-  message: string;
-  code?: string;
-  details?: any;
-  timestamp?: string;
+	message: string;
+	code?: string;
+	details?: any;
+	timestamp?: string;
 }
 ```
 
 **Example error handling:**
+
 ```typescript
-import { uploadMedia } from '@/services/api';
-import type { ApiError } from '@/types/api';
+import { uploadMedia } from "@/services/api";
+import type { ApiError } from "@/types/api";
 
 try {
-  const result = await uploadMedia(file);
-  // Success
+	const result = await uploadMedia(file);
+	// Success
 } catch (error) {
-  const apiError = error as ApiError;
-  console.error('Error:', apiError.message);
-  
-  // Show user-friendly message
-  showToast({
-    title: 'Upload Failed',
-    description: apiError.message,
-    variant: 'destructive'
-  });
+	const apiError = error as ApiError;
+	console.error("Error:", apiError.message);
+
+	// Show user-friendly message
+	showToast({
+		title: "Upload Failed",
+		description: apiError.message,
+		variant: "destructive",
+	});
 }
 ```
 
@@ -285,18 +314,18 @@ All API methods are fully typed with TypeScript interfaces:
 
 ```typescript
 // Request types from timeline/media/export types
-import type { Timeline } from '@/types/timeline';
-import type { ExportSettings } from '@/types/export';
+import type { Timeline } from "@/types/timeline";
+import type { ExportSettings } from "@/types/export";
 
 // Response types from api types
 import type {
-  UploadMediaResponse,
-  MediaMetadataResponse,
-  WaveformResponse,
-  CutVideoResponse,
-  TrimVideoResponse,
-  ApiError
-} from '@/types/api';
+	UploadMediaResponse,
+	MediaMetadataResponse,
+	WaveformResponse,
+	CutVideoResponse,
+	TrimVideoResponse,
+	ApiError,
+} from "@/types/api";
 ```
 
 ## Usage Examples
@@ -304,134 +333,130 @@ import type {
 ### Complete Upload Flow
 
 ```typescript
-import { uploadMedia, getMediaMetadata } from '@/services/api';
-import { useState } from 'react';
+import { uploadMedia, getMediaMetadata } from "@/services/api";
+import { useState } from "react";
 
 function UploadComponent() {
-  const [progress, setProgress] = useState(0);
-  
-  const handleFileSelect = async (file: File) => {
-    try {
-      // Upload with progress tracking
-      const media = await uploadMedia(file, (progressEvent) => {
-        setProgress(progressEvent.progress);
-      });
-      
-      // Get additional metadata
-      const metadata = await getMediaMetadata(media.id);
-      
-      // Add to timeline or resource panel
-      addToResources(media);
-      
-      setProgress(0);
-    } catch (error) {
-      console.error('Upload failed:', error);
-    }
-  };
-  
-  return (
-    <div>
-      <input type="file" onChange={(e) => handleFileSelect(e.target.files[0])} />
-      {progress > 0 && <progress value={progress} max={100} />}
-    </div>
-  );
+	const [progress, setProgress] = useState(0);
+
+	const handleFileSelect = async (file: File) => {
+		try {
+			// Upload with progress tracking
+			const media = await uploadMedia(file, (progressEvent) => {
+				setProgress(progressEvent.progress);
+			});
+
+			// Get additional metadata
+			const metadata = await getMediaMetadata(media.id);
+
+			// Add to timeline or resource panel
+			addToResources(media);
+
+			setProgress(0);
+		} catch (error) {
+			console.error("Upload failed:", error);
+		}
+	};
+
+	return (
+		<div>
+			<input type="file" onChange={(e) => handleFileSelect(e.target.files[0])} />
+			{progress > 0 && <progress value={progress} max={100} />}
+		</div>
+	);
 }
 ```
 
 ### Complete Export Flow
 
 ```typescript
-import { startExport, getExportStatus, downloadExport, downloadBlob } from '@/services/api';
-import { useTimeline } from '@/context/TimelineContext';
-import { useState } from 'react';
+import { startExport, getExportStatus, downloadExport, downloadBlob } from "@/services/api";
+import { useTimeline } from "@/context/TimelineContext";
+import { useState } from "react";
 
 function ExportComponent() {
-  const { state } = useTimeline();
-  const [exportProgress, setExportProgress] = useState(0);
-  const [exportStatus, setExportStatus] = useState<string>('idle');
-  
-  const handleExport = async () => {
-    try {
-      setExportStatus('starting');
-      
-      // Start export
-      const response = await startExport(
-        { layers: state.layers, duration: state.duration },
-        {
-          resolution: '1080p',
-          format: 'MP4',
-          quality: 'high',
-          filename: 'exported-video.mp4'
-        }
-      );
-      
-      const taskId = response.task_id;
-      setExportStatus('processing');
-      
-      // Poll for status
-      const interval = setInterval(async () => {
-        const status = await getExportStatus(taskId);
-        setExportProgress(status.progress);
-        
-        if (status.status === 'completed') {
-          clearInterval(interval);
-          setExportStatus('downloading');
-          
-          // Download
-          const blob = await downloadExport(taskId);
-          downloadBlob(blob, 'exported-video.mp4');
-          
-          setExportStatus('complete');
-          setExportProgress(0);
-        } else if (status.status === 'failed') {
-          clearInterval(interval);
-          setExportStatus('error');
-          console.error('Export failed:', status.error);
-        }
-      }, 2000);
-      
-    } catch (error) {
-      setExportStatus('error');
-      console.error('Export error:', error);
-    }
-  };
-  
-  return (
-    <div>
-      <button onClick={handleExport} disabled={exportStatus !== 'idle'}>
-        Export Video
-      </button>
-      {exportProgress > 0 && (
-        <div>
-          <progress value={exportProgress} max={100} />
-          <span>{exportProgress}%</span>
-        </div>
-      )}
-      <p>Status: {exportStatus}</p>
-    </div>
-  );
+	const { state } = useTimeline();
+	const [exportProgress, setExportProgress] = useState(0);
+	const [exportStatus, setExportStatus] = useState<string>("idle");
+
+	const handleExport = async () => {
+		try {
+			setExportStatus("starting");
+
+			// Start export
+			const response = await startExport(
+				{ layers: state.layers, duration: state.duration },
+				{
+					resolution: "1080p",
+					format: "MP4",
+					quality: "high",
+					filename: "exported-video.mp4",
+				}
+			);
+
+			const taskId = response.task_id;
+			setExportStatus("processing");
+
+			// Poll for status
+			const interval = setInterval(async () => {
+				const status = await getExportStatus(taskId);
+				setExportProgress(status.progress);
+
+				if (status.status === "completed") {
+					clearInterval(interval);
+					setExportStatus("downloading");
+
+					// Download
+					const blob = await downloadExport(taskId);
+					downloadBlob(blob, "exported-video.mp4");
+
+					setExportStatus("complete");
+					setExportProgress(0);
+				} else if (status.status === "failed") {
+					clearInterval(interval);
+					setExportStatus("error");
+					console.error("Export failed:", status.error);
+				}
+			}, 2000);
+		} catch (error) {
+			setExportStatus("error");
+			console.error("Export error:", error);
+		}
+	};
+
+	return (
+		<div>
+			<button onClick={handleExport} disabled={exportStatus !== "idle"}>
+				Export Video
+			</button>
+			{exportProgress > 0 && (
+				<div>
+					<progress value={exportProgress} max={100} />
+					<span>{exportProgress}%</span>
+				</div>
+			)}
+			<p>Status: {exportStatus}</p>
+		</div>
+	);
 }
 ```
 
 ### Video Editing Operations
 
 ```typescript
-import { cutVideo, trimVideo, mergeVideos } from '@/services/api';
+import { cutVideo, trimVideo, mergeVideos } from "@/services/api";
 
 // Cut video at 30 seconds
-const cutResult = await cutVideo('video-123', 30);
-console.log('Created segments:', cutResult.segment1_id, cutResult.segment2_id);
+const cutResult = await cutVideo("video-123", 30);
+console.log("Created segments:", cutResult.segment1_id, cutResult.segment2_id);
 
 // Trim video from 10s to 50s
-const trimResult = await trimVideo('video-123', 10, 50);
-console.log('Trimmed video:', trimResult.id);
+const trimResult = await trimVideo("video-123", 10, 50);
+console.log("Trimmed video:", trimResult.id);
 
 // Merge three clips
-const mergeResult = await mergeVideos(
-  ['clip-1', 'clip-2', 'clip-3'],
-  [0, 10, 25]
-);
-console.log('Merged video:', mergeResult.id);
+const mergeResult = await mergeVideos(["clip-1", "clip-2", "clip-3"], [0, 10, 25]);
+console.log("Merged video:", mergeResult.id);
 ```
 
 ## Testing
@@ -439,33 +464,33 @@ console.log('Merged video:', mergeResult.id);
 ### Testing API Calls
 
 ```typescript
-import { describe, it, expect, vi } from 'vitest';
-import { uploadMedia, getMediaMetadata } from '@/services/api';
+import { describe, it, expect, vi } from "vitest";
+import { uploadMedia, getMediaMetadata } from "@/services/api";
 
-describe('API Service', () => {
-  it('should upload media file', async () => {
-    const file = new File(['content'], 'test.mp4', { type: 'video/mp4' });
-    const result = await uploadMedia(file);
-    
-    expect(result).toHaveProperty('id');
-    expect(result.type).toBe('video');
-  });
-  
-  it('should handle upload progress', async () => {
-    const file = new File(['content'], 'test.mp4', { type: 'video/mp4' });
-    const progressCallback = vi.fn();
-    
-    await uploadMedia(file, progressCallback);
-    
-    expect(progressCallback).toHaveBeenCalled();
-  });
-  
-  it('should get media metadata', async () => {
-    const metadata = await getMediaMetadata('media-123');
-    
-    expect(metadata).toHaveProperty('duration');
-    expect(metadata).toHaveProperty('metadata');
-  });
+describe("API Service", () => {
+	it("should upload media file", async () => {
+		const file = new File(["content"], "test.mp4", { type: "video/mp4" });
+		const result = await uploadMedia(file);
+
+		expect(result).toHaveProperty("id");
+		expect(result.type).toBe("video");
+	});
+
+	it("should handle upload progress", async () => {
+		const file = new File(["content"], "test.mp4", { type: "video/mp4" });
+		const progressCallback = vi.fn();
+
+		await uploadMedia(file, progressCallback);
+
+		expect(progressCallback).toHaveBeenCalled();
+	});
+
+	it("should get media metadata", async () => {
+		const metadata = await getMediaMetadata("media-123");
+
+		expect(metadata).toHaveProperty("duration");
+		expect(metadata).toHaveProperty("metadata");
+	});
 });
 ```
 
@@ -482,6 +507,7 @@ describe('API Service', () => {
 ## Troubleshooting
 
 ### CORS Issues
+
 If you encounter CORS errors, ensure the backend has proper CORS configuration:
 
 ```python
@@ -490,7 +516,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite dev server
+    allow_origins=["http://localhost:3000"],  # Vite dev server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -498,40 +524,43 @@ app.add_middleware(
 ```
 
 ### Connection Refused
+
 - Ensure backend is running on `http://localhost:8000`
 - Check `.env.local` has correct `VITE_API_URL`
 - Verify no firewall is blocking the connection
 
 ### Timeout Errors
+
 - Increase timeout for large file operations
 - Check network connectivity
 - Verify backend is responding
 
 ### Authentication Errors
+
 - Clear localStorage auth token: `localStorage.removeItem('auth_token')`
 - Re-authenticate with backend
 - Check token expiration
 
 ## API Endpoint Reference
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/media/upload` | Upload media file |
-| GET | `/media/:id/metadata` | Get media metadata |
-| GET | `/media/:id/waveform` | Get audio waveform |
-| GET | `/media/:id/thumbnail` | Get video thumbnail |
-| DELETE | `/media/:id` | Delete media |
-| POST | `/timeline/cut` | Cut video |
-| POST | `/timeline/trim` | Trim video |
-| POST | `/timeline/merge` | Merge videos |
-| POST | `/export/start` | Start export |
-| GET | `/export/status/:taskId` | Get export status |
-| GET | `/export/download/:taskId` | Download export |
-| POST | `/export/cancel/:taskId` | Cancel export |
-| POST | `/audio/extract/:videoId` | Extract audio |
-| POST | `/audio/mix` | Mix audio tracks |
-| POST | `/transitions/apply` | Apply transition |
-| GET | `/health` | Health check |
+| Method | Endpoint                   | Description         |
+| ------ | -------------------------- | ------------------- |
+| POST   | `/media/upload`            | Upload media file   |
+| GET    | `/media/:id/metadata`      | Get media metadata  |
+| GET    | `/media/:id/waveform`      | Get audio waveform  |
+| GET    | `/media/:id/thumbnail`     | Get video thumbnail |
+| DELETE | `/media/:id`               | Delete media        |
+| POST   | `/timeline/cut`            | Cut video           |
+| POST   | `/timeline/trim`           | Trim video          |
+| POST   | `/timeline/merge`          | Merge videos        |
+| POST   | `/export/start`            | Start export        |
+| GET    | `/export/status/:taskId`   | Get export status   |
+| GET    | `/export/download/:taskId` | Download export     |
+| POST   | `/export/cancel/:taskId`   | Cancel export       |
+| POST   | `/audio/extract/:videoId`  | Extract audio       |
+| POST   | `/audio/mix`               | Mix audio tracks    |
+| POST   | `/transitions/apply`       | Apply transition    |
+| GET    | `/health`                  | Health check        |
 
 ## Future Enhancements
 

@@ -98,7 +98,7 @@ npm run dev
 
 ### Access Application
 
-- **Frontend**: http://localhost:5173
+- **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8000
 - **API Docs**: http://localhost:8000/docs
 
@@ -230,7 +230,7 @@ VITE_API_TIMEOUT=30000
 ```bash
 MAX_UPLOAD_SIZE=524288000
 MAX_CONCURRENT_EXPORTS=3
-CORS_ORIGINS=http://localhost:5173
+CORS_ORIGINS=http://localhost:3000
 ```
 
 ## 🐛 Troubleshooting

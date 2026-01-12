@@ -224,14 +224,14 @@ You should see:
 ```
   VITE v5.0.0  ready in 500 ms
 
-  ➜  Local:   http://localhost:5173/
+  ➜  Local:   http://localhost:3000/
   ➜  Network: use --host to expose
   ➜  press h to show help
 ```
 
 ### Step 6: Verify Installation
 
-1. Open browser and navigate to: `http://localhost:5173`
+1. Open browser and navigate to: `http://localhost:3000`
 2. You should see the Video Editor interface
 3. Verify backend is running: `http://localhost:8000/docs`
 4. Try uploading a test video file
@@ -273,7 +273,7 @@ FFMPEG_PATH=ffmpeg  # or full path like /usr/bin/ffmpeg
 FFPROBE_PATH=ffprobe
 
 # CORS Settings
-CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+CORS_ORIGINS=http://localhost:3000
 ```
 
 ### Frontend Configuration
@@ -314,7 +314,7 @@ docker-compose down
 
 The application will be available at:
 
-- Frontend: http://localhost:5173
+- Frontend: http://localhost:3000
 - Backend: http://localhost:8000
 - API Docs: http://localhost:8000/docs
 

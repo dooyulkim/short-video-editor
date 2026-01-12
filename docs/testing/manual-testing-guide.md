@@ -3,24 +3,28 @@
 ## Quick Start
 
 ### 1. Run the Development Server
+
 ```bash
 cd frontend
 npm run dev
 ```
 
 ### 2. Open the Application
-Navigate to `http://localhost:5173` in your browser.
+
+Navigate to `http://localhost:3000` in your browser.
 
 ## Visual Testing Checklist
 
 ### Layout Components to Verify
 
 #### Top Toolbar
+
 - [ ] Logo is visible
 - [ ] Project controls (Save, Load, Export) are present
 - [ ] Tab switcher shows active tab
 
 #### Left Sidebar (Resource Panel)
+
 - [ ] Opens by default with "Resources" header
 - [ ] Shows ResourcePanel content for media tab
 - [ ] Has close button (X icon) that hides sidebar
@@ -28,17 +32,20 @@ Navigate to `http://localhost:5173` in your browser.
 - [ ] **Resize**: Drag the right edge to resize (200-500px)
 
 #### Center Area (Video Player)
+
 - [ ] Video player centered with proper aspect ratio
 - [ ] Dark gradient background (zinc-950 to zinc-900)
 - [ ] Shadow effect on player container
 
 #### Bottom Area (Timeline)
+
 - [ ] Timeline section visible at bottom
 - [ ] Edit tools bar visible above timeline
 - [ ] Default height of 350px
 - [ ] **Resize**: Drag the top edge to resize (250-600px)
 
 #### Right Sidebar (Properties Panel)
+
 - [ ] Hidden by default
 - [ ] Click chevron button to open
 - [ ] Shows "Properties" header
@@ -48,6 +55,7 @@ Navigate to `http://localhost:5173` in your browser.
 ### Resize Testing
 
 #### Left Sidebar Resize
+
 1. Hover over the right edge of left sidebar
 2. Cursor should change to `col-resize` (↔)
 3. Drag left or right
@@ -56,6 +64,7 @@ Navigate to `http://localhost:5173` in your browser.
 6. Max width: 500px (cannot go larger)
 
 #### Right Sidebar Resize
+
 1. Open right sidebar with chevron button
 2. Hover over the left edge of right sidebar
 3. Cursor should change to `col-resize` (↔)
@@ -65,6 +74,7 @@ Navigate to `http://localhost:5173` in your browser.
 7. Max width: 500px
 
 #### Timeline Resize
+
 1. Hover over the top edge of timeline section
 2. Cursor should change to `row-resize` (↕)
 3. Drag up or down
@@ -75,11 +85,13 @@ Navigate to `http://localhost:5173` in your browser.
 ### Responsive Testing
 
 #### Desktop (> 768px)
+
 - [ ] Both sidebars can be visible simultaneously
 - [ ] Sidebars are positioned inline with layout
 - [ ] Resize handles work correctly
 
 #### Mobile (< 768px)
+
 1. Resize browser to < 768px width
 2. Both sidebars should auto-close
 3. Click chevron to open left sidebar
@@ -91,6 +103,7 @@ Navigate to `http://localhost:5173` in your browser.
    - [ ] Same overlay behavior
 
 ### Dark Mode Testing
+
 - [ ] Background is dark (default)
 - [ ] Text is light colored
 - [ ] Borders are subtle
@@ -98,6 +111,7 @@ Navigate to `http://localhost:5173` in your browser.
 - [ ] Scrollbars are styled
 
 ### Visual Polish Checks
+
 - [ ] Separator lines between panels
 - [ ] Smooth transitions on hover
 - [ ] Resize handle visual feedback (subtle highlight)
@@ -108,12 +122,13 @@ Navigate to `http://localhost:5173` in your browser.
 ### Interaction Testing
 
 #### Sidebar Toggles
+
 1. **Close Left Sidebar**
    - Click X button in left sidebar header
    - Sidebar slides out
    - Chevron button appears in main area
-   
 2. **Open Left Sidebar**
+
    - Click chevron button
    - Sidebar slides in
    - Chevron button disappears
@@ -121,6 +136,7 @@ Navigate to `http://localhost:5173` in your browser.
 3. **Same for Right Sidebar**
 
 #### Tab Switching
+
 1. Click different tabs in top toolbar
 2. Left sidebar content changes
 3. "Media" → Shows ResourcePanel
@@ -128,6 +144,7 @@ Navigate to `http://localhost:5173` in your browser.
 5. "Text" → Shows placeholder
 
 ### Performance Testing
+
 - [ ] Resize operations are smooth (no lag)
 - [ ] No memory leaks after repeated resize
 - [ ] Toggle operations are instant
@@ -136,11 +153,13 @@ Navigate to `http://localhost:5173` in your browser.
 ### Accessibility Testing
 
 #### Keyboard Navigation
+
 - [ ] Tab through all interactive elements
 - [ ] Focus states are visible
 - [ ] Buttons are keyboard accessible
 
 #### Screen Reader
+
 - [ ] Semantic HTML structure
 - [ ] Proper heading hierarchy
 - [ ] Buttons have accessible labels
@@ -148,6 +167,7 @@ Navigate to `http://localhost:5173` in your browser.
 ## Expected Behavior
 
 ### On First Load
+
 1. App opens in dark mode
 2. Left sidebar open with ResourcePanel
 3. Right sidebar closed
@@ -155,12 +175,14 @@ Navigate to `http://localhost:5173` in your browser.
 5. Video player centered
 
 ### Resize Behavior
+
 - Drag operations are smooth and real-time
 - Panel sizes constrained within limits
 - No jank or flickering
 - Cursor indicates drag direction
 
 ### Mobile Behavior
+
 - Sidebars collapse automatically
 - Overlays cover main content when open
 - Easy to dismiss (click X or outside)
@@ -169,33 +191,37 @@ Navigate to `http://localhost:5173` in your browser.
 ## Common Issues to Check
 
 ### If Resize Doesn't Work
+
 - Check browser console for errors
 - Verify mouse events are firing
 - Check if resize state is updating
 
 ### If Sidebars Don't Toggle
+
 - Verify button click handlers
 - Check state updates in React DevTools
 - Ensure conditional rendering logic
 
 ### If Mobile Mode Issues
+
 - Verify screen width detection
 - Check media query breakpoint (768px)
 - Test window resize event listener
 
 ### If Dark Mode Not Applied
+
 - Check `document.documentElement.classList`
 - Should contain 'dark' class
 - Verify CSS variables are loaded
 
 ## Browser Testing Matrix
 
-| Browser | Desktop | Mobile | Notes |
-|---------|---------|--------|-------|
-| Chrome  | ✓       | ✓      | Full support |
-| Firefox | ✓       | ✓      | Full support |
+| Browser | Desktop | Mobile | Notes               |
+| ------- | ------- | ------ | ------------------- |
+| Chrome  | ✓       | ✓      | Full support        |
+| Firefox | ✓       | ✓      | Full support        |
 | Safari  | ✓       | ✓      | Test resize handles |
-| Edge    | ✓       | ✓      | Full support |
+| Edge    | ✓       | ✓      | Full support        |
 
 ## Next Steps After Testing
 
@@ -208,6 +234,7 @@ Navigate to `http://localhost:5173` in your browser.
 ## Screenshots Checklist
 
 Consider taking screenshots of:
+
 - [ ] Default desktop view
 - [ ] All sidebars open
 - [ ] Mobile view with overlay

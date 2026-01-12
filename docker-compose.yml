@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # Backend Service
@@ -15,7 +15,7 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - FRONTEND_URL=http://localhost:3000
-      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+      - ALLOWED_ORIGINS=http://localhost:3000
       - UPLOAD_DIR=/app/uploads
       - THUMBNAIL_DIR=/app/thumbnails
       - TEMP_AUDIO_DIR=/app/temp_audio
