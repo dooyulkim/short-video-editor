@@ -345,9 +345,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 					video.style.zIndex = "-1000";
 					document.body.appendChild(video);
 
-					// Set video source (assuming resourceId is the URL or needs to be fetched)
-					// TODO: Replace with actual media URL from resource
-					video.src = `/api/media/${clip.resourceId}/file`;
+					// Set video source from clip data URL
+					video.src = clip.data?.url || `/api/media/${clip.resourceId}/file`;
 
 					videoElementsRef.current.set(clip.resourceId, video);
 
@@ -389,7 +388,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 					audio.style.zIndex = "-1000";
 					document.body.appendChild(audio);
 
-					audio.src = `/api/media/${clip.resourceId}/file`;
+					// Set audio source from clip data URL
+					audio.src = clip.data?.url || `/api/media/${clip.resourceId}/file`;
 					audioElementsRef.current.set(clip.resourceId, audio);
 
 					// Wait for audio to be ready
@@ -419,7 +419,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				if (!imageElementsRef.current.has(clip.resourceId)) {
 					const img = new Image();
 					img.crossOrigin = "anonymous";
-					img.src = `/api/media/${clip.resourceId}/file`;
+					// Set image source from clip data URL
+					img.src = clip.data?.url || `/api/media/${clip.resourceId}/file`;
 
 					imageElementsRef.current.set(clip.resourceId, img);
 

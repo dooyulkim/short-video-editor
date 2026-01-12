@@ -195,20 +195,52 @@ class ExportService:
 
         return max_end_time
 
-    def _find_media_file(self, resource_id: str) -> Optional[Path]:
+    def _find_media_file(self, resource_id: str, clip_data: dict = None) -> Optional[Path]:
         """
-        Find media file by resource ID.
+        Find media file by resource ID, using clip data URL if available.
 
         Args:
             resource_id: Resource ID to find
+            clip_data: Optional clip data containing URL with project info
 
         Returns:
             Path to media file or None
         """
+        # Try to extract project_id from clip data URL
+        # URL format: /api/media/project/{project_id}/{media_id}/file
+        if clip_data and clip_data.get("url"):
+            url = clip_data.get("url", "")
+            import re
+            match = re.search(r'/api/media/project/([^/]+)/([^/]+)/file', url)
+            if match:
+                project_id = match.group(1)
+                media_id = match.group(2)
+                # Search in project-specific directory
+                project_dir = self.uploads_dir / project_id
+                if project_dir.exists():
+                    for ext in ['.mp4', '.mov', '.avi', '.mp3', '.wav', '.m4a', '.jpg', '.png', '.jpeg', '.gif', '.webp']:
+                        file_path = project_dir / f"{media_id}{ext}"
+                        if file_path.exists():
+                            logger.debug(f"Found media file in project dir: {file_path}")
+                            return file_path
+        
+        # Fallback: Search all project subdirectories
+        if self.uploads_dir.exists():
+            for project_dir in self.uploads_dir.iterdir():
+                if project_dir.is_dir():
+                    for ext in ['.mp4', '.mov', '.avi', '.mp3', '.wav', '.m4a', '.jpg', '.png', '.jpeg', '.gif', '.webp']:
+                        file_path = project_dir / f"{resource_id}{ext}"
+                        if file_path.exists():
+                            logger.debug(f"Found media file in project subdir: {file_path}")
+                            return file_path
+        
+        # Legacy fallback: search directly in uploads dir
         for ext in ['.mp4', '.mov', '.avi', '.mp3', '.wav', '.m4a', '.jpg', '.png', '.jpeg', '.gif', '.webp']:
             file_path = self.uploads_dir / f"{resource_id}{ext}"
             if file_path.exists():
                 return file_path
+        
+        logger.warning(f"Media file not found for resource_id: {resource_id}")
         return None
 
     def _create_text_image(
@@ -591,7 +623,7 @@ class ExportService:
 
                         # Detect type from file extension if not set
                         if actual_clip_type is None:
-                            media_path = self._find_media_file(resource_id)
+                            media_path = self._find_media_file(resource_id, clip_data)
                             if media_path:
                                 ext = media_path.suffix.lower()
                                 actual_clip_type = "image" if ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'] else "video"
@@ -608,7 +640,7 @@ class ExportService:
                         # Extract audio from video clips if not muted
                         # Check if video has audio stream first
                         if not muted and actual_clip_type == "video":
-                            media_path_for_audio = self._find_media_file(resource_id)
+                            media_path_for_audio = self._find_media_file(resource_id, clip_data)
                             if media_path_for_audio:
                                 media_info = self._get_media_info(str(media_path_for_audio))
                                 if media_info.get('has_audio', False):
@@ -670,7 +702,7 @@ class ExportService:
                     if not resource_id:
                         continue
 
-                    media_path = self._find_media_file(resource_id)
+                    media_path = self._find_media_file(resource_id, clip_data.get("data", {}))
                     if not media_path:
                         logger.warning(f"Media file not found: {resource_id}")
                         continue
@@ -924,7 +956,7 @@ class ExportService:
                     if not resource_id:
                         continue
 
-                    media_path = self._find_media_file(resource_id)
+                    media_path = self._find_media_file(resource_id, clip_data.get("data", {}))
                     if not media_path:
                         continue
 

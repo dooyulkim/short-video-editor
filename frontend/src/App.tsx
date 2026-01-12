@@ -38,13 +38,10 @@ function AppContent() {
 	const timeline = useTimeline();
 	const isPlaying = timeline?.state.isPlaying || false;
 	const [leftSidebarWidth, setLeftSidebarWidth] = useState(280);
-	const [rightSidebarWidth, setRightSidebarWidth] = useState(280);
 	const [timelineHeight, setTimelineHeight] = useState(250);
 	const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
-	const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
 	const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(true);
 	const [isResizingLeft, setIsResizingLeft] = useState(false);
-	const [isResizingRight, setIsResizingRight] = useState(false);
 	const [isResizingTimeline, setIsResizingTimeline] = useState(false);
 	const [isMobile, setIsMobile] = useState(false);
 	const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
@@ -82,7 +79,7 @@ function AppContent() {
 			setIsMobile(mobile);
 			if (mobile) {
 				setIsLeftSidebarOpen(false);
-				setIsRightSidebarOpen(false);
+				setIsPropertiesPanelOpen(false);
 			}
 		};
 
@@ -113,28 +110,6 @@ function AppContent() {
 		};
 	}, [isResizingLeft]);
 
-	// Handle right sidebar resize
-	useEffect(() => {
-		if (!isResizingRight) return;
-
-		const handleMouseMove = (e: MouseEvent) => {
-			const newWidth = Math.max(200, Math.min(500, window.innerWidth - e.clientX));
-			setRightSidebarWidth(newWidth);
-		};
-
-		const handleMouseUp = () => {
-			setIsResizingRight(false);
-		};
-
-		document.addEventListener("mousemove", handleMouseMove);
-		document.addEventListener("mouseup", handleMouseUp);
-
-		return () => {
-			document.removeEventListener("mousemove", handleMouseMove);
-			document.removeEventListener("mouseup", handleMouseUp);
-		};
-	}, [isResizingRight]);
-
 	// Handle timeline resize
 	useEffect(() => {
 		if (!isResizingTimeline) return;
@@ -163,7 +138,7 @@ function AppContent() {
 
 	const handleResourceSelect = (resource: MediaResource) => {
 		setSelectedResource(resource);
-		setIsRightSidebarOpen(true);
+		setIsPropertiesPanelOpen(true);
 	};
 
 	// Handle adding text clips to the timeline
