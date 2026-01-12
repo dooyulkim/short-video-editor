@@ -342,8 +342,9 @@ export const downloadExport = async (taskId: string): Promise<Blob> => {
  * Cancel an ongoing export task
  * @param taskId - The export task ID
  */
-export const cancelExport = async (taskId: string): Promise<void> => {
-	await api.post(`/export/cancel/${taskId}`);
+export const cancelExport = async (taskId: string): Promise<{ message: string; task_id: string }> => {
+	const response = await api.delete<{ message: string; task_id: string }>(`/export/cancel/${taskId}`);
+	return response.data;
 };
 
 // ===========================

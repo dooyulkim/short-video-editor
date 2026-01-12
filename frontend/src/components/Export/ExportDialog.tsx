@@ -13,10 +13,10 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { startExport, getExportStatus, downloadExport } from "@/services/api";
+import { startExport, getExportStatus, downloadExport, cancelExport } from "@/services/api";
 import type { ExportSettings, ExportTask, AspectRatio, ResolutionPreset, Resolution } from "@/types/export";
 import type { Timeline } from "@/types/timeline";
-import { Download, FileVideo, Loader2, X } from "lucide-react";
+import { FileVideo, Loader2, X, StopCircle } from "lucide-react";
 
 interface ExportDialogProps {
 	open: boolean;
@@ -65,6 +65,24 @@ const calculateResolution = (preset: ResolutionPreset, aspectRatio: AspectRatio)
 	}
 };
 
+// Find matching aspect ratio from timeline resolution
+const findMatchingAspectRatio = (width: number, height: number): AspectRatio => {
+	const timelineRatio = width / height;
+	const tolerance = 0.01; // Allow small floating point differences
+
+	const ratioKeys = Object.keys(ASPECT_RATIOS) as Exclude<AspectRatio, "custom">[];
+
+	for (const key of ratioKeys) {
+		const { ratio } = ASPECT_RATIOS[key];
+		if (Math.abs(timelineRatio - ratio) < tolerance) {
+			return key;
+		}
+	}
+
+	// No match found, return the first option
+	return ratioKeys[0];
+};
+
 export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps) {
 	const [settings, setSettings] = useState<ExportSettings>({
 		resolution: "1080p",
@@ -78,14 +96,35 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 	const [exportTask, setExportTask] = useState<ExportTask | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+	const [isCancelling, setIsCancelling] = useState(false);
 
 	// React 19: useTransition for async state updates
 	const [isPending, startTransition] = useTransition();
-	const isExporting = !!exportTask && exportTask.status !== "completed" && exportTask.status !== "failed";
+	const isExporting =
+		!!exportTask &&
+		exportTask.status !== "completed" &&
+		exportTask.status !== "failed" &&
+		exportTask.status !== "cancelled";
+
+	// Set aspect ratio based on timeline resolution when dialog opens
+	useEffect(() => {
+		if (open && timeline?.resolution) {
+			const matchedRatio = findMatchingAspectRatio(timeline.resolution.width, timeline.resolution.height);
+			setSettings((prev) => ({
+				...prev,
+				aspectRatio: matchedRatio,
+			}));
+		}
+	}, [open, timeline?.resolution?.width, timeline?.resolution?.height]);
 
 	// Poll export status every 2 seconds
 	useEffect(() => {
-		if (!exportTask || exportTask.status === "completed" || exportTask.status === "failed") {
+		if (
+			!exportTask ||
+			exportTask.status === "completed" ||
+			exportTask.status === "failed" ||
+			exportTask.status === "cancelled"
+		) {
 			return;
 		}
 
@@ -100,10 +139,12 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 					outputPath: status.output_path,
 				});
 
-				if (status.status === "completed" || status.status === "failed") {
+				if (status.status === "completed" || status.status === "failed" || status.status === "cancelled") {
 					clearInterval(pollInterval);
 					if (status.status === "failed") {
 						setError(status.error || "Export failed");
+					} else if (status.status === "cancelled") {
+						setError("Export was cancelled");
 					}
 				}
 			} catch (err) {
@@ -115,6 +156,37 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 
 		return () => clearInterval(pollInterval);
 	}, [exportTask]);
+
+	// Auto-download when export completes
+	useEffect(() => {
+		if (exportTask?.status === "completed" && exportTask?.taskId) {
+			const autoDownload = async () => {
+				try {
+					const blob = await downloadExport(exportTask.taskId);
+					const url = window.URL.createObjectURL(blob);
+
+					// Create download link and trigger download
+					const link = document.createElement("a");
+					link.href = url;
+					link.download = `${settings.filename}.${settings.format.toLowerCase()}`;
+					document.body.appendChild(link);
+					link.click();
+					document.body.removeChild(link);
+
+					// Cleanup, reset state, and close dialog
+					window.URL.revokeObjectURL(url);
+					setExportTask(null);
+					setError(null);
+					setDownloadUrl(null);
+					onOpenChange(false);
+				} catch (err) {
+					console.error("Error auto-downloading export:", err);
+					setError("Failed to download video");
+				}
+			};
+			autoDownload();
+		}
+	}, [exportTask?.status, exportTask?.taskId, settings.filename, settings.format, onOpenChange]);
 
 	// Calculate the effective resolution based on resolution preset and aspect ratio
 	const effectiveResolution = useMemo((): Resolution => {
@@ -165,31 +237,19 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 		});
 	};
 
-	const handleDownload = async () => {
-		if (!exportTask?.taskId) return;
+	const handleCancelExport = async () => {
+		if (!exportTask?.taskId || !isExporting) return;
 
+		setIsCancelling(true);
 		try {
-			const blob = await downloadExport(exportTask.taskId);
-			const url = window.URL.createObjectURL(blob);
-			setDownloadUrl(url);
-
-			// Create download link and trigger download
-			const link = document.createElement("a");
-			link.href = url;
-			link.download = `${settings.filename}.${settings.format.toLowerCase()}`;
-			document.body.appendChild(link);
-			link.click();
-			document.body.removeChild(link);
-
-			// Close the dialog after download
-			window.URL.revokeObjectURL(url);
-			setExportTask(null);
-			setError(null);
-			setDownloadUrl(null);
-			onOpenChange(false);
+			await cancelExport(exportTask.taskId);
+			setExportTask((prev) => (prev ? { ...prev, status: "cancelled" } : null));
+			setError("Export was cancelled");
 		} catch (err) {
-			console.error("Error downloading export:", err);
-			setError("Failed to download video");
+			console.error("Error cancelling export:", err);
+			setError("Failed to cancel export");
+		} finally {
+			setIsCancelling(false);
 		}
 	};
 
@@ -210,6 +270,7 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 				setExportTask(null);
 				setError(null);
 				setDownloadUrl(null);
+				setIsCancelling(false);
 			}
 			onOpenChange(open);
 		},
@@ -217,8 +278,6 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 	);
 
 	const canStartExport = !isExporting && settings.filename.trim().length > 0;
-	const isCompleted = exportTask?.status === "completed";
-	const isFailed = exportTask?.status === "failed";
 
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
@@ -350,27 +409,38 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 
 					{/* Error Message */}
 					{error && <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
-
-					{/* Success Message */}
-					{isCompleted && (
-						<div className="rounded-md bg-green-500/10 p-3 text-sm text-green-600 dark:text-green-400">
-							Export completed successfully! Click download to save your video.
-						</div>
-					)}
 				</div>
 
 				<DialogFooter className="gap-2">
-					<Button variant="outline" onClick={() => handleClose(false)} disabled={isExporting && !isFailed}>
+					<Button variant="outline" onClick={() => handleClose(false)} disabled={isExporting || isCancelling}>
 						<X className="size-4 mr-2" />
-						{isExporting && !isFailed ? "Cancel" : "Close"}
+						Close
 					</Button>
 
-					{!isCompleted && !isFailed && (
-						<Button onClick={handleStartExport} disabled={!canStartExport || isPending}>
-							{isExporting || isPending ? (
+					{/* Cancel Export button - shown when exporting */}
+					{isExporting && (
+						<Button variant="destructive" onClick={handleCancelExport} disabled={isCancelling}>
+							{isCancelling ? (
 								<>
 									<Loader2 className="size-4 mr-2 animate-spin" />
-									Exporting...
+									Cancelling...
+								</>
+							) : (
+								<>
+									<StopCircle className="size-4 mr-2" />
+									Cancel Export
+								</>
+							)}
+						</Button>
+					)}
+
+					{/* Start Export button - shown when not exporting */}
+					{!isExporting && (
+						<Button onClick={handleStartExport} disabled={!canStartExport || isPending}>
+							{isPending ? (
+								<>
+									<Loader2 className="size-4 mr-2 animate-spin" />
+									Starting...
 								</>
 							) : (
 								<>
@@ -378,13 +448,6 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 									Start Export
 								</>
 							)}
-						</Button>
-					)}
-
-					{isCompleted && (
-						<Button onClick={handleDownload}>
-							<Download className="size-4 mr-2" />
-							Download
 						</Button>
 					)}
 				</DialogFooter>

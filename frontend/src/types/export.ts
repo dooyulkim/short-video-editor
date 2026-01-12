@@ -18,7 +18,7 @@ export interface ExportSettings {
 
 export interface ExportTask {
 	taskId: string;
-	status: "pending" | "processing" | "completed" | "failed";
+	status: "pending" | "processing" | "completed" | "failed" | "cancelled";
 	progress: number; // 0-100
 	error?: string;
 	outputPath?: string;
@@ -32,7 +32,7 @@ export interface ExportResponse {
 
 export interface ExportStatusResponse {
 	task_id: string;
-	status: "pending" | "processing" | "completed" | "failed";
+	status: "pending" | "processing" | "completed" | "failed" | "cancelled";
 	progress: number;
 	error?: string;
 	output_path?: string;

@@ -22,6 +22,9 @@ router = APIRouter(tags=["export"])
 # In production, use Redis or a database
 export_tasks: Dict[str, Dict] = {}
 
+# Track cancellation requests
+cancelled_tasks: set = set()
+
 # Lock for thread-safe access to export_tasks
 tasks_lock = threading.Lock()
 
@@ -53,7 +56,7 @@ class ExportRequest(BaseModel):
 class ExportStatusResponse(BaseModel):
     """Response model for export status."""
     task_id: str
-    status: str  # pending, processing, completed, failed
+    status: str  # pending, processing, completed, failed, cancelled
     progress: float  # 0-100 percentage
     message: Optional[str] = None
     output_path: Optional[str] = None
@@ -68,14 +71,31 @@ class ExportStartResponse(BaseModel):
     message: str
 
 
+class CancellationError(Exception):
+    """Raised when an export task is cancelled."""
+    pass
+
+
+def is_task_cancelled(task_id: str) -> bool:
+    """Check if a task has been cancelled."""
+    return task_id in cancelled_tasks
+
+
 def update_task_progress(task_id: str, progress: float):
     """
-    Update task progress.
+    Update task progress and check for cancellation.
     
     Args:
         task_id: Task ID
         progress: Progress value (0.0 to 1.0)
+        
+    Raises:
+        CancellationError: If the task has been cancelled
     """
+    # Check for cancellation first
+    if is_task_cancelled(task_id):
+        raise CancellationError(f"Task {task_id} was cancelled")
+    
     with tasks_lock:
         if task_id in export_tasks:
             export_tasks[task_id]["progress"] = progress
@@ -151,6 +171,16 @@ def process_export(
         
         logger.info(f"✅ Export task {task_id} completed successfully")
         logger.info(f"   Output saved to: {output_path}")
+        
+    except CancellationError:
+        # Task was cancelled
+        logger.info(f"🛑 Export task {task_id} was cancelled")
+        with tasks_lock:
+            export_tasks[task_id]["status"] = "cancelled"
+            export_tasks[task_id]["message"] = "Export cancelled by user"
+            export_tasks[task_id]["completed_at"] = datetime.now().isoformat()
+        # Clean up cancelled_tasks set
+        cancelled_tasks.discard(task_id)
         
     except Exception as e:
         # Update task as failed
@@ -380,16 +410,21 @@ async def cancel_export(task_id: str):
         
         task = export_tasks[task_id]
         
-        if task["status"] in ["completed", "failed"]:
+        if task["status"] in ["completed", "failed", "cancelled"]:
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot cancel task with status: {task['status']}"
             )
         
-        # Mark as cancelled (note: actual processing might continue)
+        # Add to cancelled_tasks set - this will cause the progress callback to raise CancellationError
+        cancelled_tasks.add(task_id)
+        
+        # Mark as cancelled in the task status
         export_tasks[task_id]["status"] = "cancelled"
         export_tasks[task_id]["message"] = "Task cancelled by user"
         export_tasks[task_id]["completed_at"] = datetime.now().isoformat()
+    
+    logger.info(f"🛑 Cancel requested for export task {task_id}")
     
     return JSONResponse(
         content={"message": "Export task cancelled", "task_id": task_id}
