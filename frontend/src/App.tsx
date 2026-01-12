@@ -213,7 +213,7 @@ function AppContent() {
 			{/* Main Content Grid */}
 			<div className="flex-1 flex overflow-hidden relative">
 				{/* Left Sidebar - Resource Panel */}
-				{isLeftSidebarOpen && (
+				{isLeftSidebarOpen ? (
 					<aside
 						style={{ width: isMobile ? "100%" : `${leftSidebarWidth}px` }}
 						className={cn(
@@ -265,8 +265,8 @@ function AppContent() {
 							)}
 						</div>
 
-						{/* Resize Handle - Only show for media/resources tab */}
-						{!isMobile && activeTab === "media" && (
+						{/* Resize Handle - Show for all tabs */}
+						{!isMobile && (
 							<div
 								className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-primary/50 transition-colors group"
 								onMouseDown={() => setIsResizingLeft(true)}>
@@ -274,17 +274,34 @@ function AppContent() {
 							</div>
 						)}
 					</aside>
-				)}
-
-				{/* Toggle Left Sidebar Button */}
-				{!isLeftSidebarOpen && (
-					<Button
-						variant="outline"
-						size="icon"
-						className="absolute left-2 top-4 z-20 size-8 shadow-md"
-						onClick={() => setIsLeftSidebarOpen(true)}>
-						<ChevronRight className="size-4" />
-					</Button>
+				) : (
+					/* Collapsed Left Sidebar - Narrow strip with expand button */
+					<aside className="shrink-0 flex flex-col bg-card border-r border-border w-10">
+						<div className="flex items-center justify-center py-1 border-b border-border bg-muted/30">
+							<Button
+								variant="ghost"
+								size="icon"
+								className="size-6"
+								onClick={() => setIsLeftSidebarOpen(true)}
+								title="Show Resources">
+								<ChevronRight className="size-4" />
+							</Button>
+						</div>
+						{/* Vertical label */}
+						<div className="flex-1 flex items-start justify-center pt-4">
+							<span
+								className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+								style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}>
+								{activeTab === "media"
+									? "Resources"
+									: activeTab === "transitions"
+									? "Transitions"
+									: activeTab === "text"
+									? "Text"
+									: activeTab}
+							</span>
+						</div>
+					</aside>
 				)}
 
 				{/* Center Area - Preview, Properties and Timeline */}
