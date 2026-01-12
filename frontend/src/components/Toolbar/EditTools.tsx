@@ -1,4 +1,4 @@
-import { Scissors, Minimize2, Trash2, Copy } from "lucide-react";
+import { Scissors, Trash2, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTimeline } from "@/context/TimelineContext";
 import { cutClipAtTime, duplicateClip, findClipById } from "@/utils/clipOperations";
@@ -49,24 +49,6 @@ export function EditTools({ className }: EditToolsProps) {
 	};
 
 	/**
-	 * Handle trim operation - Enable trim mode for selected clip
-	 * Note: This would typically open a trim panel or enable trim handles
-	 * For now, we'll just log that trim mode should be enabled
-	 */
-	const handleTrim = () => {
-		if (!selectedClipId || !selectedClipData) return;
-
-		// In a full implementation, this would:
-		// 1. Enable trim mode in the UI
-		// 2. Show trim handles on the selected clip
-		// 3. Allow user to drag handles to adjust trim
-		console.log("Trim mode enabled for clip:", selectedClipId);
-
-		// For now, we could add a visual indicator or dispatch an action
-		// that components can listen to for showing trim handles
-	};
-
-	/**
 	 * Handle delete operation - Remove selected clip
 	 */
 	const handleDelete = () => {
@@ -106,17 +88,6 @@ export function EditTools({ className }: EditToolsProps) {
 				}>
 				<Scissors className="size-3 mr-1.5" />
 				Cut
-			</Button>
-
-			<Button
-				variant="outline"
-				size="sm"
-				onClick={handleTrim}
-				disabled={!hasSelection}
-				className="h-7 px-2 text-xs"
-				title={!hasSelection ? "Select a clip first" : "Enable trim mode to adjust clip start/end"}>
-				<Minimize2 className="size-3 mr-1.5" />
-				Trim
 			</Button>
 
 			<Button

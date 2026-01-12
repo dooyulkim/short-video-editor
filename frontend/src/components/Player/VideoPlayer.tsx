@@ -21,6 +21,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const videoElementsRef = useRef<Map<string, HTMLVideoElement>>(new Map());
+	const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 	const imageElementsRef = useRef<Map<string, HTMLImageElement>>(new Map());
 	const textDimensionsRef = useRef<Map<string, { width: number; height: number }>>(new Map());
 	const [textDimensions, setTextDimensions] = useState<Map<string, { width: number; height: number }>>(new Map());
@@ -43,6 +44,28 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	});
 	const [imageDimensions, setImageDimensions] = useState<Map<string, { width: number; height: number }>>(new Map());
 	const [videoDimensions, setVideoDimensions] = useState<Map<string, { width: number; height: number }>>(new Map());
+
+	// Cleanup video and audio elements from DOM when component unmounts
+	useEffect(() => {
+		return () => {
+			videoElementsRef.current.forEach((video) => {
+				video.pause();
+				video.src = "";
+				if (video.parentNode) {
+					video.parentNode.removeChild(video);
+				}
+			});
+			videoElementsRef.current.clear();
+			audioElementsRef.current.forEach((audio) => {
+				audio.pause();
+				audio.src = "";
+				if (audio.parentNode) {
+					audio.parentNode.removeChild(audio);
+				}
+			});
+			audioElementsRef.current.clear();
+		};
+	}, []);
 
 	// Update refs when state changes and detect scrubbing
 	useEffect(() => {
@@ -297,6 +320,9 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			const videoClips = currentLayers.flatMap((layer) =>
 				layer.clips.filter((clip) => layer.type === "video" || clip.data?.type === "video")
 			);
+			const audioClips = currentLayers.flatMap((layer) =>
+				layer.clips.filter((clip) => layer.type === "audio" || clip.data?.type === "audio")
+			);
 			const imageClips = currentLayers.flatMap((layer) =>
 				layer.clips.filter((clip) => layer.type === "image" || clip.data?.type === "image")
 			);
@@ -308,6 +334,16 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 					video.crossOrigin = "anonymous";
 					video.preload = "auto";
 					video.muted = true;
+					// Add playsinline attribute for mobile compatibility
+					video.playsInline = true;
+					// Append video to DOM (hidden) to enable audio playback in some browsers
+					video.style.position = "absolute";
+					video.style.width = "1px";
+					video.style.height = "1px";
+					video.style.opacity = "0";
+					video.style.pointerEvents = "none";
+					video.style.zIndex = "-1000";
+					document.body.appendChild(video);
 
 					// Set video source (assuming resourceId is the URL or needs to be fetched)
 					// TODO: Replace with actual media URL from resource
@@ -329,6 +365,47 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 										})
 									);
 								}
+								resolve();
+							},
+							{ once: true }
+						);
+					});
+				}
+			}
+
+			// Create audio elements for clips that don't have them
+			for (const clip of audioClips) {
+				if (!audioElementsRef.current.has(clip.resourceId)) {
+					const audio = document.createElement("audio");
+					audio.crossOrigin = "anonymous";
+					audio.preload = "auto";
+					audio.muted = true;
+					// Append audio to DOM (hidden) to enable playback
+					audio.style.position = "absolute";
+					audio.style.width = "1px";
+					audio.style.height = "1px";
+					audio.style.opacity = "0";
+					audio.style.pointerEvents = "none";
+					audio.style.zIndex = "-1000";
+					document.body.appendChild(audio);
+
+					audio.src = `/api/media/${clip.resourceId}/file`;
+					audioElementsRef.current.set(clip.resourceId, audio);
+
+					// Wait for audio to be ready
+					await new Promise<void>((resolve) => {
+						audio.addEventListener(
+							"loadeddata",
+							() => {
+								console.log(`🔊 Audio element loaded for resource: ${clip.resourceId}`);
+								resolve();
+							},
+							{ once: true }
+						);
+						audio.addEventListener(
+							"error",
+							() => {
+								console.error(`Failed to load audio for resource: ${clip.resourceId}`);
 								resolve();
 							},
 							{ once: true }
@@ -390,6 +467,10 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 					video.pause();
 					video.src = "";
 					video.load(); // Reset the video element
+					// Remove from DOM if it was appended
+					if (video.parentNode) {
+						video.parentNode.removeChild(video);
+					}
 					videoElementsRef.current.delete(resourceId);
 					setVideoDimensions((prev) => {
 						const newMap = new Map(prev);
@@ -410,6 +491,20 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 						return newMap;
 					});
 					console.log(`🗑️ Cleaned up image element for resource: ${resourceId}`);
+				}
+			});
+
+			// Remove unused audio elements
+			audioElementsRef.current.forEach((audio, resourceId) => {
+				if (!currentResourceIds.has(resourceId)) {
+					audio.pause();
+					audio.src = "";
+					audio.load();
+					if (audio.parentNode) {
+						audio.parentNode.removeChild(audio);
+					}
+					audioElementsRef.current.delete(resourceId);
+					console.log(`🗑️ Cleaned up audio element for resource: ${resourceId}`);
 				}
 			});
 
@@ -1091,7 +1186,6 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	 * Synchronize video playback with timeline
 	 * Play/pause video elements based on isPlaying state
 	 * Uses layersRenderKeyString to avoid re-triggering on mute changes
-	 * NOTE: Mute state is handled separately by the mute sync effect
 	 */
 	useEffect(() => {
 		if (!isReady) return;
@@ -1108,9 +1202,9 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			return;
 		}
 
-		// If playing, handle visible clips using refs for stability
+		// If playing, handle visible clips - use currentTime directly from dependency
 		const currentLayers = layersRef.current;
-		const time = currentTimeRef.current;
+		const time = currentTime; // Use currentTime from state, not ref
 		const visibleVideoClips: Array<{ clip: Clip; layer: TimelineLayer; resourceId: string }> = [];
 
 		for (const layer of currentLayers) {
@@ -1130,8 +1224,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		// Track current visible clip IDs to detect transitions
 		const currentVisibleClipIds = new Set(visibleVideoClips.map(({ clip }) => clip.id));
 
-		// Play all visible video clips (don't touch mute state - handled by mute sync effect)
-		visibleVideoClips.forEach(({ clip, resourceId }) => {
+		// Play all visible video clips and set correct mute state
+		visibleVideoClips.forEach(({ clip, layer, resourceId }) => {
 			const video = videoElementsRef.current.get(resourceId);
 			if (!video || video.readyState < 2) return;
 
@@ -1152,11 +1246,24 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				video.currentTime = videoTime;
 			}
 
+			// Determine desired mute state based on layer property
+			const shouldBeMuted = layer.muted || false;
+
 			// Only play if video is paused to avoid repeated play() calls
 			if (video.paused) {
+				// Try to play with audio (unmuted) first
+				video.muted = shouldBeMuted;
 				video.play().catch((err) => {
-					console.warn("Failed to play video:", err);
+					// If play fails due to autoplay policy, try muted playback
+					console.warn("Failed to play video with audio, trying muted:", err);
+					video.muted = true;
+					video.play().catch((err2) => {
+						console.warn("Failed to play video even muted:", err2);
+					});
 				});
+			} else {
+				// Video is already playing, just update mute state
+				video.muted = shouldBeMuted;
 			}
 		});
 
@@ -1174,6 +1281,89 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			}
 		});
 	}, [isPlaying, currentTime, isReady, playbackSyncKey]); // Use playbackSyncKey to avoid visibility/mute triggered re-syncs
+
+	/**
+	 * Synchronize audio-only clip playback with timeline
+	 * Play/pause audio elements based on isPlaying state
+	 */
+	useEffect(() => {
+		if (!isReady) return;
+
+		// If not playing, pause all audio immediately
+		if (!isPlaying) {
+			audioElementsRef.current.forEach((audio) => {
+				if (!audio.paused) {
+					audio.pause();
+				}
+				audio.muted = true;
+			});
+			return;
+		}
+
+		// If playing, handle visible audio clips
+		const currentLayers = layersRef.current;
+		const time = currentTime;
+		const visibleAudioClips: Array<{ clip: Clip; layer: TimelineLayer; resourceId: string }> = [];
+
+		for (const layer of currentLayers) {
+			if (!layer.visible) continue;
+
+			for (const clip of layer.clips) {
+				const clipEndTime = clip.startTime + clip.duration;
+
+				if (time >= clip.startTime && time < clipEndTime) {
+					if (layer.type === "audio" || clip.data?.type === "audio") {
+						visibleAudioClips.push({ clip, layer, resourceId: clip.resourceId });
+					}
+				}
+			}
+		}
+
+		// Play all visible audio clips
+		visibleAudioClips.forEach(({ clip, layer, resourceId }) => {
+			const audio = audioElementsRef.current.get(resourceId);
+			if (!audio || audio.readyState < 2) return;
+
+			const localTime = time - clip.startTime;
+			const audioTime = localTime + (clip.trimStart || 0);
+
+			// Calculate time difference
+			const timeDiff = Math.abs(audio.currentTime - audioTime);
+
+			// Seek if out of sync
+			if (timeDiff > 0.3) {
+				audio.currentTime = audioTime;
+			}
+
+			// Determine desired mute state based on layer property
+			const shouldBeMuted = layer.muted || false;
+
+			// Only play if audio is paused
+			if (audio.paused) {
+				audio.muted = shouldBeMuted;
+				audio.play().catch((err) => {
+					console.warn("Failed to play audio, trying muted:", err);
+					audio.muted = true;
+					audio.play().catch((err2) => {
+						console.warn("Failed to play audio even muted:", err2);
+					});
+				});
+			} else {
+				audio.muted = shouldBeMuted;
+			}
+		});
+
+		// Pause and mute all audio not currently visible
+		audioElementsRef.current.forEach((audio, resourceId) => {
+			const isVisible = visibleAudioClips.some((v) => v.resourceId === resourceId);
+			if (!isVisible) {
+				if (!audio.paused) {
+					audio.pause();
+				}
+				audio.muted = true;
+			}
+		});
+	}, [isPlaying, currentTime, isReady, playbackSyncKey]);
 
 	return (
 		<div ref={containerRef} className={`relative flex items-center justify-center p-3 ${className}`}>

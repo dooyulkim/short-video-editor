@@ -97,15 +97,16 @@ export const useTimelineDragDrop = ({
 					startTime: snappedTime,
 					duration: duration || 5, // Default 5 seconds for images
 					trimStart: 0,
-					trimEnd: duration || 5,
+					trimEnd: 0,
 					opacity: 1,
 					scale: 1,
 					rotation: 0,
-					// Store resource type and dimensions in data for proper export handling
+					// Store resource type, dimensions, and source duration in data for proper handling
 					data: {
 						type: resourceType as "video" | "audio" | "image" | "text",
 						width: resource.metadata?.width,
 						height: resource.metadata?.height,
+						sourceDuration: duration,
 					},
 				};
 
