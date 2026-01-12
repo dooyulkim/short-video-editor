@@ -55,7 +55,8 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 	const [resourceToDelete, setResourceToDelete] = useState<MediaResource | null>(null);
 	const [isDeleting, setIsDeleting] = useState(false);
-	const { uploadFile, progress, isUploading, error } = useMediaUpload({ projectId });
+	const [uploadBatch, setUploadBatch] = useState<{ current: number; total: number } | null>(null);
+	const { uploadFile, progress, isUploading, error, currentFileName } = useMediaUpload({ projectId });
 	const timeline = useTimeline();
 
 	// Fetch existing resources on mount or when projectId changes
@@ -78,7 +79,10 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 
 	const onDrop = useCallback(
 		async (acceptedFiles: File[]) => {
-			for (const file of acceptedFiles) {
+			const totalFiles = acceptedFiles.length;
+			for (let i = 0; i < acceptedFiles.length; i++) {
+				const file = acceptedFiles[i];
+				setUploadBatch({ current: i + 1, total: totalFiles });
 				// React 19: Show optimistic resource immediately
 				const tempResource: MediaResource = {
 					id: `temp-${Date.now()}-${file.name}`,
@@ -106,6 +110,7 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 					setResources((prev) => prev);
 				}
 			}
+			setUploadBatch(null);
 		},
 		[projectId, uploadFile, onResourcesChange, updateOptimisticResources]
 	);
@@ -278,10 +283,17 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 			{isUploading && (
 				<div className="mb-4">
 					<div className="flex justify-between text-sm mb-2">
-						<span>Uploading...</span>
+						<span>
+							Uploading{uploadBatch && uploadBatch.total > 1 ? ` (${uploadBatch.current}/${uploadBatch.total})` : ""}...
+						</span>
 						<span>{progress}%</span>
 					</div>
 					<Progress value={progress} />
+					{currentFileName && (
+						<p className="text-xs text-muted-foreground mt-1 truncate" title={currentFileName}>
+							{currentFileName}
+						</p>
+					)}
 				</div>
 			)}
 
