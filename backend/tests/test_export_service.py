@@ -281,6 +281,156 @@ class TestExportService:
         
         # Verify output
         assert os.path.exists(output_path)
+
+    def test_export_with_wipe_transitions(self):
+        """Test exporting video with wipe transitions (dict format)"""
+        # Create test video
+        self.create_test_video("test_video_wipe.mp4", duration=3)
+        resource_id = "test_video_wipe"
+        
+        # Create timeline data with wipe transitions (dict format)
+        timeline_data = {
+            "duration": 3.0,
+            "layers": [
+                {
+                    "type": "video",
+                    "visible": True,
+                    "clips": [
+                        {
+                            "resourceId": resource_id,
+                            "startTime": 0.0,
+                            "duration": 3.0,
+                            "trimStart": 0.0,
+                            "trimEnd": 0.0,
+                            "transitions": {
+                                "in": {
+                                    "type": "wipe",
+                                    "duration": 0.5,
+                                    "properties": {"direction": "left"}
+                                },
+                                "out": {
+                                    "type": "wipe",
+                                    "duration": 0.5,
+                                    "properties": {"direction": "right"}
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        # Export timeline
+        output_path = self.service.export_timeline(
+            timeline_data=timeline_data,
+            output_path="test_export_wipe.mp4",
+            resolution="480p",
+            fps=24
+        )
+        
+        # Verify output
+        assert os.path.exists(output_path)
+        # Verify video duration
+        duration = get_video_duration(output_path)
+        assert 2.8 <= duration <= 3.2  # Allow small margin
+
+    def test_export_with_slide_transitions(self):
+        """Test exporting video with slide transitions"""
+        # Create test video
+        self.create_test_video("test_video_slide.mp4", duration=3)
+        resource_id = "test_video_slide"
+        
+        # Create timeline data with slide transitions
+        timeline_data = {
+            "duration": 3.0,
+            "layers": [
+                {
+                    "type": "video",
+                    "visible": True,
+                    "clips": [
+                        {
+                            "resourceId": resource_id,
+                            "startTime": 0.0,
+                            "duration": 3.0,
+                            "trimStart": 0.0,
+                            "trimEnd": 0.0,
+                            "transitions": {
+                                "in": {
+                                    "type": "slide",
+                                    "duration": 0.5,
+                                    "properties": {"direction": "up"}
+                                },
+                                "out": {
+                                    "type": "slide",
+                                    "duration": 0.5,
+                                    "properties": {"direction": "down"}
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        # Export timeline
+        output_path = self.service.export_timeline(
+            timeline_data=timeline_data,
+            output_path="test_export_slide.mp4",
+            resolution="480p",
+            fps=24
+        )
+        
+        # Verify output
+        assert os.path.exists(output_path)
+        # Verify video duration
+        duration = get_video_duration(output_path)
+        assert 2.8 <= duration <= 3.2  # Allow small margin
+
+    def test_export_with_wipe_direction_variants(self):
+        """Test all wipe directions work correctly"""
+        for direction in ["left", "right", "up", "down"]:
+            # Create test video
+            filename = f"test_video_wipe_{direction}.mp4"
+            self.create_test_video(filename, duration=2)
+            resource_id = f"test_video_wipe_{direction}"
+            
+            # Create timeline data
+            timeline_data = {
+                "duration": 2.0,
+                "layers": [
+                    {
+                        "type": "video",
+                        "visible": True,
+                        "clips": [
+                            {
+                                "resourceId": resource_id,
+                                "startTime": 0.0,
+                                "duration": 2.0,
+                                "trimStart": 0.0,
+                                "trimEnd": 0.0,
+                                "transitions": {
+                                    "in": {
+                                        "type": "wipe",
+                                        "duration": 0.3,
+                                        "properties": {"direction": direction}
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+            
+            # Export timeline
+            output_path = self.service.export_timeline(
+                timeline_data=timeline_data,
+                output_path=f"test_export_wipe_{direction}.mp4",
+                resolution="480p",
+                fps=24
+            )
+            
+            # Verify output exists
+            assert os.path.exists(output_path), f"Wipe {direction} export failed"
     
     def test_export_multiple_video_clips(self):
         """Test exporting timeline with multiple video clips"""

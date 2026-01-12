@@ -331,6 +331,94 @@ class ExportService:
             return direction_map.get(direction, 'slideleft')
         return "fade"
 
+    def _build_wipe_filter(
+        self, 
+        trans_duration: float, 
+        direction: str, 
+        clip_duration: float,
+        clip_width: int,
+        clip_height: int,
+        mode: str,  # "in" or "out"
+        fps: int = 30
+    ) -> str:
+        """
+        Build FFmpeg geq filter for wipe/slide transition effect on individual clip.
+        
+        Uses the geq filter to animate the alpha channel based on frame number,
+        creating a reveal/hide effect from the specified direction.
+        
+        Args:
+            trans_duration: Duration of the transition in seconds
+            direction: Wipe direction (left, right, up, down)
+            clip_duration: Total clip duration in seconds
+            clip_width: Width of the clip in pixels
+            clip_height: Height of the clip in pixels
+            mode: "in" for wipe reveal at start, "out" for wipe hide at end
+            fps: Frames per second for calculating frame-based progress
+            
+        Returns:
+            FFmpeg geq filter string for the wipe effect
+        """
+        # Calculate transition in frames
+        trans_frames = int(trans_duration * fps)
+        if trans_frames < 1:
+            trans_frames = 1
+        
+        # For "in" mode: alpha goes from 0 to 255 as N goes from 0 to trans_frames
+        # For "out" mode: alpha goes from 255 to 0 starting at fade_start_frame
+        # Note: No backslash escaping needed - subprocess passes args directly without shell
+        
+        if mode == "in":
+            # Progress: N / trans_frames (0 to 1 over trans_frames)
+            # After trans_frames, progress = 1 (fully visible)
+            # Use min to cap at 1.0
+            progress_expr = f"min(N/{trans_frames},1)"
+            
+            if direction == "left":
+                # Wipe from left to right: visible if X < progress * width
+                alpha_expr = f"if(lt(X,{progress_expr}*{clip_width}),255,0)"
+            elif direction == "right":
+                # Wipe from right to left: visible if X > (1 - progress) * width
+                alpha_expr = f"if(gt(X,(1-{progress_expr})*{clip_width}),255,0)"
+            elif direction == "up":
+                # Wipe from top to bottom: visible if Y < progress * height
+                alpha_expr = f"if(lt(Y,{progress_expr}*{clip_height}),255,0)"
+            elif direction == "down":
+                # Wipe from bottom to top: visible if Y > (1 - progress) * height
+                alpha_expr = f"if(gt(Y,(1-{progress_expr})*{clip_height}),255,0)"
+            else:
+                # Default to left
+                alpha_expr = f"if(lt(X,{progress_expr}*{clip_width}),255,0)"
+        else:  # mode == "out"
+            # Calculate start frame for fade out
+            fade_start_frame = int((clip_duration - trans_duration) * fps)
+            if fade_start_frame < 0:
+                fade_start_frame = 0
+            
+            # Progress: (N - fade_start_frame) / trans_frames (0 to 1 over the fade out period)
+            # Before fade_start_frame, progress = 0 (fully visible)
+            progress_expr = f"max(0,min((N-{fade_start_frame})/{trans_frames},1))"
+            
+            if direction == "left":
+                # Wipe out from left to right: hidden if X < progress * width
+                alpha_expr = f"if(lt(X,{progress_expr}*{clip_width}),0,255)"
+            elif direction == "right":
+                # Wipe out from right to left: hidden if X > (1 - progress) * width
+                alpha_expr = f"if(gt(X,(1-{progress_expr})*{clip_width}),0,255)"
+            elif direction == "up":
+                # Wipe out from top to bottom: hidden if Y < progress * height
+                alpha_expr = f"if(lt(Y,{progress_expr}*{clip_height}),0,255)"
+            elif direction == "down":
+                # Wipe out from bottom to top: hidden if Y > (1 - progress) * height
+                alpha_expr = f"if(gt(Y,(1-{progress_expr})*{clip_height}),0,255)"
+            else:
+                # Default to left
+                alpha_expr = f"if(lt(X,{progress_expr}*{clip_width}),0,255)"
+        
+        # geq filter: keep RGB channels unchanged, apply animated alpha
+        # No escaping needed when using subprocess with list args (no shell)
+        return f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='{alpha_expr}'"
+
     def export_timeline(
         self,
         timeline_data: Dict,
@@ -601,7 +689,11 @@ class ExportService:
                         rad = rotation * 3.14159265359 / 180
                         filter_parts.append(f"rotate={rad}:c=none")
 
-                    # Apply fade transitions
+                    # Track if we need alpha channel for wipe/slide transitions
+                    needs_alpha_for_transition = False
+                    wipe_slide_filters = []
+
+                    # Apply transitions
                     if transitions:
                         # Handle both list format and dict format
                         if isinstance(transitions, list):
@@ -618,21 +710,41 @@ class ExportService:
                                     fade_start = max(0, clip_duration - trans_duration)
                                     filter_parts.append(f"fade=t=out:st={fade_start}:d={trans_duration}")
                         elif isinstance(transitions, dict):
-                            # Dict format: {in: {type, duration}, out: {type, duration}}
+                            # Dict format: {in: {type, duration, properties}, out: {type, duration, properties}}
                             if transitions.get("in"):
                                 trans_in = transitions["in"]
                                 trans_type = trans_in.get("type", "").lower()
                                 trans_duration = trans_in.get("duration", 1.0)
+                                trans_props = trans_in.get("properties", {})
+                                direction = trans_props.get("direction", "left")
+                                
                                 if trans_type in ("fade", "dissolve"):
                                     filter_parts.append(f"fade=t=in:st=0:d={trans_duration}")
+                                elif trans_type in ("wipe", "slide"):
+                                    needs_alpha_for_transition = True
+                                    wipe_filter = self._build_wipe_filter(
+                                        trans_duration, direction, clip_duration, 
+                                        scaled_clip_width, scaled_clip_height, "in", fps
+                                    )
+                                    wipe_slide_filters.append(wipe_filter)
 
                             if transitions.get("out"):
                                 trans_out = transitions["out"]
                                 trans_type = trans_out.get("type", "").lower()
                                 trans_duration = trans_out.get("duration", 1.0)
+                                trans_props = trans_out.get("properties", {})
+                                direction = trans_props.get("direction", "left")
+                                
                                 if trans_type in ("fade", "dissolve"):
                                     fade_start = max(0, clip_duration - trans_duration)
                                     filter_parts.append(f"fade=t=out:st={fade_start}:d={trans_duration}")
+                                elif trans_type in ("wipe", "slide"):
+                                    needs_alpha_for_transition = True
+                                    wipe_filter = self._build_wipe_filter(
+                                        trans_duration, direction, clip_duration, 
+                                        scaled_clip_width, scaled_clip_height, "out", fps
+                                    )
+                                    wipe_slide_filters.append(wipe_filter)
 
                     # Set fps and format
                     filter_parts.append(f"fps={fps}")
@@ -640,12 +752,14 @@ class ExportService:
                     # Check if this is an image that might have transparency (PNG)
                     is_transparent_image = clip_type == "image" and str(media_path).lower().endswith('.png')
                     
-                    # For clips that aren't full canvas, or transparent images,
+                    # For clips that aren't full canvas, transparent images, or wipe/slide transitions,
                     # preserve alpha channel for proper compositing
-                    needs_alpha = (not is_full_canvas) or is_transparent_image
+                    needs_alpha = (not is_full_canvas) or is_transparent_image or needs_alpha_for_transition
                     
                     if needs_alpha:
                         filter_parts.append("format=rgba")
+                        # Add wipe/slide alpha filters after format conversion
+                        filter_parts.extend(wipe_slide_filters)
                         # Use output format that supports alpha
                         temp_output = temp_output.replace('.mp4', '.mov')
                         temp_files[-1] = temp_output  # Update the temp file reference

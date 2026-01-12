@@ -454,24 +454,24 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	);
 
 	/**
-	 * Calculate opacity for transition effects
+	 * Calculate opacity for transition effects (fade and dissolve)
 	 */
 	const calculateTransitionOpacity = (clip: Clip, localTime: number): number => {
 		let opacity = clip.opacity ?? 1.0;
 
-		// Apply fade in transition
+		// Apply fade/dissolve in transition
 		if (clip.transitions?.in) {
 			const transition = clip.transitions.in;
 			if (localTime < transition.duration) {
 				const fadeProgress = localTime / transition.duration;
 
-				if (transition.type === "fade") {
+				if (transition.type === "fade" || transition.type === "dissolve") {
 					opacity *= fadeProgress;
 				}
 			}
 		}
 
-		// Apply fade out transition
+		// Apply fade/dissolve out transition
 		if (clip.transitions?.out) {
 			const transition = clip.transitions.out;
 			const fadeOutStart = clip.duration - transition.duration;
@@ -479,13 +479,185 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			if (localTime > fadeOutStart) {
 				const fadeProgress = (clip.duration - localTime) / transition.duration;
 
-				if (transition.type === "fade") {
+				if (transition.type === "fade" || transition.type === "dissolve") {
 					opacity *= fadeProgress;
 				}
 			}
 		}
 
 		return opacity;
+	};
+
+	/**
+	 * Apply clipping path for wipe/slide transitions
+	 */
+	const applyClipPath = useCallback(
+		(
+			ctx: CanvasRenderingContext2D,
+			direction: string,
+			progress: number,
+			canvasWidth: number,
+			canvasHeight: number,
+			transitionMode: "in" | "out"
+		): void => {
+			ctx.beginPath();
+
+			// For "in" transitions: clip area grows (progress 0 -> 1 means visible area 0 -> full)
+			// For "out" transitions: clip area shrinks (progress 0 -> 1 means visible area full -> 0)
+			const effectiveProgress = transitionMode === "in" ? progress : 1 - progress;
+
+			switch (direction) {
+				case "left":
+					// Wipe from left to right
+					ctx.rect(0, 0, canvasWidth * effectiveProgress, canvasHeight);
+					break;
+				case "right": {
+					// Wipe from right to left
+					const rightStartX = canvasWidth * (1 - effectiveProgress);
+					ctx.rect(rightStartX, 0, canvasWidth * effectiveProgress, canvasHeight);
+					break;
+				}
+				case "up":
+					// Wipe from top to bottom
+					ctx.rect(0, 0, canvasWidth, canvasHeight * effectiveProgress);
+					break;
+				case "down": {
+					// Wipe from bottom to top
+					const downStartY = canvasHeight * (1 - effectiveProgress);
+					ctx.rect(0, downStartY, canvasWidth, canvasHeight * effectiveProgress);
+					break;
+				}
+				default:
+					// Default to left wipe
+					ctx.rect(0, 0, canvasWidth * effectiveProgress, canvasHeight);
+			}
+
+			ctx.clip();
+		},
+		[]
+	);
+
+	/**
+	 * Apply wipe transition clipping to canvas context
+	 * Returns true if clipping was applied and needs to be restored
+	 */
+	const applyTransitionClipping = useCallback(
+		(
+			ctx: CanvasRenderingContext2D,
+			clip: Clip,
+			localTime: number,
+			canvasWidth: number,
+			canvasHeight: number
+		): boolean => {
+			const transitionIn = clip.transitions?.in;
+			const transitionOut = clip.transitions?.out;
+
+			// Check if we're in the "in" transition period (wipe only)
+			if (transitionIn && transitionIn.type === "wipe") {
+				if (localTime < transitionIn.duration) {
+					const progress = localTime / transitionIn.duration;
+					const direction = (transitionIn.properties?.direction as string) || "left";
+
+					applyClipPath(ctx, direction, progress, canvasWidth, canvasHeight, "in");
+					return true;
+				}
+			}
+
+			// Check if we're in the "out" transition period (wipe only)
+			if (transitionOut && transitionOut.type === "wipe") {
+				const outStart = clip.duration - transitionOut.duration;
+				if (localTime > outStart) {
+					const progress = (localTime - outStart) / transitionOut.duration;
+					const direction = (transitionOut.properties?.direction as string) || "left";
+
+					applyClipPath(ctx, direction, progress, canvasWidth, canvasHeight, "out");
+					return true;
+				}
+			}
+
+			return false;
+		},
+		[applyClipPath]
+	);
+
+	/**
+	 * Calculate slide transition offset for position-based animation
+	 * Returns {x, y} offset to apply to the clip position
+	 */
+	const calculateSlideOffset = (
+		clip: Clip,
+		localTime: number,
+		canvasWidth: number,
+		canvasHeight: number,
+		clipWidth: number,
+		clipHeight: number
+	): { x: number; y: number } => {
+		let offsetX = 0;
+		let offsetY = 0;
+
+		const transitionIn = clip.transitions?.in;
+		const transitionOut = clip.transitions?.out;
+
+		// Check if we're in the "in" transition period (slide)
+		if (transitionIn && transitionIn.type === "slide") {
+			if (localTime < transitionIn.duration) {
+				const progress = localTime / transitionIn.duration;
+				const direction = (transitionIn.properties?.direction as string) || "left";
+
+				// Calculate starting position (off-screen) and animate to final position
+				// progress 0 = fully off-screen, progress 1 = at final position
+				switch (direction) {
+					case "left":
+						// Enter from right side: start at canvasWidth, end at 0
+						offsetX = canvasWidth * (1 - progress);
+						break;
+					case "right":
+						// Enter from left side: start at -clipWidth, end at 0
+						offsetX = -clipWidth - (canvasWidth - clipWidth) * (1 - progress);
+						break;
+					case "up":
+						// Enter from bottom: start at canvasHeight, end at 0
+						offsetY = canvasHeight * (1 - progress);
+						break;
+					case "down":
+						// Enter from top: start at -clipHeight, end at 0
+						offsetY = -clipHeight - (canvasHeight - clipHeight) * (1 - progress);
+						break;
+				}
+			}
+		}
+
+		// Check if we're in the "out" transition period (slide)
+		if (transitionOut && transitionOut.type === "slide") {
+			const outStart = clip.duration - transitionOut.duration;
+			if (localTime > outStart) {
+				const progress = (localTime - outStart) / transitionOut.duration;
+				const direction = (transitionOut.properties?.direction as string) || "left";
+
+				// Calculate ending position (off-screen) - animate from current to off-screen
+				// progress 0 = at current position, progress 1 = fully off-screen
+				switch (direction) {
+					case "left":
+						// Exit to left: end at -clipWidth
+						offsetX = -(clipWidth + canvasWidth) * progress;
+						break;
+					case "right":
+						// Exit to right: end at canvasWidth
+						offsetX = canvasWidth * progress;
+						break;
+					case "up":
+						// Exit to top: end at -clipHeight
+						offsetY = -(clipHeight + canvasHeight) * progress;
+						break;
+					case "down":
+						// Exit to bottom: end at canvasHeight
+						offsetY = canvasHeight * progress;
+						break;
+				}
+			}
+		}
+
+		return { x: offsetX, y: offsetY };
 	};
 
 	/**
@@ -523,13 +695,29 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			const position = interpolated.position;
 			const rotation = interpolated.rotation;
 
-			// Calculate position (center video if not specified)
-			const x = position.x !== 0 ? position.x : (canvasSizeRef.current.width - videoWidth) / 2;
-			const y = position.y !== 0 ? position.y : (canvasSizeRef.current.height - videoHeight) / 2;
-
 			// Handle both uniform and non-uniform scaling
 			const scaleX = typeof scale === "number" ? scale : scale.x;
 			const scaleY = typeof scale === "number" ? scale : scale.y;
+
+			// Calculate scaled dimensions
+			const scaledWidth = videoWidth * scaleX;
+			const scaledHeight = videoHeight * scaleY;
+
+			// Calculate position (center video if not specified)
+			let x = position.x !== 0 ? position.x : (canvasSizeRef.current.width - videoWidth) / 2;
+			let y = position.y !== 0 ? position.y : (canvasSizeRef.current.height - videoHeight) / 2;
+
+			// Apply slide transition offset (push effect)
+			const slideOffset = calculateSlideOffset(
+				clip,
+				localTime,
+				canvasSizeRef.current.width,
+				canvasSizeRef.current.height,
+				scaledWidth,
+				scaledHeight
+			);
+			x += slideOffset.x;
+			y += slideOffset.y;
 
 			// Calculate transition opacity and combine with keyframe opacity
 			const transitionOpacity = calculateTransitionOpacity(clip, localTime);
@@ -538,19 +726,22 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			// Save canvas state
 			ctx.save();
 
+			// Apply wipe transition clipping if needed (slide uses position offset instead)
+			applyTransitionClipping(ctx, clip, localTime, canvasSizeRef.current.width, canvasSizeRef.current.height);
+
 			// Apply transformations
 			ctx.globalAlpha = opacity;
-			ctx.translate(x + (videoWidth * scaleX) / 2, y + (videoHeight * scaleY) / 2);
+			ctx.translate(x + scaledWidth / 2, y + scaledHeight / 2);
 			ctx.rotate((rotation * Math.PI) / 180);
-			ctx.translate(-(videoWidth * scaleX) / 2, -(videoHeight * scaleY) / 2);
+			ctx.translate(-scaledWidth / 2, -scaledHeight / 2);
 
 			// Draw video frame using its dimensions with scaling
-			ctx.drawImage(video, 0, 0, videoWidth * scaleX, videoHeight * scaleY);
+			ctx.drawImage(video, 0, 0, scaledWidth, scaledHeight);
 
 			// Restore canvas state
 			ctx.restore();
 		},
-		[] // Stable callback - uses refs for dynamic values
+		[applyTransitionClipping]
 	);
 
 	/**
@@ -581,12 +772,29 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				interpolatedRotation: rotation,
 			});
 
-			// Calculate position (center image if not specified)
-			const x = position.x !== 0 ? position.x : (canvasSizeRef.current.width - imgWidth) / 2;
-			const y = position.y !== 0 ? position.y : (canvasSizeRef.current.height - imgHeight) / 2;
 			// Handle both uniform and non-uniform scaling
 			const scaleX = typeof scale === "number" ? scale : scale.x;
 			const scaleY = typeof scale === "number" ? scale : scale.y;
+
+			// Calculate scaled dimensions
+			const scaledWidth = imgWidth * scaleX;
+			const scaledHeight = imgHeight * scaleY;
+
+			// Calculate position (center image if not specified)
+			let x = position.x !== 0 ? position.x : (canvasSizeRef.current.width - imgWidth) / 2;
+			let y = position.y !== 0 ? position.y : (canvasSizeRef.current.height - imgHeight) / 2;
+
+			// Apply slide transition offset (push effect)
+			const slideOffset = calculateSlideOffset(
+				clip,
+				localTime,
+				canvasSizeRef.current.width,
+				canvasSizeRef.current.height,
+				scaledWidth,
+				scaledHeight
+			);
+			x += slideOffset.x;
+			y += slideOffset.y;
 
 			// Calculate transition opacity and combine with keyframe opacity
 			const transitionOpacity = calculateTransitionOpacity(clip, localTime);
@@ -595,19 +803,22 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			// Save canvas state
 			ctx.save();
 
+			// Apply wipe transition clipping if needed (slide uses position offset instead)
+			applyTransitionClipping(ctx, clip, localTime, canvasSizeRef.current.width, canvasSizeRef.current.height);
+
 			// Apply transformations
 			ctx.globalAlpha = opacity;
-			ctx.translate(x + (imgWidth * scaleX) / 2, y + (imgHeight * scaleY) / 2);
+			ctx.translate(x + scaledWidth / 2, y + scaledHeight / 2);
 			ctx.rotate((rotation * Math.PI) / 180);
-			ctx.translate(-(imgWidth * scaleX) / 2, -(imgHeight * scaleY) / 2);
+			ctx.translate(-scaledWidth / 2, -scaledHeight / 2);
 
 			// Draw image frame using its dimensions with scaling
-			ctx.drawImage(img, 0, 0, imgWidth * scaleX, imgHeight * scaleY);
+			ctx.drawImage(img, 0, 0, scaledWidth, scaledHeight);
 
 			// Restore canvas state
 			ctx.restore();
 		},
-		[] // Use refs for canvas size, no dependencies needed
+		[applyTransitionClipping]
 	);
 
 	/**
@@ -625,13 +836,27 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			const position = interpolated.position;
 			const rotation = interpolated.rotation;
 
-			// Calculate position (center if position is 0,0)
-			const x = position.x !== 0 ? position.x : canvasSizeRef.current.width / 2;
-			const y = position.y !== 0 ? position.y : canvasSizeRef.current.height / 2;
-
 			// Handle both uniform and non-uniform scaling
 			const scaleX = typeof scale === "number" ? scale : scale.x;
 			const scaleY = typeof scale === "number" ? scale : scale.y;
+
+			// Calculate position (center if position is 0,0)
+			let x = position.x !== 0 ? position.x : canvasSizeRef.current.width / 2;
+			let y = position.y !== 0 ? position.y : canvasSizeRef.current.height / 2;
+
+			// Apply slide transition offset (push effect) - estimate text size for offset calc
+			const estimatedWidth = fontSize * text.length * 0.6 * scaleX;
+			const estimatedHeight = fontSize * scaleY;
+			const slideOffset = calculateSlideOffset(
+				clip,
+				localTime,
+				canvasSizeRef.current.width,
+				canvasSizeRef.current.height,
+				estimatedWidth,
+				estimatedHeight
+			);
+			x += slideOffset.x;
+			y += slideOffset.y;
 
 			// Calculate base opacity from interpolated value
 			let opacity = interpolated.opacity;
@@ -660,6 +885,9 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 
 			// Save canvas state
 			ctx.save();
+
+			// Apply wipe transition clipping if needed (slide uses position offset instead)
+			applyTransitionClipping(ctx, clip, localTime, canvasSizeRef.current.width, canvasSizeRef.current.height);
 
 			// Set font properties
 			const scaledFontSize = fontSize * scaleY;
@@ -721,7 +949,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			// Restore canvas state
 			ctx.restore();
 		},
-		[] // Stable callback - uses refs for dynamic values
+		[applyTransitionClipping]
 	);
 
 	/**
