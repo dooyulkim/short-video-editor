@@ -2,6 +2,7 @@
  * API Integration Usage Examples
  *
  * This file demonstrates how to use the API service in React components
+ * Note: Most media operations require a projectId for project-based storage
  */
 
 import React, { useState } from "react";
@@ -23,7 +24,7 @@ import { Progress } from "@/components/ui/progress";
 // ============================================
 // Example 1: Media Upload with Progress
 // ============================================
-export function MediaUploadExample() {
+export function MediaUploadExample({ projectId }: { projectId: string }) {
 	const { execute, loading, error } = useApi();
 	const { progress, updateProgress, resetProgress } = useProgress();
 
@@ -34,7 +35,7 @@ export function MediaUploadExample() {
 		resetProgress();
 
 		const result = await execute(() =>
-			uploadMedia(file, (progressEvent) => {
+			uploadMedia(file, projectId, (progressEvent) => {
 				updateProgress(progressEvent.progress);
 			})
 		);
@@ -64,11 +65,11 @@ export function MediaUploadExample() {
 // ============================================
 // Example 2: Get Media Metadata
 // ============================================
-export function MediaMetadataExample({ mediaId }: { mediaId: string }) {
+export function MediaMetadataExample({ projectId, mediaId }: { projectId: string; mediaId: string }) {
 	const { data, loading, error, execute } = useApi();
 
 	const fetchMetadata = async () => {
-		await execute(() => getMediaMetadata(mediaId));
+		await execute(() => getMediaMetadata(projectId, mediaId));
 	};
 
 	return (
@@ -219,7 +220,7 @@ export function ExportTimelineExample() {
 // ============================================
 // Example 5: Complete Upload Flow with Resource Panel
 // ============================================
-export function CompleteUploadFlow() {
+export function CompleteUploadFlow({ projectId }: { projectId: string }) {
 	const { execute, loading } = useApi();
 	const { progress, updateProgress, resetProgress } = useProgress();
 	const [resources, setResources] = useState<UploadMediaResponse[]>([]);
@@ -228,7 +229,7 @@ export function CompleteUploadFlow() {
 		resetProgress();
 
 		const result = await execute(() =>
-			uploadMedia(file, (progressEvent) => {
+			uploadMedia(file, projectId, (progressEvent) => {
 				updateProgress(progressEvent.progress);
 			})
 		);
@@ -238,9 +239,9 @@ export function CompleteUploadFlow() {
 			setResources((prev) => [...prev, result]);
 
 			// Fetch additional metadata if needed
-			const metadata = await getMediaMetadata(result.id);
+			const metadata = await getMediaMetadata(projectId, result.media.id);
 			console.log("Additional metadata:", metadata);
-			console.log("Media added:", result.name);
+			console.log("Media added:", result.media.name);
 		}
 	};
 
@@ -286,11 +287,11 @@ export function CompleteUploadFlow() {
 // ============================================
 // Example 6: Error Handling Best Practices
 // ============================================
-export function ErrorHandlingExample() {
+export function ErrorHandlingExample({ projectId }: { projectId: string }) {
 	const { execute, loading, error } = useApi();
 
 	const performAction = async () => {
-		const result = await execute(() => getMediaMetadata("non-existent-id"));
+		const result = await execute(() => getMediaMetadata(projectId, "non-existent-id"));
 
 		if (result) {
 			// Success case

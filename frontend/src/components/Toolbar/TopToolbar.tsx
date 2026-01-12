@@ -2,6 +2,7 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { UndoRedoControls } from "@/components/Toolbar/UndoRedoControls";
+import { ProjectControls } from "@/components/Project/ProjectControls";
 import {
 	Film,
 	Music,
@@ -14,18 +15,14 @@ import {
 	Sliders,
 	Layout,
 	Mic2,
-	Save,
-	FolderOpen,
-	FileDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TopToolbarProps {
 	activeTab?: string;
 	onTabChange?: (tab: string) => void;
-	onSave?: () => void;
-	onLoad?: () => void;
 	onExport?: () => void;
+	onProjectChange?: (projectId: string, projectName: string) => void;
 }
 
 const toolbarTabs = [
@@ -45,9 +42,8 @@ const toolbarTabs = [
 export const TopToolbar: React.FC<TopToolbarProps> = ({
 	activeTab = "media",
 	onTabChange,
-	onSave,
-	onLoad,
 	onExport,
+	onProjectChange,
 }) => {
 	return (
 		<div className="h-14 border-b bg-background flex items-center px-4 gap-2">
@@ -59,21 +55,8 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
 			<Separator orientation="vertical" className="h-8" />
 
-			{/* File operations */}
-			<div className="flex items-center gap-1 mr-2">
-				<Button variant="ghost" size="sm" onClick={onSave} className="gap-2">
-					<Save className="size-4" />
-					Save
-				</Button>
-				<Button variant="ghost" size="sm" onClick={onLoad} className="gap-2">
-					<FolderOpen className="size-4" />
-					Open
-				</Button>
-				<Button variant="ghost" size="sm" onClick={onExport} className="gap-2">
-					<FileDown className="size-4" />
-					Export
-				</Button>
-			</div>
+			{/* Project Controls - New, Save, Open, Export + Project Name */}
+			<ProjectControls onExport={onExport} onProjectChange={onProjectChange} />
 
 			<Separator orientation="vertical" className="h-8" />
 

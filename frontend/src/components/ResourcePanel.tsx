@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { useTimeline } from "@/context/TimelineContext";
 
 interface ResourcePanelProps {
+	projectId: string;
 	onResourcesChange?: (resources: MediaResource[]) => void;
 	onResourceSelect?: (resource: MediaResource) => void;
 	selectedResource?: MediaResource | null;
@@ -31,6 +32,7 @@ interface ResourcePanelProps {
 type FilterType = "all" | "video" | "audio" | "image";
 
 export const ResourcePanel: React.FC<ResourcePanelProps> = ({
+	projectId,
 	onResourcesChange,
 	onResourceSelect,
 	selectedResource,
@@ -53,15 +55,15 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 	const [resourceToDelete, setResourceToDelete] = useState<MediaResource | null>(null);
 	const [isDeleting, setIsDeleting] = useState(false);
-	const { uploadFile, progress, isUploading, error } = useMediaUpload();
+	const { uploadFile, progress, isUploading, error } = useMediaUpload({ projectId });
 	const timeline = useTimeline();
 
-	// Fetch existing resources on mount
+	// Fetch existing resources on mount or when projectId changes
 	useEffect(() => {
 		const fetchResources = async () => {
 			try {
 				setIsLoading(true);
-				const mediaList = await listMedia();
+				const mediaList = await listMedia(projectId);
 				setResources(mediaList);
 				onResourcesChange?.(mediaList);
 			} catch (err) {
@@ -72,7 +74,7 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 		};
 
 		fetchResources();
-	}, [onResourcesChange]);
+	}, [projectId, onResourcesChange]);
 
 	const onDrop = useCallback(
 		async (acceptedFiles: File[]) => {
@@ -80,6 +82,7 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 				// React 19: Show optimistic resource immediately
 				const tempResource: MediaResource = {
 					id: `temp-${Date.now()}-${file.name}`,
+					projectId: projectId,
 					name: file.name,
 					url: URL.createObjectURL(file),
 					type: file.type.startsWith("video") ? "video" : file.type.startsWith("audio") ? "audio" : "image",
@@ -104,7 +107,7 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 				}
 			}
 		},
-		[uploadFile, onResourcesChange, updateOptimisticResources]
+		[projectId, uploadFile, onResourcesChange, updateOptimisticResources]
 	);
 
 	const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -190,7 +193,7 @@ export const ResourcePanel: React.FC<ResourcePanelProps> = ({
 			await new Promise((resolve) => setTimeout(resolve, 100));
 
 			// Now delete from backend (after video elements are cleaned up)
-			const deleteResult = await deleteMedia(resourceToDelete.id);
+			const deleteResult = await deleteMedia(projectId, resourceToDelete.id);
 			deletedIds = deleteResult.deleted_ids || [resourceToDelete.id];
 
 			// Remove any additional child resource clips that were discovered

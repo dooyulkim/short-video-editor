@@ -1,6 +1,6 @@
 import os
 import logging
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from typing import Dict, Any, Literal
 from pathlib import Path
@@ -17,8 +17,27 @@ router = APIRouter()
 # Initialize media service
 media_service = MediaService(upload_dir="uploads", thumbnail_dir="thumbnails")
 
-# In-memory storage for media resources (replace with database in production)
-media_store: Dict[str, MediaResource] = {}
+# In-memory storage for media resources organized by project
+# Structure: { project_id: { media_id: MediaResource } }
+media_store: Dict[str, Dict[str, MediaResource]] = {}
+
+
+def get_media_from_store(project_id: str, media_id: str) -> MediaResource:
+    """Helper function to get media from the store"""
+    if project_id not in media_store:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    if media_id not in media_store[project_id]:
+        raise HTTPException(status_code=404, detail=f"Media not found: {media_id}")
+    return media_store[project_id][media_id]
+
+
+def get_all_media_flat() -> Dict[str, MediaResource]:
+    """Get all media as a flat dictionary (for backward compatibility)"""
+    flat_store = {}
+    for project_id, project_media in media_store.items():
+        for media_id, media in project_media.items():
+            flat_store[media_id] = media
+    return flat_store
 
 
 def determine_media_type(filename: str) -> Literal["video", "audio", "image"]:
@@ -40,16 +59,19 @@ def determine_media_type(filename: str) -> Literal["video", "audio", "image"]:
 
 
 @router.post("/upload")
-async def upload_media(file: UploadFile = File(...)) -> MediaResource:
+async def upload_media(
+    file: UploadFile = File(...),
+    project_id: str = Query(..., description="Project ID to associate the media with")
+) -> MediaResource:
     """
-    Upload media file (video, audio, or image)
+    Upload media file (video, audio, or image) to a specific project
 
-    - Saves file to disk with unique ID
+    - Saves file to disk with unique ID in project directory
     - Extracts metadata (duration, dimensions, format, fps)
     - Generates thumbnail for videos
     - Returns media resource object with metadata
     """
-    logger.info(f"📤 Upload request: {file.filename}")
+    logger.info(f"📤 Upload request: {file.filename} for project {project_id}")
     try:
         # Read file content
         file_content = await file.read()
@@ -69,16 +91,18 @@ async def upload_media(file: UploadFile = File(...)) -> MediaResource:
             logger.error(f"   Unsupported file type: {file.filename}")
             raise HTTPException(status_code=400, detail=str(e))
 
-        # Save file with unique ID
+        # Save file with unique ID in project directory
         file_id, file_path = media_service.save_uploaded_file(
             file_content=file_content,
             filename=file.filename,
-            file_type=media_type
+            file_type=media_type,
+            project_id=project_id
         )
 
         # Initialize media resource
         media_resource = MediaResource(
             id=file_id,
+            project_id=project_id,
             filename=file.filename,
             file_path=file_path,
             file_size=file_size,
@@ -98,11 +122,12 @@ async def upload_media(file: UploadFile = File(...)) -> MediaResource:
                 video_metadata = media_service.extract_video_metadata(file_path)
                 media_resource.video_metadata = video_metadata
 
-                # Generate thumbnail
+                # Generate thumbnail in project directory
                 thumbnail_path = media_service.generate_thumbnail(
                     video_path=file_path,
                     timestamp=0,
-                    thumbnail_id=file_id
+                    thumbnail_id=file_id,
+                    project_id=project_id
                 )
                 media_resource.thumbnail_path = thumbnail_path
 
@@ -133,10 +158,12 @@ async def upload_media(file: UploadFile = File(...)) -> MediaResource:
                 detail=f"Error processing media file: {str(e)}"
             )
 
-        # Store in memory (replace with database in production)
-        media_store[file_id] = media_resource
+        # Store in memory organized by project
+        if project_id not in media_store:
+            media_store[project_id] = {}
+        media_store[project_id][file_id] = media_resource
 
-        logger.info(f"✅ Upload complete: {file_id}")
+        logger.info(f"✅ Upload complete: {file_id} for project {project_id}")
         return media_resource
 
     except HTTPException:
@@ -149,21 +176,16 @@ async def upload_media(file: UploadFile = File(...)) -> MediaResource:
         )
 
 
-@router.get("/{media_id}/file")
-async def get_media_file(media_id: str):
+@router.get("/project/{project_id}/{media_id}/file")
+async def get_media_file(project_id: str, media_id: str):
     """
     Get media file for playback/download
 
     Returns the actual media file
     """
-    logger.debug(f"📁 GET media file: {media_id}")
+    logger.debug(f"📁 GET media file: {media_id} (project: {project_id})")
     
-    # Check if media exists
-    if media_id not in media_store:
-        logger.warning(f"   Media not found: {media_id}")
-        raise HTTPException(status_code=404, detail="Media not found")
-
-    media = media_store[media_id]
+    media = get_media_from_store(project_id, media_id)
 
     # Check if file exists
     if not os.path.exists(media.file_path):
@@ -211,21 +233,16 @@ async def get_media_file(media_id: str):
     )
 
 
-@router.get("/{media_id}/thumbnail")
-async def get_thumbnail(media_id: str):
+@router.get("/project/{project_id}/{media_id}/thumbnail")
+async def get_thumbnail(project_id: str, media_id: str):
     """
     Get thumbnail image for media resource
 
     Returns thumbnail image file
     """
-    logger.debug(f"🖼️  GET thumbnail: {media_id}")
+    logger.debug(f"🖼️  GET thumbnail: {media_id} (project: {project_id})")
     
-    # Check if media exists
-    if media_id not in media_store:
-        logger.warning(f"   Media not found: {media_id}")
-        raise HTTPException(status_code=404, detail="Media not found")
-
-    media = media_store[media_id]
+    media = get_media_from_store(project_id, media_id)
 
     # Check if thumbnail exists
     if not media.thumbnail_path or not os.path.exists(media.thumbnail_path):
@@ -240,40 +257,31 @@ async def get_thumbnail(media_id: str):
     )
 
 
-@router.get("/{media_id}/metadata")
-async def get_metadata(media_id: str) -> Dict[str, Any]:
+@router.get("/project/{project_id}/{media_id}/metadata")
+async def get_metadata(project_id: str, media_id: str) -> Dict[str, Any]:
     """
     Get full metadata for media resource
 
     Returns complete media resource object with all metadata
     """
-    logger.debug(f"📋 GET metadata: {media_id}")
+    logger.debug(f"📋 GET metadata: {media_id} (project: {project_id})")
     
-    # Check if media exists
-    if media_id not in media_store:
-        logger.warning(f"   Media not found: {media_id}")
-        raise HTTPException(status_code=404, detail="Media not found")
-
-    media = media_store[media_id]
+    media = get_media_from_store(project_id, media_id)
 
     return media.model_dump()
 
 
-@router.get("/{media_id}/waveform")
-async def get_waveform(media_id: str, width: int = 1000, height: int = 100):
+@router.get("/project/{project_id}/{media_id}/waveform")
+async def get_waveform(project_id: str, media_id: str, width: int = 1000, height: int = 100):
     """
     Get waveform visualization for audio file
 
     Returns base64 encoded waveform image
     """
-    logger.debug(f"🌊 GET waveform: {media_id} ({width}x{height})")
+    logger.debug(f"🌊 GET waveform: {media_id} ({width}x{height}) (project: {project_id})")
     
-    # Check if media exists
-    if media_id not in media_store:
-        logger.warning(f"   Media not found: {media_id}")
-        raise HTTPException(status_code=404, detail="Media not found")
-
-    media = media_store[media_id]
+    media = get_media_from_store(project_id, media_id)
+    media = get_media_from_store(project_id, media_id)
 
     # Check if media is audio or video with audio
     if media.media_type not in ["audio", "video"]:
@@ -307,40 +315,35 @@ async def get_waveform(media_id: str, width: int = 1000, height: int = 100):
         )
 
 
-@router.delete("/{media_id}")
-async def delete_media(media_id: str):
+@router.delete("/project/{project_id}/{media_id}")
+async def delete_media(project_id: str, media_id: str):
     """
-    Delete media file and associated resources
+    Delete media file and associated resources from a project
 
     Removes file from disk, cleans up thumbnails, and deletes all child resources
     (e.g., split/trimmed videos derived from this resource)
     """
-    logger.info(f"🗑️  DELETE media: {media_id}")
+    logger.info(f"🗑️  DELETE media: {media_id} (project: {project_id})")
     
-    # Check if media exists
-    if media_id not in media_store:
-        logger.warning(f"   Media not found: {media_id}")
-        raise HTTPException(status_code=404, detail="Media not found")
-
-    media = media_store[media_id]
+    media = get_media_from_store(project_id, media_id)
     deleted_ids = [media_id]
 
     try:
         # First, find and delete all child resources (split/trimmed videos)
         child_ids = [
-            child_id for child_id, child_media in media_store.items()
+            child_id for child_id, child_media in media_store.get(project_id, {}).items()
             if child_media.parent_id == media_id
         ]
         
         for child_id in child_ids:
-            child_media = media_store[child_id]
+            child_media = media_store[project_id][child_id]
             logger.info(f"   Deleting child resource: {child_id}")
             try:
                 media_service.delete_media(
                     file_path=child_media.file_path,
                     thumbnail_path=child_media.thumbnail_path
                 )
-                del media_store[child_id]
+                del media_store[project_id][child_id]
                 deleted_ids.append(child_id)
             except Exception as e:
                 logger.warning(f"   Failed to delete child resource {child_id}: {str(e)}")
@@ -353,12 +356,13 @@ async def delete_media(media_id: str):
 
         if success:
             # Remove from store
-            del media_store[media_id]
+            del media_store[project_id][media_id]
             logger.info(f"   ✅ Media deleted successfully: {media_id} (and {len(child_ids)} child resources)")
 
             return JSONResponse(content={
                 "message": "Media deleted successfully",
                 "media_id": media_id,
+                "project_id": project_id,
                 "deleted_ids": deleted_ids
             })
         else:
@@ -368,6 +372,8 @@ async def delete_media(media_id: str):
                 detail="Failed to delete media files"
             )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"   Error deleting media: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -376,15 +382,89 @@ async def delete_media(media_id: str):
         )
 
 
-@router.get("/")
-async def list_media():
+@router.get("/project/{project_id}")
+async def list_project_media(project_id: str):
     """
-    List all uploaded media resources
+    List all uploaded media resources for a specific project
 
-    Returns list of all media in store
+    Returns list of all media in the project
     """
-    logger.debug(f"📃 LIST media: {len(media_store)} items")
+    project_media = media_store.get(project_id, {})
+    logger.debug(f"📃 LIST media for project {project_id}: {len(project_media)} items")
     return {
-        "count": len(media_store),
-        "media": list(media_store.values())
+        "project_id": project_id,
+        "count": len(project_media),
+        "media": list(project_media.values())
     }
+
+
+@router.get("/")
+async def list_all_media():
+    """
+    List all uploaded media resources across all projects
+
+    Returns list of all media organized by project
+    """
+    total_count = sum(len(project_media) for project_media in media_store.values())
+    logger.debug(f"📃 LIST all media: {total_count} items across {len(media_store)} projects")
+    return {
+        "total_count": total_count,
+        "projects_count": len(media_store),
+        "projects": {
+            project_id: {
+                "count": len(project_media),
+                "media": list(project_media.values())
+            }
+            for project_id, project_media in media_store.items()
+        }
+    }
+
+
+@router.delete("/project/{project_id}")
+async def delete_project_media(project_id: str):
+    """
+    Delete all media resources for a specific project
+
+    Removes all files from disk and clears the project from the store
+    """
+    logger.info(f"🗑️  DELETE all media for project: {project_id}")
+    
+    if project_id not in media_store:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    
+    project_media = media_store[project_id]
+    deleted_ids = []
+    errors = []
+
+    for media_id, media in list(project_media.items()):
+        try:
+            media_service.delete_media(
+                file_path=media.file_path,
+                thumbnail_path=media.thumbnail_path
+            )
+            deleted_ids.append(media_id)
+        except Exception as e:
+            logger.warning(f"   Failed to delete media {media_id}: {str(e)}")
+            errors.append({"media_id": media_id, "error": str(e)})
+
+    # Remove project from store
+    del media_store[project_id]
+    
+    # Also try to remove the project directory
+    try:
+        project_dir = media_service.get_project_upload_dir(project_id)
+        if project_dir.exists():
+            import shutil
+            shutil.rmtree(project_dir)
+    except Exception as e:
+        logger.warning(f"   Could not remove project directory: {str(e)}")
+
+    logger.info(f"   ✅ Project media deleted: {len(deleted_ids)} files")
+
+    return JSONResponse(content={
+        "message": "Project media deleted",
+        "project_id": project_id,
+        "deleted_count": len(deleted_ids),
+        "deleted_ids": deleted_ids,
+        "errors": errors if errors else None
+    })

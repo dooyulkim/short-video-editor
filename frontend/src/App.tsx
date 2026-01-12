@@ -28,6 +28,9 @@ import type { MediaResource } from "./types/media";
 import type { Timeline as TimelineType } from "./types/timeline";
 import { cn } from "./lib/utils";
 
+// Generate a unique project ID
+const generateProjectId = () => `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
 function AppContent() {
 	const [activeTab, setActiveTab] = useState("media");
 	const [, setResources] = useState<MediaResource[]>([]);
@@ -45,6 +48,8 @@ function AppContent() {
 	const [isResizingTimeline, setIsResizingTimeline] = useState(false);
 	const [isMobile, setIsMobile] = useState(false);
 	const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+	// Project state - initialize with a unique project ID
+	const [currentProjectId, setCurrentProjectId] = useState<string>(() => generateProjectId());
 
 	// Enable keyboard shortcuts (Ctrl+Z for undo, Ctrl+Y for redo, etc.)
 	useKeyboardShortcuts();
@@ -152,16 +157,6 @@ function AppContent() {
 		};
 	}, [isResizingTimeline]);
 
-	const handleSave = () => {
-		console.log("Save project");
-		// TODO: Implement project save
-	};
-
-	const handleLoad = () => {
-		console.log("Load project");
-		// TODO: Implement project load
-	};
-
 	const handleExport = () => {
 		setIsExportDialogOpen(true);
 	};
@@ -198,15 +193,19 @@ function AppContent() {
 		}
 	};
 
+	// Handle project change from ProjectControls
+	const handleProjectChange = (projectId: string, _projectName: string) => {
+		setCurrentProjectId(projectId);
+	};
+
 	return (
 		<div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
 			{/* Top Toolbar with Logo and Project Controls */}
 			<TopToolbar
 				activeTab={activeTab}
 				onTabChange={setActiveTab}
-				onSave={handleSave}
-				onLoad={handleLoad}
 				onExport={handleExport}
+				onProjectChange={handleProjectChange}
 			/>
 
 			<Separator />
@@ -241,6 +240,7 @@ function AppContent() {
 						<div className="flex-1 overflow-y-auto">
 							{activeTab === "media" && (
 								<ResourcePanel
+									projectId={currentProjectId}
 									onResourcesChange={setResources}
 									onResourceSelect={handleResourceSelect}
 									selectedResource={selectedResource}
@@ -554,6 +554,7 @@ function AppContent() {
 				</main>
 			</div>
 			<ExportDialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen} timeline={timelineData} />
+
 			<Toaster />
 		</div>
 	);

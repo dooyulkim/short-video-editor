@@ -5,8 +5,6 @@ import pytest
 import os
 import tempfile
 import shutil
-from pathlib import Path
-import numpy as np
 from PIL import Image
 from tests.conftest import create_test_video_with_ffmpeg, create_test_audio_with_ffmpeg
 
@@ -65,7 +63,8 @@ class TestMediaService:
         file_id, file_path = self.service.save_uploaded_file(
             test_content,
             "test.txt",
-            "text"
+            "text",
+            project_id="test-project"
         )
         
         assert file_id is not None
@@ -81,7 +80,8 @@ class TestMediaService:
         file_id, file_path = self.service.save_uploaded_file(
             test_content,
             "video.mp4",
-            "video"
+            "video",
+            project_id="test-project"
         )
         
         assert file_path.endswith(".mp4")

@@ -36,6 +36,7 @@ class ImageMetadata(BaseModel):
 class MediaResource(BaseModel):
     """Represents a media resource (video, audio, or image)"""
     id: str = Field(..., description="Unique identifier for the media resource")
+    project_id: str = Field(..., description="Project ID this resource belongs to")
     filename: str = Field(..., description="Original filename")
     file_path: str = Field(..., description="Path to the file on disk")
     file_size: int = Field(..., description="File size in bytes")
@@ -54,11 +55,12 @@ class MediaResource(BaseModel):
         json_schema_extra = {
             "example": {
                 "id": "550e8400-e29b-41d4-a716-446655440000",
+                "project_id": "proj-12345678-abcd-1234-efgh-123456789012",
                 "filename": "example_video.mp4",
-                "file_path": "/uploads/550e8400-e29b-41d4-a716-446655440000.mp4",
+                "file_path": "/uploads/proj-12345678-abcd-1234-efgh-123456789012/550e8400-e29b-41d4-a716-446655440000.mp4",
                 "file_size": 10485760,
                 "media_type": "video",
-                "thumbnail_path": "/uploads/thumbnails/550e8400-e29b-41d4-a716-446655440000.jpg",
+                "thumbnail_path": "/uploads/proj-12345678-abcd-1234-efgh-123456789012/thumbnails/550e8400-e29b-41d4-a716-446655440000.jpg",
                 "video_metadata": {
                     "duration": 30.5,
                     "width": 1920,

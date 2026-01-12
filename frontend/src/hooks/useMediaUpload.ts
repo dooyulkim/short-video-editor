@@ -1,48 +1,53 @@
-import { useState, useCallback } from 'react';
-import { uploadMedia } from '@/services/api';
-import type { MediaResource } from '@/types/media';
+import { useState, useCallback } from "react";
+import { uploadMedia } from "@/services/api";
+import type { MediaResource } from "@/types/media";
 
-interface UseMediaUploadReturn {
-  uploadFile: (file: File) => Promise<MediaResource | null>;
-  progress: number;
-  isUploading: boolean;
-  error: string | null;
+interface UseMediaUploadOptions {
+	projectId: string;
 }
 
-export const useMediaUpload = (): UseMediaUploadReturn => {
-  const [progress, setProgress] = useState<number>(0);
-  const [isUploading, setIsUploading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+interface UseMediaUploadReturn {
+	uploadFile: (file: File) => Promise<MediaResource | null>;
+	progress: number;
+	isUploading: boolean;
+	error: string | null;
+}
 
-  const uploadFile = useCallback(async (file: File): Promise<MediaResource | null> => {
-    setIsUploading(true);
-    setProgress(0);
-    setError(null);
+export const useMediaUpload = ({ projectId }: UseMediaUploadOptions): UseMediaUploadReturn => {
+	const [progress, setProgress] = useState<number>(0);
+	const [isUploading, setIsUploading] = useState<boolean>(false);
+	const [error, setError] = useState<string | null>(null);
 
-    try {
-      const response = await uploadMedia(file, (progressEvent) => {
-        setProgress(progressEvent.progress);
-      });
+	const uploadFile = useCallback(
+		async (file: File): Promise<MediaResource | null> => {
+			setIsUploading(true);
+			setProgress(0);
+			setError(null);
 
-      setIsUploading(false);
-      setProgress(100);
-      return response.media;
-    } catch (err) {
-      const errorMessage = err instanceof Error
-        ? err.message
-        : 'An unknown error occurred';
-      
-      setError(errorMessage);
-      setIsUploading(false);
-      setProgress(0);
-      return null;
-    }
-  }, []);
+			try {
+				const response = await uploadMedia(file, projectId, (progressEvent) => {
+					setProgress(progressEvent.progress);
+				});
 
-  return {
-    uploadFile,
-    progress,
-    isUploading,
-    error,
-  };
+				setIsUploading(false);
+				setProgress(100);
+				return response.media;
+			} catch (err) {
+				const errorMessage = err instanceof Error ? err.message : "An unknown error occurred";
+
+				setError(errorMessage);
+				setIsUploading(false);
+				setProgress(0);
+				return null;
+			}
+		},
+		[projectId]
+	);
+
+	return {
+		uploadFile,
+		progress,
+		isUploading,
+		error,
+	};
 };

@@ -26,14 +26,27 @@ class MediaService:
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.thumbnail_dir.mkdir(parents=True, exist_ok=True)
     
-    def save_uploaded_file(self, file_content: bytes, filename: str, file_type: str) -> Tuple[str, str]:
+    def get_project_upload_dir(self, project_id: str) -> Path:
+        """Get the upload directory for a specific project"""
+        project_dir = self.upload_dir / project_id
+        project_dir.mkdir(parents=True, exist_ok=True)
+        return project_dir
+    
+    def get_project_thumbnail_dir(self, project_id: str) -> Path:
+        """Get the thumbnail directory for a specific project"""
+        thumbnail_dir = self.upload_dir / project_id / "thumbnails"
+        thumbnail_dir.mkdir(parents=True, exist_ok=True)
+        return thumbnail_dir
+    
+    def save_uploaded_file(self, file_content: bytes, filename: str, file_type: str, project_id: str) -> Tuple[str, str]:
         """
-        Save uploaded file with a unique UUID filename
+        Save uploaded file with a unique UUID filename in project directory
         
         Args:
             file_content: Raw file bytes
             filename: Original filename
             file_type: Type of media (video, audio, image)
+            project_id: Project ID to organize files
         
         Returns:
             Tuple of (file_id, file_path)
@@ -44,15 +57,18 @@ class MediaService:
         # Get file extension from original filename
         file_extension = Path(filename).suffix
         
+        # Get project-specific upload directory
+        project_upload_dir = self.get_project_upload_dir(project_id)
+        
         # Create new filename with UUID
         new_filename = f"{file_id}{file_extension}"
-        file_path = self.upload_dir / new_filename
+        file_path = project_upload_dir / new_filename
         
         # Save file to disk
         with open(file_path, "wb") as f:
             f.write(file_content)
         
-        logger.info(f"📁 Saved uploaded file: {filename} -> {file_id} ({file_type})")
+        logger.info(f"📁 Saved uploaded file: {filename} -> {file_id} ({file_type}) in project {project_id}")
         
         return file_id, str(file_path)
     
@@ -248,7 +264,7 @@ class MediaService:
         except Exception as e:
             raise ValueError(f"Error extracting image metadata: {str(e)}")
     
-    def generate_thumbnail(self, video_path: str, timestamp: float = 0, thumbnail_id: Optional[str] = None) -> str:
+    def generate_thumbnail(self, video_path: str, timestamp: float = 0, thumbnail_id: Optional[str] = None, project_id: Optional[str] = None) -> str:
         """
         Generate thumbnail from video at specified timestamp
         
@@ -256,6 +272,7 @@ class MediaService:
             video_path: Path to video file
             timestamp: Time in seconds to capture frame (default: 0)
             thumbnail_id: Optional ID for thumbnail, otherwise uses UUID
+            project_id: Optional project ID for organizing thumbnails
         
         Returns:
             Path to saved thumbnail image
@@ -294,7 +311,14 @@ class MediaService:
                 thumbnail_id = str(uuid.uuid4())
             
             thumbnail_filename = f"{thumbnail_id}.jpg"
-            thumbnail_path = self.thumbnail_dir / thumbnail_filename
+            
+            # Use project-specific thumbnail directory if project_id is provided
+            if project_id:
+                thumbnail_dir = self.get_project_thumbnail_dir(project_id)
+            else:
+                thumbnail_dir = self.thumbnail_dir
+            
+            thumbnail_path = thumbnail_dir / thumbnail_filename
             
             # Save thumbnail
             img.save(thumbnail_path, "JPEG", quality=85)

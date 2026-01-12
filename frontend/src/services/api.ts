@@ -118,8 +118,9 @@ api.interceptors.response.use(
 /**
  * Transform backend media resource to frontend format
  */
-const transformMediaResource = (backend: BackendMediaResource): MediaResource => {
+const transformMediaResource = (backend: BackendMediaResource, projectId?: string): MediaResource => {
 	const baseUrl = API_BASE_URL;
+	const pid = projectId || backend.project_id;
 
 	// Flatten metadata from nested structure
 	const metadata: MediaResource["metadata"] = {};
@@ -146,10 +147,11 @@ const transformMediaResource = (backend: BackendMediaResource): MediaResource =>
 
 	return {
 		id: backend.id,
+		projectId: pid,
 		type: backend.media_type,
 		name: backend.filename,
-		url: `${baseUrl}/media/${backend.id}/file`,
-		thumbnail: backend.thumbnail_path ? `${baseUrl}/media/${backend.id}/thumbnail` : undefined,
+		url: `${baseUrl}/media/project/${pid}/${backend.id}/file`,
+		thumbnail: backend.thumbnail_path ? `${baseUrl}/media/project/${pid}/${backend.id}/thumbnail` : undefined,
 		duration,
 		metadata,
 		createdAt: new Date(backend.created_at),
@@ -160,10 +162,12 @@ const transformMediaResource = (backend: BackendMediaResource): MediaResource =>
 /**
  * Upload media file (video, audio, or image)
  * @param file - The file to upload
+ * @param projectId - The project ID to associate the media with
  * @param onProgress - Optional callback for upload progress
  */
 export const uploadMedia = async (
 	file: File,
+	projectId: string,
 	onProgress?: (progress: UploadProgressEvent) => void
 ): Promise<{ media: MediaResource }> => {
 	const formData = new FormData();
@@ -174,6 +178,9 @@ export const uploadMedia = async (
 			"Content-Type": "multipart/form-data",
 		},
 		timeout: 300000, // 5 minutes for large files
+		params: {
+			project_id: projectId,
+		},
 	};
 
 	// Add progress tracking if callback provided
@@ -191,33 +198,36 @@ export const uploadMedia = async (
 	}
 
 	const response = await api.post<BackendMediaResource>("/media/upload", formData, config);
-	return { media: transformMediaResource(response.data) };
+	return { media: transformMediaResource(response.data, projectId) };
 };
 
 /**
- * List all uploaded media resources
+ * List all uploaded media resources for a project
+ * @param projectId - The project ID to list media for
  */
-export const listMedia = async (): Promise<MediaResource[]> => {
-	const response = await api.get<ListMediaResponse>("/media/");
-	return response.data.media.map(transformMediaResource);
+export const listMedia = async (projectId: string): Promise<MediaResource[]> => {
+	const response = await api.get<ListMediaResponse>(`/media/project/${projectId}`);
+	return response.data.media.map((m) => transformMediaResource(m, projectId));
 };
 
 /**
  * Get metadata for a media resource
+ * @param projectId - The project ID
  * @param id - The media resource ID
  */
-export const getMediaMetadata = async (id: string): Promise<MediaMetadataResponse> => {
-	const response = await api.get<MediaMetadataResponse>(`/media/${id}/metadata`);
+export const getMediaMetadata = async (projectId: string, id: string): Promise<MediaMetadataResponse> => {
+	const response = await api.get<MediaMetadataResponse>(`/media/project/${projectId}/${id}/metadata`);
 	return response.data;
 };
 
 /**
  * Get waveform data for audio/video
+ * @param projectId - The project ID
  * @param id - The media resource ID
  * @param width - Optional width for waveform sampling (default: 1000)
  */
-export const getWaveform = async (id: string, width: number = 1000): Promise<WaveformResponse> => {
-	const response = await api.get<WaveformResponse>(`/media/${id}/waveform`, {
+export const getWaveform = async (projectId: string, id: string, width: number = 1000): Promise<WaveformResponse> => {
+	const response = await api.get<WaveformResponse>(`/media/project/${projectId}/${id}/waveform`, {
 		params: { width },
 	});
 	return response.data;
@@ -225,11 +235,12 @@ export const getWaveform = async (id: string, width: number = 1000): Promise<Wav
 
 /**
  * Get thumbnail for video
+ * @param projectId - The project ID
  * @param id - The media resource ID
  * @param timestamp - Optional timestamp for thumbnail (default: 0)
  */
-export const getThumbnail = async (id: string, timestamp: number = 0): Promise<Blob> => {
-	const response = await api.get(`/media/${id}/thumbnail`, {
+export const getThumbnail = async (projectId: string, id: string, timestamp: number = 0): Promise<Blob> => {
+	const response = await api.get(`/media/project/${projectId}/${id}/thumbnail`, {
 		params: { timestamp },
 		responseType: "blob",
 	});
@@ -238,13 +249,41 @@ export const getThumbnail = async (id: string, timestamp: number = 0): Promise<B
 
 /**
  * Delete media resource and all related artifacts (split/trimmed videos)
+ * @param projectId - The project ID
  * @param id - The media resource ID
  * @returns Object containing message and array of all deleted IDs
  */
 export const deleteMedia = async (
+	projectId: string,
 	id: string
 ): Promise<{ message: string; media_id: string; deleted_ids: string[] }> => {
-	const response = await api.delete<{ message: string; media_id: string; deleted_ids: string[] }>(`/media/${id}`);
+	const response = await api.delete<{ message: string; media_id: string; deleted_ids: string[] }>(
+		`/media/project/${projectId}/${id}`
+	);
+	return response.data;
+};
+
+/**
+ * Delete all media for a project
+ * @param projectId - The project ID to delete
+ * @returns Object containing deleted count and IDs
+ */
+export const deleteProject = async (
+	projectId: string
+): Promise<{
+	message: string;
+	project_id: string;
+	deleted_count: number;
+	deleted_ids: string[];
+	errors?: Array<{ media_id: string; error: string }>;
+}> => {
+	const response = await api.delete<{
+		message: string;
+		project_id: string;
+		deleted_count: number;
+		deleted_ids: string[];
+		errors?: Array<{ media_id: string; error: string }>;
+	}>(`/media/project/${projectId}`);
 	return response.data;
 };
 
