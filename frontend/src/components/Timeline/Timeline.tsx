@@ -23,6 +23,7 @@ import {
 	ArrowRightToLine,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,15 @@ const LAYER_HEIGHT = 40;
 const MIN_ZOOM = 5; // pixels per second
 const MAX_ZOOM = 200; // pixels per second
 const DEFAULT_ZOOM = 50; // pixels per second
+
+type WipeDirection = "left" | "right" | "up" | "down";
+
+const directionOptions: { value: WipeDirection; label: string }[] = [
+	{ value: "left", label: "← Left" },
+	{ value: "right", label: "→ Right" },
+	{ value: "up", label: "↑ Up" },
+	{ value: "down", label: "↓ Down" },
+];
 
 /**
  * Timeline component - Canvas-based timeline visualization
@@ -128,6 +138,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		transition: Transition;
 	} | null>(null);
 	const [transitionDuration, setTransitionDuration] = useState<number>(1.0);
+	const [transitionDirection, setTransitionDirection] = useState<WipeDirection>("left");
 
 	const timelineWidth = effectiveDuration * effectiveZoom;
 
@@ -612,6 +623,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	const openTransitionEditor = (clipId: string, position: "in" | "out", transition: Transition) => {
 		setEditingTransition({ clipId, position, transition });
 		setTransitionDuration(transition.duration);
+		setTransitionDirection((transition.properties?.direction as WipeDirection) || "left");
 		setTransitionEditorOpen(true);
 	};
 
@@ -632,9 +644,17 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		if (!currentClip) return;
 
 		const currentTransitions = currentClip.transitions || {};
+		const hasDirection = transition.type === "wipe" || transition.type === "slide";
+		const updatedTransition: Transition = {
+			...transition,
+			duration: transitionDuration,
+		};
+		if (hasDirection) {
+			updatedTransition.properties = { ...transition.properties, direction: transitionDirection };
+		}
 		const updatedTransitions = {
 			...currentTransitions,
-			[position]: { ...transition, duration: transitionDuration },
+			[position]: updatedTransition,
 		};
 
 		timeline.updateClip(clipId, { transitions: updatedTransitions });
@@ -1520,6 +1540,28 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 								<span>3.0s</span>
 							</div>
 						</div>
+
+						{/* Direction Control - Only for wipe/slide */}
+						{editingTransition &&
+							(editingTransition.transition.type === "wipe" || editingTransition.transition.type === "slide") && (
+								<div className="space-y-2">
+									<Label htmlFor="transition-direction">Direction</Label>
+									<Select
+										value={transitionDirection}
+										onValueChange={(value) => setTransitionDirection(value as WipeDirection)}>
+										<SelectTrigger id="transition-direction" className="w-full">
+											<SelectValue placeholder="Select direction" />
+										</SelectTrigger>
+										<SelectContent>
+											{directionOptions.map((opt) => (
+												<SelectItem key={opt.value} value={opt.value}>
+													{opt.label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+								</div>
+							)}
 
 						{/* Transition Info */}
 						{editingTransition && (

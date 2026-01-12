@@ -4,8 +4,18 @@ import { CircleFadingPlus, GitMerge, ScanLine, ArrowRightToLine } from "lucide-r
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+
+type WipeDirection = "left" | "right" | "up" | "down";
+
+const directionOptions: { value: WipeDirection; label: string }[] = [
+	{ value: "left", label: "← Left" },
+	{ value: "right", label: "→ Right" },
+	{ value: "up", label: "↑ Up" },
+	{ value: "down", label: "↓ Down" },
+];
 
 interface TransitionIndicatorProps {
 	transition: Transition;
@@ -49,9 +59,13 @@ const transitionConfig = {
 export const TransitionIndicator: React.FC<TransitionIndicatorProps> = ({ transition, position, onEdit, onRemove }) => {
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [duration, setDuration] = useState(transition.duration);
+	const [direction, setDirection] = useState<WipeDirection>(
+		(transition.properties?.direction as WipeDirection) || "left"
+	);
 
 	const config = transitionConfig[transition.type];
 	const Icon = config.icon;
+	const hasDirection = transition.type === "wipe" || transition.type === "slide";
 
 	// Handle click to open editor dialog
 	const handleClick = (e: React.MouseEvent) => {
@@ -62,10 +76,15 @@ export const TransitionIndicator: React.FC<TransitionIndicatorProps> = ({ transi
 	// Handle save
 	const handleSave = () => {
 		if (onEdit) {
-			onEdit({
+			const updatedTransition: Transition = {
 				...transition,
 				duration,
-			});
+			};
+			// Add direction property for wipe and slide
+			if (hasDirection) {
+				updatedTransition.properties = { ...transition.properties, direction };
+			}
+			onEdit(updatedTransition);
 		}
 		setIsDialogOpen(false);
 	};
@@ -153,7 +172,24 @@ export const TransitionIndicator: React.FC<TransitionIndicatorProps> = ({ transi
 								<span>3.0s</span>
 							</div>
 						</div>
-
+						{/* Direction Control - Only for wipe/slide */}
+						{hasDirection && (
+							<div className="space-y-2">
+								<Label htmlFor="transition-direction">Direction</Label>
+								<Select value={direction} onValueChange={(value) => setDirection(value as WipeDirection)}>
+									<SelectTrigger id="transition-direction" className="w-full">
+										<SelectValue placeholder="Select direction" />
+									</SelectTrigger>
+									<SelectContent>
+										{directionOptions.map((opt) => (
+											<SelectItem key={opt.value} value={opt.value}>
+												{opt.label}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
+						)}
 						{/* Transition Info */}
 						<div className={cn("p-3 rounded-md border-2", config.borderColor, "bg-muted/50")}>
 							<p className="text-sm">

@@ -38,7 +38,7 @@ describe("TransitionPanel Component", () => {
 			expect(screen.getByText("Smooth fade in/out")).toBeInTheDocument();
 			expect(screen.getByText("Crossfade between clips")).toBeInTheDocument();
 			expect(screen.getByText("Directional wipe transition")).toBeInTheDocument();
-			expect(screen.getByText("Slide in/out transition")).toBeInTheDocument();
+			expect(screen.getByText("Push transition (clips move together)")).toBeInTheDocument();
 		});
 
 		it("should render duration slider", () => {

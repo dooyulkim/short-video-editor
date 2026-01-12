@@ -1,6 +1,7 @@
 # Transition UI Components
 
 ## Overview
+
 Step 13 implementation includes two main components for handling video transitions:
 
 1. **TransitionPanel** - A panel displaying transition presets that can be dragged onto clips
@@ -9,9 +10,11 @@ Step 13 implementation includes two main components for handling video transitio
 ## Components
 
 ### TransitionPanel
+
 Located at: `src/components/TransitionPanel.tsx`
 
 **Features:**
+
 - Grid display of 4 transition types: Fade, Cross Dissolve, Wipe, Slide
 - Each preset shows an animated preview
 - Drag-and-drop functionality to apply transitions to clips
@@ -20,27 +23,31 @@ Located at: `src/components/TransitionPanel.tsx`
 - Instructions panel
 
 **Usage:**
-```tsx
-import { TransitionPanel } from '@/components/TransitionPanel';
 
-<TransitionPanel 
-  onTransitionSelect={(transition) => {
-    // Handle transition selection
-    console.log('Selected transition:', transition);
-  }}
-/>
+```tsx
+import { TransitionPanel } from "@/components/TransitionPanel";
+
+<TransitionPanel
+	onTransitionSelect={(transition) => {
+		// Handle transition selection
+		console.log("Selected transition:", transition);
+	}}
+/>;
 ```
 
 **Transition Types:**
+
 - **Fade** (Blue) - Smooth fade in/out effect
 - **Cross Dissolve** (Purple) - Crossfade between clips
-- **Wipe** (Green) - Directional wipe transition
-- **Slide** (Orange) - Slide in/out transition
+- **Wipe** (Green) - Directional wipe transition (video2 reveals over video1)
+- **Slide** (Orange) - Push/slide transition (video2 pushes video1 off screen)
 
 ### TransitionIndicator
+
 Located at: `src/components/Timeline/TransitionIndicator.tsx`
 
 **Features:**
+
 - Displays small icon overlay on clip edges
 - Shows transition type with color-coded icons
 - Click to open editor dialog
@@ -49,27 +56,29 @@ Located at: `src/components/Timeline/TransitionIndicator.tsx`
 - Tooltip with transition details on hover
 
 **Usage:**
+
 ```tsx
-import { TransitionIndicator } from '@/components/Timeline/TransitionIndicator';
+import { TransitionIndicator } from "@/components/Timeline/TransitionIndicator";
 
 <TransitionIndicator
-  transition={{
-    type: 'fade',
-    duration: 1.0
-  }}
-  position="start" // or "end"
-  onEdit={(transition) => {
-    // Handle transition edit
-    console.log('Edited transition:', transition);
-  }}
-  onRemove={() => {
-    // Handle transition removal
-    console.log('Removed transition');
-  }}
-/>
+	transition={{
+		type: "fade",
+		duration: 1.0,
+	}}
+	position="start" // or "end"
+	onEdit={(transition) => {
+		// Handle transition edit
+		console.log("Edited transition:", transition);
+	}}
+	onRemove={() => {
+		// Handle transition removal
+		console.log("Removed transition");
+	}}
+/>;
 ```
 
 **Props:**
+
 - `transition: Transition` - The transition object with type and duration
 - `position: 'start' | 'end'` - Whether this is at clip start or end
 - `onEdit?: (transition: Transition) => void` - Callback when transition is edited
@@ -80,29 +89,31 @@ import { TransitionIndicator } from '@/components/Timeline/TransitionIndicator';
 The `TimelineClip` component has been updated to support transitions:
 
 **New Props:**
+
 - `onTransitionEdit?: (clipId: string, position: 'in' | 'out', transition: Transition) => void`
 - `onTransitionRemove?: (clipId: string, position: 'in' | 'out') => void`
 
 **Usage:**
+
 ```tsx
-import { TimelineClip } from '@/components/Timeline';
+import { TimelineClip } from "@/components/Timeline";
 
 <TimelineClip
-  clip={clip}
-  zoom={zoom}
-  isSelected={isSelected}
-  onSelect={handleSelect}
-  onMove={handleMove}
-  onTrim={handleTrim}
-  onTransitionEdit={(clipId, position, transition) => {
-    // Update clip transitions
-    updateClipTransition(clipId, position, transition);
-  }}
-  onTransitionRemove={(clipId, position) => {
-    // Remove clip transition
-    removeClipTransition(clipId, position);
-  }}
-/>
+	clip={clip}
+	zoom={zoom}
+	isSelected={isSelected}
+	onSelect={handleSelect}
+	onMove={handleMove}
+	onTrim={handleTrim}
+	onTransitionEdit={(clipId, position, transition) => {
+		// Update clip transitions
+		updateClipTransition(clipId, position, transition);
+	}}
+	onTransitionRemove={(clipId, position) => {
+		// Remove clip transition
+		removeClipTransition(clipId, position);
+	}}
+/>;
 ```
 
 ## Data Structure
@@ -111,23 +122,23 @@ Transitions are stored in the `Clip` type (from `types/timeline.ts`):
 
 ```typescript
 interface Clip {
-  id: string;
-  resourceId: string;
-  startTime: number;
-  duration: number;
-  trimStart: number;
-  trimEnd: number;
-  transitions?: {
-    in?: Transition;
-    out?: Transition;
-  };
-  // ... other properties
+	id: string;
+	resourceId: string;
+	startTime: number;
+	duration: number;
+	trimStart: number;
+	trimEnd: number;
+	transitions?: {
+		in?: Transition;
+		out?: Transition;
+	};
+	// ... other properties
 }
 
 interface Transition {
-  type: 'fade' | 'dissolve' | 'wipe' | 'slide';
-  duration: number; // in seconds
-  properties?: Record<string, any>;
+	type: "fade" | "dissolve" | "wipe" | "slide";
+	duration: number; // in seconds
+	properties?: Record<string, any>;
 }
 ```
 
@@ -143,6 +154,7 @@ interface Transition {
 ## Visual Design
 
 - **Color Scheme:**
+
   - Fade: Blue (#3B82F6)
   - Cross Dissolve: Purple (#A855F7)
   - Wipe: Green (#22C55E)
@@ -165,6 +177,7 @@ To fully integrate transitions into the application:
 ## Testing
 
 Test the components by:
+
 1. Adding TransitionPanel to your app layout
 2. Creating clips with transitions in your test data
 3. Verifying drag-and-drop functionality
@@ -172,23 +185,24 @@ Test the components by:
 5. Checking visual indicators on timeline
 
 Example test clip:
+
 ```typescript
 const testClip: Clip = {
-  id: 'clip-1',
-  resourceId: 'resource-1',
-  startTime: 0,
-  duration: 5,
-  trimStart: 0,
-  trimEnd: 0,
-  transitions: {
-    in: {
-      type: 'fade',
-      duration: 1.0
-    },
-    out: {
-      type: 'dissolve',
-      duration: 1.5
-    }
-  }
+	id: "clip-1",
+	resourceId: "resource-1",
+	startTime: 0,
+	duration: 5,
+	trimStart: 0,
+	trimEnd: 0,
+	transitions: {
+		in: {
+			type: "fade",
+			duration: 1.0,
+		},
+		out: {
+			type: "dissolve",
+			duration: 1.5,
+		},
+	},
 };
 ```

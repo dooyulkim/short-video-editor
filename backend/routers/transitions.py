@@ -191,14 +191,20 @@ async def apply_wipe(request: WipeRequest):
 @router.post("/slide", response_model=TransitionResponse)
 async def apply_slide(request: SlideRequest):
     """
-    Apply slide transition between two videos.
+    Apply slide/push transition between two videos.
     
-    Video2 slides in from the specified direction, pushing video1 out.
+    Both videos move together - video1 slides out while video2 slides in,
+    creating a "push" effect. Unlike wipe which reveals video2 over video1,
+    slide shows both videos moving simultaneously.
     
     - **video1_path**: Path to the first video file
     - **video2_path**: Path to the second video file
     - **duration**: Duration of the slide (0.1 to 5.0 seconds)
-    - **direction**: Direction video2 slides in from - left, right, up, or down
+    - **direction**: Direction of movement:
+        - left: video1 exits left, video2 enters from right
+        - right: video1 exits right, video2 enters from left
+        - up: video1 exits top, video2 enters from bottom
+        - down: video1 exits bottom, video2 enters from top
     """
     logger.info(f"🎬 Slide {request.direction} request: {request.video1_path} -> {request.video2_path}")
     
@@ -297,7 +303,7 @@ async def get_transition_types():
             {
                 "type": "slide",
                 "name": "Slide",
-                "description": "Slide in/out transition",
+                "description": "Push transition where video2 slides in and pushes video1 off screen",
                 "icon": "arrow-right-to-line",
                 "color": "#F97316",
                 "properties": {

@@ -419,6 +419,96 @@ class ExportService:
         # No escaping needed when using subprocess with list args (no shell)
         return f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='{alpha_expr}'"
 
+    def _build_slide_position_expr(
+        self,
+        trans_duration: float,
+        direction: str,
+        clip_duration: float,
+        clip_width: int,
+        clip_height: int,
+        canvas_width: int,
+        canvas_height: int,
+        base_x: int,
+        base_y: int,
+        mode: str,  # "in" or "out"
+        fps: int = 30
+    ) -> tuple:
+        """
+        Build animated position expressions for slide transition.
+        
+        For slide-in: clip moves from off-screen to its final position
+        For slide-out: clip moves from its position to off-screen
+        
+        Args:
+            trans_duration: Duration of the transition in seconds
+            direction: Slide direction (left, right, up, down)
+            clip_duration: Total clip duration in seconds
+            clip_width: Width of the clip in pixels
+            clip_height: Height of the clip in pixels
+            canvas_width: Width of the canvas
+            canvas_height: Height of the canvas
+            base_x: Base X position for the clip
+            base_y: Base Y position for the clip
+            mode: "in" for slide in at start, "out" for slide out at end
+            fps: Frames per second
+            
+        Returns:
+            Tuple of (x_expr, y_expr) for overlay position
+        """
+        trans_frames = max(1, int(trans_duration * fps))
+        total_frames = max(1, int(clip_duration * fps))
+        
+        if mode == "in":
+            # Progress from 0 to 1 during transition, then stays at 1
+            # progress = min(n / trans_frames, 1)
+            
+            if direction == "left":
+                # Slide in from right: starts at canvas_width, ends at base_x
+                # x = canvas_width - progress * (canvas_width - base_x)
+                # Simplified: x = canvas_width * (1 - progress) + base_x * progress
+                x_expr = f"if(lt(n,{trans_frames}),{canvas_width}-n*{(canvas_width - base_x) / trans_frames},{base_x})"
+                y_expr = str(base_y)
+            elif direction == "right":
+                # Slide in from left: starts at -clip_width, ends at base_x
+                x_expr = f"if(lt(n,{trans_frames}),{-clip_width}+n*{(base_x + clip_width) / trans_frames},{base_x})"
+                y_expr = str(base_y)
+            elif direction == "up":
+                # Slide in from bottom: starts at canvas_height, ends at base_y
+                x_expr = str(base_x)
+                y_expr = f"if(lt(n,{trans_frames}),{canvas_height}-n*{(canvas_height - base_y) / trans_frames},{base_y})"
+            elif direction == "down":
+                # Slide in from top: starts at -clip_height, ends at base_y
+                x_expr = str(base_x)
+                y_expr = f"if(lt(n,{trans_frames}),{-clip_height}+n*{(base_y + clip_height) / trans_frames},{base_y})"
+            else:
+                x_expr = str(base_x)
+                y_expr = str(base_y)
+        else:  # mode == "out"
+            # Progress from 0 to 1 during the last trans_duration seconds
+            fade_start_frame = max(0, total_frames - trans_frames)
+            
+            if direction == "left":
+                # Slide out to left: starts at base_x, ends at -clip_width
+                x_expr = f"if(lt(n,{fade_start_frame}),{base_x},{base_x}-(n-{fade_start_frame})*{(base_x + clip_width) / trans_frames})"
+                y_expr = str(base_y)
+            elif direction == "right":
+                # Slide out to right: starts at base_x, ends at canvas_width
+                x_expr = f"if(lt(n,{fade_start_frame}),{base_x},{base_x}+(n-{fade_start_frame})*{(canvas_width - base_x) / trans_frames})"
+                y_expr = str(base_y)
+            elif direction == "up":
+                # Slide out to top: starts at base_y, ends at -clip_height
+                x_expr = str(base_x)
+                y_expr = f"if(lt(n,{fade_start_frame}),{base_y},{base_y}-(n-{fade_start_frame})*{(base_y + clip_height) / trans_frames})"
+            elif direction == "down":
+                # Slide out to bottom: starts at base_y, ends at canvas_height
+                x_expr = str(base_x)
+                y_expr = f"if(lt(n,{fade_start_frame}),{base_y},{base_y}+(n-{fade_start_frame})*{(canvas_height - base_y) / trans_frames})"
+            else:
+                x_expr = str(base_x)
+                y_expr = str(base_y)
+        
+        return (x_expr, y_expr)
+
     def export_timeline(
         self,
         timeline_data: Dict,
@@ -692,6 +782,10 @@ class ExportService:
                     # Track if we need alpha channel for wipe/slide transitions
                     needs_alpha_for_transition = False
                     wipe_slide_filters = []
+                    
+                    # Track slide transition position info (for animated overlay position)
+                    slide_in_info = None
+                    slide_out_info = None
 
                     # Apply transitions
                     if transitions:
@@ -720,13 +814,20 @@ class ExportService:
                                 
                                 if trans_type in ("fade", "dissolve"):
                                     filter_parts.append(f"fade=t=in:st=0:d={trans_duration}")
-                                elif trans_type in ("wipe", "slide"):
+                                elif trans_type == "wipe":
+                                    # Wipe uses alpha animation (reveal effect)
                                     needs_alpha_for_transition = True
                                     wipe_filter = self._build_wipe_filter(
                                         trans_duration, direction, clip_duration, 
                                         scaled_clip_width, scaled_clip_height, "in", fps
                                     )
                                     wipe_slide_filters.append(wipe_filter)
+                                elif trans_type == "slide":
+                                    # Slide uses position animation (push effect)
+                                    slide_in_info = {
+                                        'duration': trans_duration,
+                                        'direction': direction
+                                    }
 
                             if transitions.get("out"):
                                 trans_out = transitions["out"]
@@ -738,13 +839,20 @@ class ExportService:
                                 if trans_type in ("fade", "dissolve"):
                                     fade_start = max(0, clip_duration - trans_duration)
                                     filter_parts.append(f"fade=t=out:st={fade_start}:d={trans_duration}")
-                                elif trans_type in ("wipe", "slide"):
+                                elif trans_type == "wipe":
+                                    # Wipe uses alpha animation (hide effect)
                                     needs_alpha_for_transition = True
                                     wipe_filter = self._build_wipe_filter(
                                         trans_duration, direction, clip_duration, 
                                         scaled_clip_width, scaled_clip_height, "out", fps
                                     )
                                     wipe_slide_filters.append(wipe_filter)
+                                elif trans_type == "slide":
+                                    # Slide uses position animation (push effect)
+                                    slide_out_info = {
+                                        'duration': trans_duration,
+                                        'direction': direction
+                                    }
 
                     # Set fps and format
                     filter_parts.append(f"fps={fps}")
@@ -792,7 +900,14 @@ class ExportService:
                             'overlay_y': overlay_y,
                             'is_full_canvas': is_full_canvas,
                             'layer_index': video_item['layer_index'],
-                            'has_alpha': needs_alpha
+                            'has_alpha': needs_alpha,
+                            'slide_in': slide_in_info,
+                            'slide_out': slide_out_info,
+                            'clip_width': scaled_clip_width,
+                            'clip_height': scaled_clip_height,
+                            'canvas_width': width,
+                            'canvas_height': height,
+                            'fps': fps
                         })
                     else:
                         logger.error(f"Error processing clip {i}: {result.stderr}")
@@ -957,6 +1072,15 @@ class ExportService:
                         overlay_y = clip_info.get('overlay_y', 0)
                         is_full_canvas = clip_info.get('is_full_canvas', False)
                         has_alpha = clip_info.get('has_alpha', False)
+                        
+                        # Get slide transition info
+                        slide_in = clip_info.get('slide_in')
+                        slide_out = clip_info.get('slide_out')
+                        clip_width = clip_info.get('clip_width', width)
+                        clip_height = clip_info.get('clip_height', height)
+                        canvas_w = clip_info.get('canvas_width', width)
+                        canvas_h = clip_info.get('canvas_height', height)
+                        clip_fps = clip_info.get('fps', fps)
 
                         temp_overlay = str(self.temp_dir / f"overlay_{idx}_{uuid.uuid4()}.mp4")
                         temp_files.append(temp_overlay)
@@ -972,10 +1096,111 @@ class ExportService:
                         # 3. Use shortest=0 to not stop when overlay ends
                         pts_offset = start_time
                         
+                        # Calculate animated position expressions for slide transitions
+                        x_expr = str(overlay_x)
+                        y_expr = str(overlay_y)
+                        has_slide = slide_in is not None or slide_out is not None
+                        
+                        if has_slide:
+                            # Build position expression that combines slide_in and slide_out
+                            total_frames = max(1, int(clip_dur * clip_fps))
+                            
+                            if slide_in and slide_out:
+                                # Both slide in and slide out
+                                in_dur = slide_in['duration']
+                                in_dir = slide_in['direction']
+                                out_dur = slide_out['duration']
+                                out_dir = slide_out['direction']
+                                in_frames = max(1, int(in_dur * clip_fps))
+                                out_start = max(0, total_frames - max(1, int(out_dur * clip_fps)))
+                                out_frames = max(1, int(out_dur * clip_fps))
+                                
+                                # X position expression
+                                if in_dir in ('left', 'right') or out_dir in ('left', 'right'):
+                                    in_x_start = canvas_w if in_dir == 'left' else -clip_width if in_dir == 'right' else overlay_x
+                                    out_x_end = -clip_width if out_dir == 'left' else canvas_w if out_dir == 'right' else overlay_x
+                                    
+                                    if in_dir in ('left', 'right'):
+                                        # Slide in x movement
+                                        in_x_progress = f"min(n/{in_frames},1)"
+                                        in_x_expr = f"({in_x_start}+{in_x_progress}*{overlay_x - in_x_start})"
+                                    else:
+                                        in_x_expr = str(overlay_x)
+                                    
+                                    if out_dir in ('left', 'right'):
+                                        # Slide out x movement
+                                        out_x_progress = f"max(0,(n-{out_start})/{out_frames})"
+                                        out_x_expr = f"({overlay_x}+{out_x_progress}*{out_x_end - overlay_x})"
+                                    else:
+                                        out_x_expr = str(overlay_x)
+                                    
+                                    x_expr = f"if(lt(n,{in_frames}),{in_x_expr},if(lt(n,{out_start}),{overlay_x},{out_x_expr}))"
+                                
+                                # Y position expression
+                                if in_dir in ('up', 'down') or out_dir in ('up', 'down'):
+                                    in_y_start = canvas_h if in_dir == 'up' else -clip_height if in_dir == 'down' else overlay_y
+                                    out_y_end = -clip_height if out_dir == 'up' else canvas_h if out_dir == 'down' else overlay_y
+                                    
+                                    if in_dir in ('up', 'down'):
+                                        in_y_progress = f"min(n/{in_frames},1)"
+                                        in_y_expr = f"({in_y_start}+{in_y_progress}*{overlay_y - in_y_start})"
+                                    else:
+                                        in_y_expr = str(overlay_y)
+                                    
+                                    if out_dir in ('up', 'down'):
+                                        out_y_progress = f"max(0,(n-{out_start})/{out_frames})"
+                                        out_y_expr = f"({overlay_y}+{out_y_progress}*{out_y_end - overlay_y})"
+                                    else:
+                                        out_y_expr = str(overlay_y)
+                                    
+                                    y_expr = f"if(lt(n,{in_frames}),{in_y_expr},if(lt(n,{out_start}),{overlay_y},{out_y_expr}))"
+                                    
+                            elif slide_in:
+                                # Only slide in
+                                in_dur = slide_in['duration']
+                                in_dir = slide_in['direction']
+                                in_frames = max(1, int(in_dur * clip_fps))
+                                
+                                if in_dir == 'left':
+                                    # Enter from right
+                                    x_expr = f"if(lt(n,{in_frames}),{canvas_w}-n*{(canvas_w - overlay_x) / in_frames},{overlay_x})"
+                                elif in_dir == 'right':
+                                    # Enter from left
+                                    x_expr = f"if(lt(n,{in_frames}),{-clip_width}+n*{(overlay_x + clip_width) / in_frames},{overlay_x})"
+                                elif in_dir == 'up':
+                                    # Enter from bottom
+                                    y_expr = f"if(lt(n,{in_frames}),{canvas_h}-n*{(canvas_h - overlay_y) / in_frames},{overlay_y})"
+                                elif in_dir == 'down':
+                                    # Enter from top
+                                    y_expr = f"if(lt(n,{in_frames}),{-clip_height}+n*{(overlay_y + clip_height) / in_frames},{overlay_y})"
+                                    
+                            elif slide_out:
+                                # Only slide out
+                                out_dur = slide_out['duration']
+                                out_dir = slide_out['direction']
+                                out_frames = max(1, int(out_dur * clip_fps))
+                                out_start = max(0, total_frames - out_frames)
+                                
+                                if out_dir == 'left':
+                                    # Exit to left
+                                    x_expr = f"if(lt(n,{out_start}),{overlay_x},{overlay_x}-(n-{out_start})*{(overlay_x + clip_width) / out_frames})"
+                                elif out_dir == 'right':
+                                    # Exit to right
+                                    x_expr = f"if(lt(n,{out_start}),{overlay_x},{overlay_x}+(n-{out_start})*{(canvas_w - overlay_x) / out_frames})"
+                                elif out_dir == 'up':
+                                    # Exit to top
+                                    y_expr = f"if(lt(n,{out_start}),{overlay_y},{overlay_y}-(n-{out_start})*{(overlay_y + clip_height) / out_frames})"
+                                elif out_dir == 'down':
+                                    # Exit to bottom
+                                    y_expr = f"if(lt(n,{out_start}),{overlay_y},{overlay_y}+(n-{out_start})*{(canvas_h - overlay_y) / out_frames})"
+                        
                         # Build overlay filter - use format=auto for alpha support
                         # Add crop filter to ensure output stays within canvas bounds
-                        if is_full_canvas and overlay_x == 0 and overlay_y == 0 and not has_alpha:
+                        if is_full_canvas and overlay_x == 0 and overlay_y == 0 and not has_alpha and not has_slide:
                             overlay_filter = f"[1:v]setpts=PTS+{pts_offset}/TB[ov];[0:v][ov]overlay=0:0:eof_action=pass,crop={width}:{height}:0:0[out]"
+                        elif has_slide:
+                            # Use expression-based overlay for animated positions
+                            overlay_filter = f"[1:v]setpts=PTS+{pts_offset}/TB[ov];[0:v][ov]overlay=x='{x_expr}':y='{y_expr}':format=auto:eof_action=pass,crop={width}:{height}:0:0[out]"
                         else:
                             # For clips with alpha or custom position, use format=auto to handle transparency
                             # Crop to canvas size to handle clips that extend beyond canvas bounds

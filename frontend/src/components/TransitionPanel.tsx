@@ -46,7 +46,7 @@ const transitionPresets: TransitionPreset[] = [
 		name: "Slide",
 		icon: ArrowRightToLine,
 		color: "bg-orange-500",
-		description: "Slide in/out transition",
+		description: "Push transition (clips move together)",
 		hasDirection: true,
 	},
 ];
@@ -150,12 +150,30 @@ export const TransitionPanel: React.FC<TransitionPanelProps> = ({ onTransitionSe
 							<p className="text-xs text-muted-foreground">{preset.description}</p>
 							{/* Animated preview */}
 							<div className="mt-2 h-8 bg-muted rounded overflow-hidden relative">
-								<div
-									className={cn("absolute inset-0 animate-transition-preview", preset.color, "opacity-50")}
-									style={{
-										animation: `transition-${preset.type} 2s ease-in-out infinite`,
-									}}
-								/>
+								{preset.type === "slide" ? (
+									// Slide transition: show two elements moving together (push effect)
+									<>
+										<div
+											className="absolute inset-0 bg-blue-400 opacity-60"
+											style={{
+												animation: "slide-push-out 2s ease-in-out infinite",
+											}}
+										/>
+										<div
+											className={cn("absolute inset-0", preset.color, "opacity-60")}
+											style={{
+												animation: "slide-push-in 2s ease-in-out infinite",
+											}}
+										/>
+									</>
+								) : (
+									<div
+										className={cn("absolute inset-0 animate-transition-preview", preset.color, "opacity-50")}
+										style={{
+											animation: `transition-${preset.type} 2s ease-in-out infinite`,
+										}}
+									/>
+								)}
 							</div>
 						</CardContent>
 					</Card>
@@ -190,26 +208,27 @@ export const TransitionPanel: React.FC<TransitionPanelProps> = ({ onTransitionSe
 			</Card>
 
 			{/* Direction Control - Only for wipe/slide */}
-			<Card>
-				<CardHeader className="p-3 pb-2">
-					<CardTitle className="text-sm font-medium">Wipe/Slide Direction</CardTitle>
-				</CardHeader>
-				<CardContent className="p-3 pt-0 space-y-2">
-					<Select value={direction} onValueChange={(value) => setDirection(value as WipeDirection)}>
-						<SelectTrigger className="w-full">
-							<SelectValue placeholder="Select direction" />
-						</SelectTrigger>
-						<SelectContent>
-							{directionOptions.map((opt) => (
-								<SelectItem key={opt.value} value={opt.value}>
-									{opt.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					<p className="text-xs text-muted-foreground">Direction applies to Wipe and Slide transitions</p>
-				</CardContent>
-			</Card>
+			{showDirectionControl && (
+				<Card>
+					<CardHeader className="p-3 pb-2">
+						<CardTitle className="text-sm font-medium">Direction</CardTitle>
+					</CardHeader>
+					<CardContent className="p-3 pt-0 space-y-2">
+						<Select value={direction} onValueChange={(value) => setDirection(value as WipeDirection)}>
+							<SelectTrigger className="w-full">
+								<SelectValue placeholder="Select direction" />
+							</SelectTrigger>
+							<SelectContent>
+								{directionOptions.map((opt) => (
+									<SelectItem key={opt.value} value={opt.value}>
+										{opt.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</CardContent>
+				</Card>
+			)}
 
 			{/* Instructions */}
 			<Card className="bg-muted/50">
@@ -217,9 +236,10 @@ export const TransitionPanel: React.FC<TransitionPanelProps> = ({ onTransitionSe
 					<p className="font-medium">How to use:</p>
 					<ul className="list-disc list-inside space-y-1">
 						<li>Drag transition to clip edge</li>
-						<li>Drop on start for fade in</li>
-						<li>Drop on end for fade out</li>
+						<li>Drop on start for transition in</li>
+						<li>Drop on end for transition out</li>
 						<li>Adjust duration before dropping</li>
+						<li>Click applied transition to edit</li>
 					</ul>
 				</CardContent>
 			</Card>
@@ -235,13 +255,27 @@ export const TransitionPanel: React.FC<TransitionPanelProps> = ({ onTransitionSe
           100% { opacity: 0; transform: scale(0.8); }
         }
         @keyframes transition-wipe {
-          0% { transform: translateX(-100%); }
-          50% { transform: translateX(0); }
-          100% { transform: translateX(100%); }
+          0% { clip-path: inset(0 100% 0 0); }
+          50% { clip-path: inset(0 0 0 0); }
+          100% { clip-path: inset(0 0 0 100%); }
         }
         @keyframes transition-slide {
-          0% { transform: translateX(-100%); }
+          0% { transform: translateX(100%); }
+          25% { transform: translateX(50%); }
           50% { transform: translateX(0); }
+          75% { transform: translateX(-50%); }
+          100% { transform: translateX(-100%); }
+        }
+        @keyframes slide-push-out {
+          0% { transform: translateX(0); }
+          50% { transform: translateX(-100%); }
+          50.01% { transform: translateX(100%); }
+          100% { transform: translateX(0); }
+        }
+        @keyframes slide-push-in {
+          0% { transform: translateX(100%); }
+          50% { transform: translateX(0); }
+          50.01% { transform: translateX(0); }
           100% { transform: translateX(100%); }
         }
       `}</style>
