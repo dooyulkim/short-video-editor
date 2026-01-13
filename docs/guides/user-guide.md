@@ -235,6 +235,8 @@ Welcome to the Video Editor! This guide will help you create professional videos
 2. **Fade Out**: Fade to black
 3. **Cross Dissolve**: Blend between clips
 4. **Wipe**: Directional wipe (left, right, up, down)
+5. **Zoom In**: Zoom from small to normal size
+6. **Zoom Out**: Zoom from normal to larger size
 
 #### Applying Transitions
 

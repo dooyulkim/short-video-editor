@@ -48,7 +48,7 @@ export interface Clip {
 }
 
 export interface Transition {
-	type: "fade" | "dissolve" | "wipe" | "slide";
+	type: "fade" | "dissolve" | "wipe" | "slide" | "zoom";
 	duration: number; // in seconds
 	properties?: Record<string, any>;
 }

@@ -482,6 +482,125 @@ class TransitionService:
             
         except Exception as e:
             raise Exception(f"Error applying slide transition: {str(e)}")
+    
+    def apply_zoom_in(self, video_path: str, duration: float = 1.0) -> str:
+        """
+        Apply zoom in transition - video starts zoomed out and zooms into normal size
+        
+        Args:
+            video_path: Path to input video file
+            duration: Duration of zoom in seconds (default: 1.0)
+            
+        Returns:
+            Path to processed video file
+        """
+        try:
+            # Get video info
+            probe = ffmpeg.probe(video_path)
+            video_stream = next((s for s in probe['streams'] if s['codec_type'] == 'video'), None)
+            video_duration = float(probe['format']['duration'])
+            
+            if video_stream:
+                width = int(video_stream['width'])
+                height = int(video_stream['height'])
+                fps = eval(video_stream.get('r_frame_rate', '24'))
+            else:
+                width, height = 640, 480
+                fps = 24
+            
+            # Generate output path
+            output_path = self._generate_output_path("zoom_in")
+            
+            # Use scale filter with expression to zoom in
+            # scale from 50% to 100% over duration
+            # Use width and height calculations based on time
+            filter_complex = (
+                f"[0:v]scale="
+                f"'if(lt(t,{duration}),iw*(0.5+0.5*t/{duration}),iw)':"
+                f"'if(lt(t,{duration}),ih*(0.5+0.5*t/{duration}),ih)',"
+                f"crop={width}:{height}"
+            )
+            
+            # Use subprocess for complex filter
+            import subprocess
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', video_path,
+                '-filter_complex', filter_complex,
+                '-map', '0:a?',
+                '-c:v', 'libx264',
+                '-c:a', 'copy',
+                str(output_path)
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise Exception(result.stderr)
+            
+            return output_path
+            
+        except Exception as e:
+            raise Exception(f"Error applying zoom in: {str(e)}")
+    
+    def apply_zoom_out(self, video_path: str, duration: float = 1.0) -> str:
+        """
+        Apply zoom out transition - video starts at normal size and zooms out
+        
+        Args:
+            video_path: Path to input video file
+            duration: Duration of zoom in seconds (default: 1.0)
+            
+        Returns:
+            Path to processed video file
+        """
+        try:
+            # Get video duration first to calculate start time for zoom out
+            probe = ffmpeg.probe(video_path)
+            video_duration = float(probe['format']['duration'])
+            start_time = max(0, video_duration - duration)
+            
+            video_stream = next((s for s in probe['streams'] if s['codec_type'] == 'video'), None)
+            
+            if video_stream:
+                width = int(video_stream['width'])
+                height = int(video_stream['height'])
+                fps = eval(video_stream.get('r_frame_rate', '24'))
+            else:
+                width, height = 640, 480
+                fps = 24
+            
+            # Generate output path
+            output_path = self._generate_output_path("zoom_out")
+            
+            # Use scale filter with expression to zoom out
+            # scale from 100% to 50% over duration at the end
+            filter_complex = (
+                f"[0:v]scale="
+                f"'if(gte(t,{start_time}),iw*(1+1*(t-{start_time})/{duration}),iw)':"
+                f"'if(gte(t,{start_time}),ih*(1+1*(t-{start_time})/{duration}),ih)',"
+                f"crop={width}:{height}"
+            )
+            
+            # Use subprocess for complex filter
+            import subprocess
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', video_path,
+                '-filter_complex', filter_complex,
+                '-map', '0:a?',
+                '-c:v', 'libx264',
+                '-c:a', 'copy',
+                str(output_path)
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise Exception(result.stderr)
+            
+            return output_path
+            
+        except Exception as e:
+            raise Exception(f"Error applying zoom out: {str(e)}")
 
     def cleanup_temp_files(self, max_age_hours: int = 24):
         """

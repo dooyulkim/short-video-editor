@@ -442,7 +442,7 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 								</>
 							) : (
 								<>
-									<StopCircle className="size-4 mr-2" /> || isTimelineTooLong Cancel Export
+									<StopCircle className="size-4 mr-2" /> Cancel Export
 								</>
 							)}
 						</Button>

@@ -541,6 +541,51 @@ class ExportService:
         
         return (x_expr, y_expr)
 
+    def _build_zoom_filter(
+        self,
+        trans_duration: float,
+        clip_duration: float,
+        clip_width: int,
+        clip_height: int,
+        mode: str,  # "in" or "out"
+        fps: int = 30
+    ) -> str:
+        """
+        Build FFmpeg zoompan filter for zoom in/out transition effect.
+        
+        For zoom-in: starts at full frame, gradually zooms in (scale increases)
+        For zoom-out: starts zoomed in, gradually zooms out (scale decreases)
+        
+        Args:
+            trans_duration: Duration of the transition in seconds
+            clip_duration: Total clip duration in seconds
+            clip_width: Width of the clip in pixels
+            clip_height: Height of the clip in pixels
+            mode: "in" for zoom in effect, "out" for zoom out effect
+            fps: Frames per second
+            
+        Returns:
+            FFmpeg zoompan filter string for the zoom effect
+        """
+        total_frames = int(clip_duration * fps)
+        trans_frames = int(trans_duration * fps)
+        
+        if mode == "in":
+            # Zoom in: scale from 1.0 to 2.0 over transition duration
+            # After transition: maintain 2.0 zoom
+            zoom_expr = f"if(lte(on,{trans_frames}),1+on/{trans_frames},2)"
+        else:  # mode == "out"
+            # Zoom out: scale from 2.0 to 1.0 during last trans_duration seconds
+            fade_start_frame = max(0, total_frames - trans_frames)
+            # Before fade: maintain 2.0 zoom
+            # During fade: zoom from 2.0 to 1.0
+            zoom_expr = f"if(lt(on,{fade_start_frame}),2,2-(on-{fade_start_frame})/{trans_frames})"
+        
+        # Use zoompan filter with centered zoom
+        # d=1 means process one frame at a time (no panning effect)
+        # The zoom is centered by default with x and y calculations
+        return f"zoompan=z='{zoom_expr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={clip_width}x{clip_height}:fps={fps}"
+
     def export_timeline(
         self,
         timeline_data: Dict,
@@ -818,6 +863,9 @@ class ExportService:
                     # Track slide transition position info (for animated overlay position)
                     slide_in_info = None
                     slide_out_info = None
+                    
+                    # Track zoom transitions (need to be applied early before other filters)
+                    zoom_filters = []
 
                     # Apply transitions
                     if transitions:
@@ -860,6 +908,15 @@ class ExportService:
                                         'duration': trans_duration,
                                         'direction': direction
                                     }
+                                elif trans_type == "zoom":
+                                    # Zoom transition - collect for insertion after scale
+                                    # Use direction property: "in" or "out"
+                                    zoom_direction = direction if direction in ["in", "out"] else "in"
+                                    zoom_filter = self._build_zoom_filter(
+                                        trans_duration, clip_duration,
+                                        scaled_clip_width, scaled_clip_height, zoom_direction, fps
+                                    )
+                                    zoom_filters.append(zoom_filter)
 
                             if transitions.get("out"):
                                 trans_out = transitions["out"]
@@ -885,6 +942,20 @@ class ExportService:
                                         'duration': trans_duration,
                                         'direction': direction
                                     }
+                                elif trans_type == "zoom":
+                                    # Zoom transition - collect for insertion after scale
+                                    # Use direction property: "in" or "out"
+                                    zoom_direction = direction if direction in ["in", "out"] else "out"
+                                    zoom_filter = self._build_zoom_filter(
+                                        trans_duration, clip_duration,
+                                        scaled_clip_width, scaled_clip_height, zoom_direction, fps
+                                    )
+                                    zoom_filters.append(zoom_filter)
+
+                    # Apply zoom filters (must be applied before fps/format changes)
+                    if zoom_filters:
+                        # Zoom filters already include scale to maintain dimensions
+                        filter_parts.extend(zoom_filters)
 
                     # Set fps and format
                     filter_parts.append(f"fps={fps}")
@@ -1043,13 +1114,58 @@ class ExportService:
                         temp_text_video = str(self.temp_dir / f"text_{i}_{uuid.uuid4()}.mov")
                         temp_files.append(temp_text_video)
 
+                        # Check for transitions
+                        transitions = clip_data.get("transitions", {})
+                        zoom_filters = []
+                        
+                        # Build video filter chain
+                        filter_parts = []
+                        
+                        # Apply zoom transitions if present
+                        if transitions:
+                            if transitions.get("in"):
+                                trans_in = transitions["in"]
+                                if trans_in.get("type") == "zoom":
+                                    trans_duration = trans_in.get("duration", 1.0)
+                                    trans_props = trans_in.get("properties", {})
+                                    zoom_direction = trans_props.get("direction", "in")
+                                    if zoom_direction in ["in", "out"]:
+                                        zoom_filter = self._build_zoom_filter(
+                                            trans_duration, clip_duration,
+                                            final_width, final_height, zoom_direction, fps
+                                        )
+                                        zoom_filters.append(zoom_filter)
+                            
+                            if transitions.get("out"):
+                                trans_out = transitions["out"]
+                                if trans_out.get("type") == "zoom":
+                                    trans_duration = trans_out.get("duration", 1.0)
+                                    trans_props = trans_out.get("properties", {})
+                                    zoom_direction = trans_props.get("direction", "out")
+                                    if zoom_direction in ["in", "out"]:
+                                        zoom_filter = self._build_zoom_filter(
+                                            trans_duration, clip_duration,
+                                            final_width, final_height, zoom_direction, fps
+                                        )
+                                        zoom_filters.append(zoom_filter)
+                        
+                        # Add zoom filters if present
+                        if zoom_filters:
+                            filter_parts.extend(zoom_filters)
+                        
+                        # Always add fps filter
+                        filter_parts.append(f'fps={fps}')
+                        
+                        # Build filter string
+                        filter_str = ','.join(filter_parts)
+
                         # Convert text image to video with alpha support
                         # Use qtrle codec which properly supports RGBA
                         cmd = [
                             'ffmpeg', '-y',
                             '-loop', '1', '-t', str(clip_duration),
                             '-i', text_image_path,
-                            '-vf', f'fps={fps}',
+                            '-vf', filter_str,
                             '-c:v', 'qtrle',
                             temp_text_video
                         ]

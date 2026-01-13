@@ -21,6 +21,7 @@ import {
 	GitMerge,
 	ScanLine,
 	ArrowRightToLine,
+	Maximize2,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -46,12 +47,18 @@ const MAX_ZOOM = 200; // pixels per second
 const DEFAULT_ZOOM = 50; // pixels per second
 
 type WipeDirection = "left" | "right" | "up" | "down";
+type ZoomDirection = "in" | "out";
 
 const directionOptions: { value: WipeDirection; label: string }[] = [
 	{ value: "left", label: "← Left" },
 	{ value: "right", label: "→ Right" },
 	{ value: "up", label: "↑ Up" },
 	{ value: "down", label: "↓ Down" },
+];
+
+const zoomDirectionOptions: { value: ZoomDirection; label: string }[] = [
+	{ value: "in", label: "⭐ Zoom In" },
+	{ value: "out", label: "⭕ Zoom Out" },
 ];
 
 /**
@@ -138,7 +145,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		transition: Transition;
 	} | null>(null);
 	const [transitionDuration, setTransitionDuration] = useState<number>(1.0);
-	const [transitionDirection, setTransitionDirection] = useState<WipeDirection>("left");
+	const [transitionDirection, setTransitionDirection] = useState<WipeDirection | ZoomDirection>("left");
 
 	const timelineWidth = effectiveDuration * effectiveZoom;
 
@@ -409,6 +416,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 					return "#22c55e"; // Green
 				case "slide":
 					return "#f97316"; // Orange
+				case "zoom":
+					return "#eab308"; // Yellow
 				default:
 					return "#6b7280"; // Gray
 			}
@@ -487,7 +496,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 			return (
 				parsed &&
 				typeof parsed.type === "string" &&
-				["fade", "dissolve", "wipe", "slide"].includes(parsed.type) &&
+				["fade", "dissolve", "wipe", "slide", "zoom"].includes(parsed.type) &&
 				typeof parsed.duration === "number" &&
 				!parsed.id // Media resources have 'id', transitions don't
 			);
@@ -616,7 +625,10 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 	const openTransitionEditor = (clipId: string, position: "in" | "out", transition: Transition) => {
 		setEditingTransition({ clipId, position, transition });
 		setTransitionDuration(transition.duration);
-		setTransitionDirection((transition.properties?.direction as WipeDirection) || "left");
+
+		// Set default direction based on transition type
+		const defaultDirection = transition.type === "zoom" ? "in" : "left";
+		setTransitionDirection((transition.properties?.direction as WipeDirection | ZoomDirection) || defaultDirection);
 		setTransitionEditorOpen(true);
 	};
 
@@ -637,7 +649,7 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		if (!currentClip) return;
 
 		const currentTransitions = currentClip.transitions || {};
-		const hasDirection = transition.type === "wipe" || transition.type === "slide";
+		const hasDirection = transition.type === "wipe" || transition.type === "slide" || transition.type === "zoom";
 		const updatedTransition: Transition = {
 			...transition,
 			duration: transitionDuration,
@@ -1497,12 +1509,14 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 											editingTransition.transition.type === "fade" && "bg-blue-500",
 											editingTransition.transition.type === "dissolve" && "bg-purple-500",
 											editingTransition.transition.type === "wipe" && "bg-green-500",
-											editingTransition.transition.type === "slide" && "bg-orange-500"
+											editingTransition.transition.type === "slide" && "bg-orange-500",
+											editingTransition.transition.type === "zoom" && "bg-yellow-500"
 										)}>
 										{editingTransition.transition.type === "fade" && <CircleFadingPlus className="size-4" />}
 										{editingTransition.transition.type === "dissolve" && <GitMerge className="size-4" />}
 										{editingTransition.transition.type === "wipe" && <ScanLine className="size-4" />}
 										{editingTransition.transition.type === "slide" && <ArrowRightToLine className="size-4" />}
+										{editingTransition.transition.type === "zoom" && <Maximize2 className="size-4" />}
 									</div>
 									{editingTransition.transition.type.charAt(0).toUpperCase() +
 										editingTransition.transition.type.slice(1)}{" "}
@@ -1534,23 +1548,27 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 							</div>
 						</div>
 
-						{/* Direction Control - Only for wipe/slide */}
+						{/* Direction Control - Only for wipe/slide/zoom */}
 						{editingTransition &&
-							(editingTransition.transition.type === "wipe" || editingTransition.transition.type === "slide") && (
+							(editingTransition.transition.type === "wipe" ||
+								editingTransition.transition.type === "slide" ||
+								editingTransition.transition.type === "zoom") && (
 								<div className="space-y-2">
 									<Label htmlFor="transition-direction">Direction</Label>
 									<Select
-										value={transitionDirection}
-										onValueChange={(value) => setTransitionDirection(value as WipeDirection)}>
+										value={transitionDirection as string}
+										onValueChange={(value) => setTransitionDirection(value as WipeDirection | ZoomDirection)}>
 										<SelectTrigger id="transition-direction" className="w-full">
 											<SelectValue placeholder="Select direction" />
 										</SelectTrigger>
 										<SelectContent>
-											{directionOptions.map((opt) => (
-												<SelectItem key={opt.value} value={opt.value}>
-													{opt.label}
-												</SelectItem>
-											))}
+											{(editingTransition.transition.type === "zoom" ? zoomDirectionOptions : directionOptions).map(
+												(opt) => (
+													<SelectItem key={opt.value} value={opt.value}>
+														{opt.label}
+													</SelectItem>
+												)
+											)}
 										</SelectContent>
 									</Select>
 								</div>
@@ -1564,7 +1582,8 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 									editingTransition.transition.type === "fade" && "border-blue-500",
 									editingTransition.transition.type === "dissolve" && "border-purple-500",
 									editingTransition.transition.type === "wipe" && "border-green-500",
-									editingTransition.transition.type === "slide" && "border-orange-500"
+									editingTransition.transition.type === "slide" && "border-orange-500",
+									editingTransition.transition.type === "zoom" && "border-yellow-500"
 								)}>
 								<p className="text-sm">
 									<span className="font-medium">Position:</span>{" "}

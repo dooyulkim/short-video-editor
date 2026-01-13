@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import type { Transition } from "@/types/timeline";
-import { CircleFadingPlus, GitMerge, ScanLine, ArrowRightToLine } from "lucide-react";
+import { CircleFadingPlus, GitMerge, ScanLine, ArrowRightToLine, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
@@ -53,6 +53,13 @@ const transitionConfig = {
 		borderColor: "border-orange-500",
 		textColor: "text-orange-500",
 		name: "Slide",
+	},
+	zoom: {
+		icon: Maximize2,
+		color: "bg-yellow-500",
+		borderColor: "border-yellow-500",
+		textColor: "text-yellow-500",
+		name: "Zoom",
 	},
 };
 

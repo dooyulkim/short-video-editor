@@ -55,6 +55,13 @@ class SlideRequest(BaseModel):
     )
 
 
+class ZoomRequest(BaseModel):
+    """Request model for zoom in/out transition"""
+    video_path: str = Field(..., description="Path to input video file")
+    duration: float = Field(default=1.0, ge=0.1, le=5.0, description="Zoom duration in seconds")
+    direction: Literal["in", "out"] = Field(default="in", description="Zoom direction")
+
+
 # Response models
 class TransitionResponse(BaseModel):
     """Response model for transition operations"""
@@ -233,6 +240,45 @@ async def apply_slide(request: SlideRequest):
         raise HTTPException(status_code=500, detail=f"Error applying slide: {str(e)}")
 
 
+@router.post("/zoom", response_model=TransitionResponse)
+async def apply_zoom(request: ZoomRequest):
+    """
+    Apply zoom in or zoom out transition to a video.
+    
+    - **video_path**: Path to the input video file
+    - **duration**: Duration of the zoom effect (0.1 to 5.0 seconds)
+    - **direction**: "in" for zoom in (starts zoomed out), "out" for zoom out (ends zoomed out)
+    """
+    logger.info(f"🎬 Zoom {request.direction} request: {request.video_path}")
+    
+    try:
+        _validate_video_path(request.video_path)
+        
+        if request.direction == "in":
+            output_path = transition_service.apply_zoom_in(
+                request.video_path,
+                request.duration
+            )
+        else:
+            output_path = transition_service.apply_zoom_out(
+                request.video_path,
+                request.duration
+            )
+        
+        logger.info(f"✅ Zoom {request.direction} complete: {output_path}")
+        return TransitionResponse(
+            success=True,
+            output_path=output_path,
+            message=f"Zoom {request.direction} applied successfully"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Zoom error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error applying zoom: {str(e)}")
+
+
 @router.get("/types")
 async def get_transition_types():
     """
@@ -311,6 +357,27 @@ async def get_transition_types():
                         "type": "select",
                         "options": ["left", "right", "up", "down"],
                         "default": "left"
+                    },
+                    "duration": {
+                        "type": "slider",
+                        "min": 0.1,
+                        "max": 5.0,
+                        "default": 1.0,
+                        "step": 0.1
+                    }
+                }
+            },
+            {
+                "type": "zoom",
+                "name": "Zoom",
+                "description": "Zoom in or zoom out effect",
+                "icon": "maximize",
+                "color": "#EAB308",
+                "properties": {
+                    "direction": {
+                        "type": "select",
+                        "options": ["in", "out"],
+                        "default": "in"
                     },
                     "duration": {
                         "type": "slider",

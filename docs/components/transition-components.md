@@ -15,7 +15,7 @@ Located at: `src/components/TransitionPanel.tsx`
 
 **Features:**
 
-- Grid display of 4 transition types: Fade, Cross Dissolve, Wipe, Slide
+- Grid display of 5 transition types: Fade, Cross Dissolve, Wipe, Slide, Zoom
 - Each preset shows an animated preview
 - Drag-and-drop functionality to apply transitions to clips
 - Duration slider (0.1s to 3.0s) to adjust transition length
@@ -41,6 +41,7 @@ import { TransitionPanel } from "@/components/TransitionPanel";
 - **Cross Dissolve** (Purple) - Crossfade between clips
 - **Wipe** (Green) - Directional wipe transition (video2 reveals over video1)
 - **Slide** (Orange) - Push/slide transition (video2 pushes video1 off screen)
+- **Zoom** (Yellow) - Zoom in or out effect
 
 ### TransitionIndicator
 
@@ -159,6 +160,7 @@ interface Transition {
   - Cross Dissolve: Purple (#A855F7)
   - Wipe: Green (#22C55E)
   - Slide: Orange (#F97316)
+  - Zoom: Yellow (#EAB308)
 
 - **Icon Library:** Lucide React
 - **UI Components:** shadcn/ui (Card, Dialog, Slider, Button)

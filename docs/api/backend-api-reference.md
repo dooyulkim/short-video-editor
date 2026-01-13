@@ -217,9 +217,9 @@ Content-Type: application/json
 Body:
 {
   "video_id": "550e8400-e29b-41d4-a716-446655440000",
-  "transition_type": "fade_in|fade_out|cross_dissolve|wipe",
+  "transition_type": "fade_in|fade_out|cross_dissolve|wipe|zoom_in|zoom_out",
   "duration": 1.0,
-  "direction": "left|right|up|down" // for wipe only
+  "direction": "left|right|up|down" // for wipe only, or "in|out" for zoom
 }
 
 Response: 200 OK
@@ -417,9 +417,10 @@ interface Clip {
 }
 
 interface Transition {
-	type: "fade" | "cross_dissolve" | "wipe";
+	type: "fade" | "dissolve" | "wipe" | "slide" | "zoom";
 	duration: number;
-	direction?: "left" | "right" | "up" | "down";
+	direction?: "left" | "right" | "up" | "down" | "in" | "out";
+	properties?: Record<string, any>;
 }
 ```
 

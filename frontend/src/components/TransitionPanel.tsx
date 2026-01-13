@@ -4,10 +4,11 @@ import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Transition } from "@/types/timeline";
-import { CircleFadingPlus, GitMerge, ScanLine, ArrowRightToLine } from "lucide-react";
+import { CircleFadingPlus, GitMerge, ScanLine, ArrowRightToLine, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type WipeDirection = "left" | "right" | "up" | "down";
+type ZoomDirection = "in" | "out";
 
 interface TransitionPreset {
 	type: Transition["type"];
@@ -46,7 +47,15 @@ const transitionPresets: TransitionPreset[] = [
 		name: "Slide",
 		icon: ArrowRightToLine,
 		color: "bg-orange-500",
-		description: "Push transition (clips move together)",
+		description: "Smooth slide in and out",
+		hasDirection: true,
+	},
+	{
+		type: "zoom",
+		name: "Zoom",
+		icon: Maximize2,
+		color: "bg-yellow-500",
+		description: "Zoom in or out effect",
 		hasDirection: true,
 	},
 ];
@@ -58,6 +67,11 @@ const directionOptions: { value: WipeDirection; label: string }[] = [
 	{ value: "down", label: "↓ Down" },
 ];
 
+const zoomDirectionOptions: { value: ZoomDirection; label: string }[] = [
+	{ value: "in", label: "⭐ Zoom In" },
+	{ value: "out", label: "⭕ Zoom Out" },
+];
+
 interface TransitionPanelProps {
 	onTransitionSelect?: (transition: Transition) => void;
 }
@@ -65,7 +79,7 @@ interface TransitionPanelProps {
 export const TransitionPanel: React.FC<TransitionPanelProps> = ({ onTransitionSelect }) => {
 	const [selectedTransition, setSelectedTransition] = useState<Transition["type"] | null>(null);
 	const [duration, setDuration] = useState<number>(1); // Default 1 second
-	const [direction, setDirection] = useState<WipeDirection>("left"); // Default direction
+	const [direction, setDirection] = useState<WipeDirection | ZoomDirection>("left"); // Default direction
 	const [draggedTransition, setDraggedTransition] = useState<Transition["type"] | null>(null);
 
 	// Build transition object with properties
@@ -101,6 +115,12 @@ export const TransitionPanel: React.FC<TransitionPanelProps> = ({ onTransitionSe
 	// Handle transition preset click
 	const handlePresetClick = (type: Transition["type"]) => {
 		setSelectedTransition(type);
+		// Set default direction based on transition type
+		if (type === "zoom") {
+			setDirection("in");
+		} else if (type === "wipe" || type === "slide") {
+			setDirection("left");
+		}
 		if (onTransitionSelect) {
 			const transition = buildTransition(type);
 			onTransitionSelect(transition);
@@ -148,33 +168,6 @@ export const TransitionPanel: React.FC<TransitionPanelProps> = ({ onTransitionSe
 						</CardHeader>
 						<CardContent className="p-3 pt-0">
 							<p className="text-xs text-muted-foreground">{preset.description}</p>
-							{/* Animated preview */}
-							<div className="mt-2 h-8 bg-muted rounded overflow-hidden relative">
-								{preset.type === "slide" ? (
-									// Slide transition: show two elements moving together (push effect)
-									<>
-										<div
-											className="absolute inset-0 bg-blue-400 opacity-60"
-											style={{
-												animation: "slide-push-out 2s ease-in-out infinite",
-											}}
-										/>
-										<div
-											className={cn("absolute inset-0", preset.color, "opacity-60")}
-											style={{
-												animation: "slide-push-in 2s ease-in-out infinite",
-											}}
-										/>
-									</>
-								) : (
-									<div
-										className={cn("absolute inset-0 animate-transition-preview", preset.color, "opacity-50")}
-										style={{
-											animation: `transition-${preset.type} 2s ease-in-out infinite`,
-										}}
-									/>
-								)}
-							</div>
 						</CardContent>
 					</Card>
 				))}
@@ -207,19 +200,22 @@ export const TransitionPanel: React.FC<TransitionPanelProps> = ({ onTransitionSe
 				</CardContent>
 			</Card>
 
-			{/* Direction Control - Only for wipe/slide */}
+			{/* Direction Control - Only for wipe/slide/zoom */}
 			{showDirectionControl && (
 				<Card>
 					<CardHeader className="p-3 pb-2">
 						<CardTitle className="text-sm font-medium">Direction</CardTitle>
 					</CardHeader>
 					<CardContent className="p-3 pt-0 space-y-2">
-						<Select value={direction} onValueChange={(value) => setDirection(value as WipeDirection)}>
+						<Select value={direction} onValueChange={(value) => setDirection(value as WipeDirection | ZoomDirection)}>
 							<SelectTrigger className="w-full">
 								<SelectValue placeholder="Select direction" />
 							</SelectTrigger>
 							<SelectContent>
-								{directionOptions.map((opt) => (
+								{(selectedTransition === "zoom" || draggedTransition === "zoom"
+									? zoomDirectionOptions
+									: directionOptions
+								).map((opt) => (
 									<SelectItem key={opt.value} value={opt.value}>
 										{opt.label}
 									</SelectItem>
@@ -243,42 +239,6 @@ export const TransitionPanel: React.FC<TransitionPanelProps> = ({ onTransitionSe
 					</ul>
 				</CardContent>
 			</Card>
-
-			<style>{`
-        @keyframes transition-fade {
-          0%, 100% { opacity: 0; }
-          50% { opacity: 0.5; }
-        }
-        @keyframes transition-dissolve {
-          0% { opacity: 0; transform: scale(0.8); }
-          50% { opacity: 0.5; transform: scale(1); }
-          100% { opacity: 0; transform: scale(0.8); }
-        }
-        @keyframes transition-wipe {
-          0% { clip-path: inset(0 100% 0 0); }
-          50% { clip-path: inset(0 0 0 0); }
-          100% { clip-path: inset(0 0 0 100%); }
-        }
-        @keyframes transition-slide {
-          0% { transform: translateX(100%); }
-          25% { transform: translateX(50%); }
-          50% { transform: translateX(0); }
-          75% { transform: translateX(-50%); }
-          100% { transform: translateX(-100%); }
-        }
-        @keyframes slide-push-out {
-          0% { transform: translateX(0); }
-          50% { transform: translateX(-100%); }
-          50.01% { transform: translateX(100%); }
-          100% { transform: translateX(0); }
-        }
-        @keyframes slide-push-in {
-          0% { transform: translateX(100%); }
-          50% { transform: translateX(0); }
-          50.01% { transform: translateX(0); }
-          100% { transform: translateX(100%); }
-        }
-      `}</style>
 		</div>
 	);
 };

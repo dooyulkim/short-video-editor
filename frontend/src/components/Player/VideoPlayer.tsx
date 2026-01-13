@@ -585,6 +585,43 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	};
 
 	/**
+	 * Calculate scale multiplier for zoom transitions
+	 */
+	const calculateZoomScale = (clip: Clip, localTime: number): number => {
+		let zoomScale = 1.0;
+
+		// Apply zoom in transition
+		if (clip.transitions?.in?.type === "zoom") {
+			const transition = clip.transitions.in;
+			if (localTime < transition.duration) {
+				const progress = localTime / transition.duration;
+				// Zoom in: goes from 1.0x (full view) to 2.0x (zoomed in)
+				zoomScale = 1.0 + progress;
+			} else {
+				// After transition completes, stay at 2.0x zoom
+				zoomScale = 2.0;
+			}
+		}
+
+		// Apply zoom out transition
+		if (clip.transitions?.out?.type === "zoom") {
+			const transition = clip.transitions.out;
+			const fadeOutStart = clip.duration - transition.duration;
+
+			if (localTime > fadeOutStart) {
+				const progress = (localTime - fadeOutStart) / transition.duration;
+				// Zoom out: goes from 2.0x (zoomed in) to 1.0x (full view)
+				zoomScale = 2.0 - progress;
+			} else if (!clip.transitions?.in || clip.transitions.in.type !== "zoom") {
+				// Before zoom out starts, and no zoom in, stay at 2.0x
+				zoomScale = 2.0;
+			}
+		}
+
+		return zoomScale;
+	};
+
+	/**
 	 * Apply clipping path for wipe/slide transitions
 	 */
 	const applyClipPath = useCallback(
@@ -791,9 +828,12 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			const position = interpolated.position;
 			const rotation = interpolated.rotation;
 
+			// Calculate zoom transition scale
+			const zoomScale = calculateZoomScale(clip, localTime);
+
 			// Handle both uniform and non-uniform scaling
-			const scaleX = typeof scale === "number" ? scale : scale.x;
-			const scaleY = typeof scale === "number" ? scale : scale.y;
+			const scaleX = (typeof scale === "number" ? scale : scale.x) * zoomScale;
+			const scaleY = (typeof scale === "number" ? scale : scale.y) * zoomScale;
 
 			// Calculate scaled dimensions
 			const scaledWidth = videoWidth * scaleX;
@@ -868,9 +908,12 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				interpolatedRotation: rotation,
 			});
 
+			// Calculate zoom transition scale
+			const zoomScale = calculateZoomScale(clip, localTime);
+
 			// Handle both uniform and non-uniform scaling
-			const scaleX = typeof scale === "number" ? scale : scale.x;
-			const scaleY = typeof scale === "number" ? scale : scale.y;
+			const scaleX = (typeof scale === "number" ? scale : scale.x) * zoomScale;
+			const scaleY = (typeof scale === "number" ? scale : scale.y) * zoomScale;
 
 			// Calculate scaled dimensions
 			const scaledWidth = imgWidth * scaleX;
@@ -932,9 +975,12 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			const position = interpolated.position;
 			const rotation = interpolated.rotation;
 
+			// Calculate zoom transition scale
+			const zoomScale = calculateZoomScale(clip, localTime);
+
 			// Handle both uniform and non-uniform scaling
-			const scaleX = typeof scale === "number" ? scale : scale.x;
-			const scaleY = typeof scale === "number" ? scale : scale.y;
+			const scaleX = (typeof scale === "number" ? scale : scale.x) * zoomScale;
+			const scaleY = (typeof scale === "number" ? scale : scale.y) * zoomScale;
 
 			// Calculate position (center if position is 0,0)
 			let x = position.x !== 0 ? position.x : canvasSizeRef.current.width / 2;

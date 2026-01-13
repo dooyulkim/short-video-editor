@@ -700,3 +700,98 @@ class TestTransitionService:
             )
         
         assert "Error applying slide transition" in str(exc_info.value)
+    def test_apply_zoom_in(self):
+        """Test zoom in transition"""
+        # Apply zoom in
+        output_path = self.service.apply_zoom_in(
+            video_path=self.video1_path,
+            duration=0.5
+        )
+        
+        # Check output file exists
+        assert os.path.exists(output_path)
+        
+        # Verify output is a valid video with audio
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
+        
+        # Check video stream
+        video_stream = next((s for s in probe['streams'] if s['codec_type'] == 'video'), None)
+        assert video_stream is not None
+        assert video_stream['codec_name'] == 'h264'
+        
+        # Check audio stream
+        audio_stream = next((s for s in probe['streams'] if s['codec_type'] == 'audio'), None)
+        assert audio_stream is not None
+        assert audio_stream['codec_name'] == 'aac'
+        
+        # Check duration preserved
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 3.0) < 0.1
+    
+    def test_apply_zoom_in_custom_duration(self):
+        """Test zoom in with custom duration"""
+        output_path = self.service.apply_zoom_in(
+            video_path=self.video1_path,
+            duration=1.5
+        )
+        
+        assert os.path.exists(output_path)
+    
+    def test_apply_zoom_in_invalid_video(self):
+        """Test zoom in with invalid video path"""
+        with pytest.raises(Exception) as exc_info:
+            self.service.apply_zoom_in(
+                video_path="nonexistent_video.mp4",
+                duration=0.5
+            )
+        
+        assert "Error applying zoom in" in str(exc_info.value)
+    
+    def test_apply_zoom_out(self):
+        """Test zoom out transition"""
+        # Apply zoom out
+        output_path = self.service.apply_zoom_out(
+            video_path=self.video1_path,
+            duration=0.5
+        )
+        
+        # Check output file exists
+        assert os.path.exists(output_path)
+        
+        # Verify output is a valid video with audio
+        import ffmpeg
+        probe = ffmpeg.probe(output_path)
+        
+        # Check video stream
+        video_stream = next((s for s in probe['streams'] if s['codec_type'] == 'video'), None)
+        assert video_stream is not None
+        assert video_stream['codec_name'] == 'h264'
+        
+        # Check audio stream
+        audio_stream = next((s for s in probe['streams'] if s['codec_type'] == 'audio'), None)
+        assert audio_stream is not None
+        assert audio_stream['codec_name'] == 'aac'
+        
+        # Check duration preserved
+        duration = float(probe["format"]["duration"])
+        assert abs(duration - 3.0) < 0.1
+    
+    def test_apply_zoom_out_custom_duration(self):
+        """Test zoom out with custom duration"""
+        output_path = self.service.apply_zoom_out(
+            video_path=self.video1_path,
+            duration=1.5
+        )
+        
+        assert os.path.exists(output_path)
+    
+    def test_apply_zoom_out_invalid_video(self):
+        """Test zoom out with invalid video path"""
+        with pytest.raises(Exception) as exc_info:
+            self.service.apply_zoom_out(
+                video_path="nonexistent_video.mp4",
+                duration=0.5
+            )
+        
+        assert "Error applying zoom out" in str(exc_info.value)
