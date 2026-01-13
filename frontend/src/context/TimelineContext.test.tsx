@@ -48,7 +48,7 @@ describe("TimelineContext", () => {
 
 			expect(result.current.state.layers).toEqual([]);
 			expect(result.current.state.currentTime).toBe(0);
-			expect(result.current.state.duration).toBe(90); // Default minimum duration
+			expect(result.current.state.duration).toBe(120); // Default minimum duration
 			expect(result.current.state.zoom).toBe(20);
 			expect(result.current.state.selectedClipId).toBeNull();
 			expect(result.current.state.isPlaying).toBe(false);
@@ -168,7 +168,7 @@ describe("TimelineContext", () => {
 				result.current.addClip(clip, 0);
 			});
 
-			expect(result.current.state.duration).toBe(115); // 105 + 10
+			expect(result.current.state.duration).toBe(120); // Max of 120 minimum and 115 (105 + 10)
 		});
 
 		it("should not update duration when clip does not extend beyond current duration", () => {
@@ -385,7 +385,7 @@ describe("TimelineContext", () => {
 				result.current.setDuration(-10);
 			});
 
-			expect(result.current.state.duration).toBe(90); // Minimum duration is 90
+			expect(result.current.state.duration).toBe(120); // Minimum duration is 120
 		});
 	});
 
@@ -507,7 +507,7 @@ describe("TimelineContext", () => {
 
 			expect(result.current.state.layers[0].clips).toHaveLength(2);
 			expect(result.current.state.layers[1].clips).toHaveLength(1);
-			expect(result.current.state.duration).toBe(90); // Minimum duration is 90
+			expect(result.current.state.duration).toBe(120); // Minimum duration is 120
 		});
 
 		it("should maintain consistency when performing multiple operations", () => {
@@ -538,9 +538,9 @@ describe("TimelineContext", () => {
 			expect(state.isPlaying).toBe(true);
 			expect(state.currentTime).toBe(7);
 			expect(state.zoom).toBe(40);
-			// Duration was initially set to 90 (minimum) when clip was added
+			// Duration was initially set to 120 (minimum) when clip was added
 			// Moving and trimming doesn't auto-recalculate duration (this is correct behavior)
-			expect(state.duration).toBe(90);
+			expect(state.duration).toBe(120);
 		});
 	});
 });

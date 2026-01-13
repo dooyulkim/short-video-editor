@@ -3,19 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { UndoRedoControls } from "@/components/Toolbar/UndoRedoControls";
 import { ProjectControls } from "@/components/Project/ProjectControls";
-import {
-	Film,
-	Music,
-	Type,
-	Sticker,
-	Sparkles,
-	ArrowLeftRight,
-	Captions,
-	Filter,
-	Sliders,
-	Layout,
-	Mic2,
-} from "lucide-react";
+import { Film, Type, Sparkles, ArrowLeftRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TopToolbarProps {
@@ -27,16 +15,9 @@ interface TopToolbarProps {
 
 const toolbarTabs = [
 	{ id: "media", label: "Media", icon: Film },
-	{ id: "audio", label: "Audio", icon: Music },
 	{ id: "text", label: "Text", icon: Type },
-	{ id: "stickers", label: "Stickers", icon: Sticker },
-	{ id: "effects", label: "Effects", icon: Sparkles },
 	{ id: "transitions", label: "Transitions", icon: ArrowLeftRight },
-	{ id: "captions", label: "Captions", icon: Captions },
-	{ id: "filters", label: "Filters", icon: Filter },
-	{ id: "adjust", label: "Adjust", icon: Sliders },
-	{ id: "templates", label: "Templates", icon: Layout },
-	{ id: "ai-audio", label: "AI Audio", icon: Mic2 },
+	{ id: "effects", label: "Effects", icon: Sparkles },
 ];
 
 export const TopToolbar: React.FC<TopToolbarProps> = ({

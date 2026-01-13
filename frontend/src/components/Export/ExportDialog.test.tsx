@@ -19,6 +19,8 @@ describe("ExportDialog Component", () => {
 	beforeEach(() => {
 		mockOnOpenChange = vi.fn();
 		mockTimeline = {
+			id: "test-timeline",
+			name: "Test Timeline",
 			layers: [
 				{
 					id: "layer1",
@@ -32,6 +34,11 @@ describe("ExportDialog Component", () => {
 			duration: 10,
 			currentTime: 0,
 			zoom: 10,
+			fps: 30,
+			resolution: {
+				width: 1920,
+				height: 1080,
+			},
 		};
 
 		// Reset mocks
@@ -133,11 +140,26 @@ describe("ExportDialog Component", () => {
 
 			await waitFor(() => {
 				expect(mockStartExport).toHaveBeenCalledWith(
-					mockTimeline,
+					expect.objectContaining({
+						sourceResolution: expect.objectContaining({
+							width: expect.any(Number),
+							height: expect.any(Number),
+						}),
+						resolution: expect.objectContaining({
+							width: expect.any(Number),
+							height: expect.any(Number),
+						}),
+					}),
 					expect.objectContaining({
 						resolution: "1080p",
 						format: "MP4",
 						quality: "high",
+						filename: expect.any(String),
+						aspectRatio: expect.any(String),
+						customResolution: expect.objectContaining({
+							width: expect.any(Number),
+							height: expect.any(Number),
+						}),
 					})
 				);
 			});
@@ -157,7 +179,8 @@ describe("ExportDialog Component", () => {
 			await user.click(exportButton);
 
 			await waitFor(() => {
-				expect(screen.getByText(/exporting/i)).toBeInTheDocument();
+				// Should show "Cancel Export" button when exporting
+				expect(screen.getByRole("button", { name: /cancel export/i })).toBeInTheDocument();
 			});
 		});
 

@@ -51,13 +51,12 @@ describe("EditTools", () => {
 	});
 
 	describe("Rendering", () => {
-		it("should render all four tool buttons", () => {
+		it("should render all three tool buttons", () => {
 			render(<EditTools />, {
 				wrapper: createWrapper(),
 			});
 
 			expect(screen.getByText("Cut")).toBeInTheDocument();
-			expect(screen.getByText("Trim")).toBeInTheDocument();
 			expect(screen.getByText("Delete")).toBeInTheDocument();
 			expect(screen.getByText("Duplicate")).toBeInTheDocument();
 		});
@@ -82,19 +81,17 @@ describe("EditTools", () => {
 			});
 
 			const cutButton = screen.getByText("Cut").closest("button");
-			const trimButton = screen.getByText("Trim").closest("button");
 			const deleteButton = screen.getByText("Delete").closest("button");
 			const duplicateButton = screen.getByText("Duplicate").closest("button");
 
 			expect(cutButton).toBeDisabled();
-			expect(trimButton).toBeDisabled();
 			expect(deleteButton).toBeDisabled();
 			expect(duplicateButton).toBeDisabled();
 		});
 	});
 
 	describe("Button States - With Selection", () => {
-		it("should enable trim, delete, and duplicate buttons when clip is selected", () => {
+		it("should enable delete and duplicate buttons when clip is selected", () => {
 			const clip = createMockClip({ id: "clip-1" });
 			const layer = createMockLayer({ clips: [clip] });
 
@@ -106,11 +103,9 @@ describe("EditTools", () => {
 				}),
 			});
 
-			const trimButton = screen.getByText("Trim").closest("button");
 			const deleteButton = screen.getByText("Delete").closest("button");
 			const duplicateButton = screen.getByText("Duplicate").closest("button");
 
-			expect(trimButton).not.toBeDisabled();
 			expect(deleteButton).not.toBeDisabled();
 			expect(duplicateButton).not.toBeDisabled();
 		});
@@ -236,49 +231,6 @@ describe("EditTools", () => {
 		});
 	});
 
-	describe("Trim Operation", () => {
-		it("should log trim mode when trim button is clicked", () => {
-			const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-			const clip = createMockClip({ id: "clip-1" });
-			const layer = createMockLayer({ clips: [clip] });
-
-			render(<EditTools />, {
-				wrapper: createWrapper({
-					selectedClipId: "clip-1",
-					layers: [layer],
-				}),
-			});
-
-			const trimButton = screen.getByText("Trim").closest("button");
-			fireEvent.click(trimButton!);
-
-			expect(consoleSpy).toHaveBeenCalledWith("Trim mode enabled for clip:", "clip-1");
-
-			consoleSpy.mockRestore();
-		});
-
-		it("should not trim if no clip is selected", () => {
-			const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-			render(<EditTools />, {
-				wrapper: createWrapper({
-					selectedClipId: null,
-					layers: [],
-				}),
-			});
-
-			const trimButton = screen.getByText("Trim").closest("button");
-			expect(trimButton).toBeDisabled();
-
-			// Should not be able to click disabled button
-			fireEvent.click(trimButton!);
-			expect(consoleSpy).not.toHaveBeenCalled();
-
-			consoleSpy.mockRestore();
-		});
-	});
-
 	describe("Delete Operation", () => {
 		it("should remove clip when delete button is clicked", () => {
 			const clip = createMockClip({ id: "clip-1" });
@@ -379,12 +331,10 @@ describe("EditTools", () => {
 			});
 
 			const cutButton = screen.getByText("Cut").closest("button");
-			const trimButton = screen.getByText("Trim").closest("button");
 			const deleteButton = screen.getByText("Delete").closest("button");
 			const duplicateButton = screen.getByText("Duplicate").closest("button");
 
 			expect(cutButton).toHaveAttribute("title", "Select a clip first");
-			expect(trimButton).toHaveAttribute("title", "Select a clip first");
 			expect(deleteButton).toHaveAttribute("title", "Select a clip first");
 			expect(duplicateButton).toHaveAttribute("title", "Select a clip first");
 		});
