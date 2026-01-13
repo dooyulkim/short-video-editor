@@ -247,23 +247,19 @@ async def apply_zoom(request: ZoomRequest):
     
     - **video_path**: Path to the input video file
     - **duration**: Duration of the zoom effect (0.1 to 5.0 seconds)
-    - **direction**: "in" for zoom in (starts zoomed out), "out" for zoom out (ends zoomed out)
+    - **direction**: "in" for zoom in (content grows), "out" for zoom out (content shrinks)
     """
     logger.info(f"🎬 Zoom {request.direction} request: {request.video_path}")
     
     try:
         _validate_video_path(request.video_path)
         
-        if request.direction == "in":
-            output_path = transition_service.apply_zoom_in(
-                request.video_path,
-                request.duration
-            )
-        else:
-            output_path = transition_service.apply_zoom_out(
-                request.video_path,
-                request.duration
-            )
+        # Apply zoom in transition (at the start) - pass direction to control zoom behavior
+        output_path = transition_service.apply_zoom_in(
+            request.video_path,
+            request.duration,
+            request.direction
+        )
         
         logger.info(f"✅ Zoom {request.direction} complete: {output_path}")
         return TransitionResponse(

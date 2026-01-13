@@ -483,13 +483,14 @@ class TransitionService:
         except Exception as e:
             raise Exception(f"Error applying slide transition: {str(e)}")
     
-    def apply_zoom_in(self, video_path: str, duration: float = 1.0) -> str:
+    def apply_zoom_in(self, video_path: str, duration: float = 1.0, direction: str = "in") -> str:
         """
-        Apply zoom in transition - video starts zoomed out and zooms into normal size
+        Apply zoom transition at the start of the video
         
         Args:
             video_path: Path to input video file
             duration: Duration of zoom in seconds (default: 1.0)
+            direction: "in" (grow from small to normal) or "out" (shrink from large to normal)
             
         Returns:
             Path to processed video file
@@ -503,23 +504,37 @@ class TransitionService:
             if video_stream:
                 width = int(video_stream['width'])
                 height = int(video_stream['height'])
-                fps = eval(video_stream.get('r_frame_rate', '24'))
             else:
                 width, height = 640, 480
-                fps = 24
             
             # Generate output path
             output_path = self._generate_output_path("zoom_in")
             
-            # Use scale filter with expression to zoom in
-            # scale from 50% to 100% over duration
-            # Use width and height calculations based on time
-            filter_complex = (
-                f"[0:v]scale="
-                f"'if(lt(t,{duration}),iw*(0.5+0.5*t/{duration}),iw)':"
-                f"'if(lt(t,{duration}),ih*(0.5+0.5*t/{duration}),ih)',"
-                f"crop={width}:{height}"
-            )
+            # Create zoompan filter that matches preview behavior exactly
+            # During transition: scale changes, but viewport stays centered
+            if direction == "in":
+                # Zoom in: scale from 0.5x to 1.0x (content grows from small to normal)
+                # Formula: scale = 0.5 + 0.5 * (t / duration)
+                # x and y need to be adjusted to keep content centered as it grows
+                filter_complex = (
+                    f"[0:v]zoompan="
+                    f"z='if(lt(t,{duration}),1/(0.5+0.5*t/{duration}),1)':"
+                    f"x='(iw-iw*zoom)/2':"
+                    f"y='(ih-ih*zoom)/2':"
+                    f"d=1:"
+                    f"s={width}x{height}[vout]"
+                )
+            else:  # direction == "out"
+                # Zoom out: scale from 2.0x to 1.0x (content shrinks from large to normal)
+                # Formula: scale = 2.0 - (t / duration)
+                filter_complex = (
+                    f"[0:v]zoompan="
+                    f"z='if(lt(t,{duration}),1/(2.0-t/{duration}),1)':"
+                    f"x='(iw-iw*zoom)/2':"
+                    f"y='(ih-ih*zoom)/2':"
+                    f"d=1:"
+                    f"s={width}x{height}[vout]"
+                )
             
             # Use subprocess for complex filter
             import subprocess
@@ -527,6 +542,7 @@ class TransitionService:
                 'ffmpeg', '-y',
                 '-i', video_path,
                 '-filter_complex', filter_complex,
+                '-map', '[vout]',
                 '-map', '0:a?',
                 '-c:v', 'libx264',
                 '-c:a', 'copy',
@@ -542,13 +558,14 @@ class TransitionService:
         except Exception as e:
             raise Exception(f"Error applying zoom in: {str(e)}")
     
-    def apply_zoom_out(self, video_path: str, duration: float = 1.0) -> str:
+    def apply_zoom_out(self, video_path: str, duration: float = 1.0, direction: str = "out") -> str:
         """
-        Apply zoom out transition - video starts at normal size and zooms out
+        Apply zoom transition at the end of the video
         
         Args:
             video_path: Path to input video file
             duration: Duration of zoom in seconds (default: 1.0)
+            direction: "in" (grow from normal to large) or "out" (shrink from normal to small)
             
         Returns:
             Path to processed video file
@@ -564,22 +581,36 @@ class TransitionService:
             if video_stream:
                 width = int(video_stream['width'])
                 height = int(video_stream['height'])
-                fps = eval(video_stream.get('r_frame_rate', '24'))
             else:
                 width, height = 640, 480
-                fps = 24
             
             # Generate output path
             output_path = self._generate_output_path("zoom_out")
             
-            # Use scale filter with expression to zoom out
-            # scale from 100% to 50% over duration at the end
-            filter_complex = (
-                f"[0:v]scale="
-                f"'if(gte(t,{start_time}),iw*(1+1*(t-{start_time})/{duration}),iw)':"
-                f"'if(gte(t,{start_time}),ih*(1+1*(t-{start_time})/{duration}),ih)',"
-                f"crop={width}:{height}"
-            )
+            # Create zoompan filter that matches preview behavior exactly
+            # During transition at the end: scale changes, but viewport stays centered
+            if direction == "in":
+                # Zoom in: scale from 1.0x to 2.0x (content grows from normal to large)
+                # Formula: scale = 1.0 + (t - start_time) / duration
+                filter_complex = (
+                    f"[0:v]zoompan="
+                    f"z='if(gte(t,{start_time}),1/(1.0+(t-{start_time})/{duration}),1)':"
+                    f"x='(iw-iw*zoom)/2':"
+                    f"y='(ih-ih*zoom)/2':"
+                    f"d=1:"
+                    f"s={width}x{height}[vout]"
+                )
+            else:  # direction == "out"
+                # Zoom out: scale from 1.0x to 0.5x (content shrinks from normal to small)
+                # Formula: scale = 1.0 - 0.5 * (t - start_time) / duration
+                filter_complex = (
+                    f"[0:v]zoompan="
+                    f"z='if(gte(t,{start_time}),1/(1.0-0.5*(t-{start_time})/{duration}),1)':"
+                    f"x='(iw-iw*zoom)/2':"
+                    f"y='(ih-ih*zoom)/2':"
+                    f"d=1:"
+                    f"s={width}x{height}[vout]"
+                )
             
             # Use subprocess for complex filter
             import subprocess
@@ -587,6 +618,7 @@ class TransitionService:
                 'ffmpeg', '-y',
                 '-i', video_path,
                 '-filter_complex', filter_complex,
+                '-map', '[vout]',
                 '-map', '0:a?',
                 '-c:v', 'libx264',
                 '-c:a', 'copy',

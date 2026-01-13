@@ -662,21 +662,26 @@ class ExportService:
         clip_duration: float,
         clip_width: int,
         clip_height: int,
-        mode: str,  # "in" or "out"
+        direction: str,  # zoom direction: "in" or "out"
+        position: str,  # transition position: "start" or "end"
         fps: int = 30
     ) -> str:
         """
         Build FFmpeg zoompan filter for zoom in/out transition effect.
         
-        For zoom-in: starts at full frame, gradually zooms in (scale increases)
-        For zoom-out: starts zoomed in, gradually zooms out (scale decreases)
+        Matches preview behavior:
+        - IN transition with direction="in": 0.5x → 1.0x (grow from small to normal)
+        - IN transition with direction="out": 2.0x → 1.0x (shrink from large to normal)
+        - OUT transition with direction="in": 1.0x → 2.0x (grow from normal to large)
+        - OUT transition with direction="out": 1.0x → 0.5x (shrink from normal to small)
         
         Args:
             trans_duration: Duration of the transition in seconds
             clip_duration: Total clip duration in seconds
             clip_width: Width of the clip in pixels
             clip_height: Height of the clip in pixels
-            mode: "in" for zoom in effect, "out" for zoom out effect
+            direction: "in" (zoom in/grow) or "out" (zoom out/shrink)
+            position: "start" (in-transition) or "end" (out-transition)
             fps: Frames per second
             
         Returns:
@@ -685,18 +690,27 @@ class ExportService:
         total_frames = int(clip_duration * fps)
         trans_frames = int(trans_duration * fps)
         
-        if mode == "in":
-            # Zoom in: scale from 0.5 to 1.0 over transition duration (content gets bigger)
-            # Matches preview: zoomScale = 0.5 + progress * 0.5
-            # After transition: maintain 1.0 scale (normal)
-            zoom_expr = f"if(lte(on,{trans_frames}),0.5+on/{trans_frames}*0.5,1)"
-        else:  # mode == "out"
-            # Zoom out: scale from 1.0 to 0.5 during last trans_duration seconds (content gets smaller)
-            # Matches preview: zoomScale = 1.0 - progress * 0.5
+        if position == "start":
+            # Transition at the beginning of the clip
+            if direction == "in":
+                # Zoom in: scale from 0.5 to 1.0 over transition duration (content grows)
+                # Matches preview: zoomScale = 0.5 + progress * 0.5
+                zoom_expr = f"if(lte(on,{trans_frames}),0.5+on/{trans_frames}*0.5,1)"
+            else:  # direction == "out"
+                # Zoom out: scale from 2.0 to 1.0 over transition duration (content shrinks)
+                # Matches preview: zoomScale = 2.0 - progress
+                zoom_expr = f"if(lte(on,{trans_frames}),2.0-on/{trans_frames},1)"
+        else:  # position == "end"
+            # Transition at the end of the clip
             fade_start_frame = max(0, total_frames - trans_frames)
-            # Before fade: maintain 1.0 scale (normal)
-            # During fade: zoom from 1.0 to 0.5
-            zoom_expr = f"if(lt(on,{fade_start_frame}),1,1-(on-{fade_start_frame})/{trans_frames}*0.5)"
+            if direction == "in":
+                # Zoom in: scale from 1.0 to 2.0 during last trans_duration seconds (content grows)
+                # Matches preview: zoomScale = 1.0 + progress
+                zoom_expr = f"if(lt(on,{fade_start_frame}),1,1+(on-{fade_start_frame})/{trans_frames})"
+            else:  # direction == "out"
+                # Zoom out: scale from 1.0 to 0.5 during last trans_duration seconds (content shrinks)
+                # Matches preview: zoomScale = 1.0 - progress * 0.5
+                zoom_expr = f"if(lt(on,{fade_start_frame}),1,1-(on-{fade_start_frame})/{trans_frames}*0.5)"
         
         # Use zoompan filter with centered zoom
         # d=1 means process one frame at a time (no panning effect)
@@ -1044,7 +1058,8 @@ class ExportService:
                                     zoom_direction = trans_props.get("direction", "in")
                                     zoom_filter = self._build_zoom_filter(
                                         trans_duration, clip_duration,
-                                        scaled_clip_width, scaled_clip_height, zoom_direction, fps
+                                        scaled_clip_width, scaled_clip_height, 
+                                        zoom_direction, "start", fps
                                     )
                                     zoom_filters.append(zoom_filter)
 
@@ -1075,7 +1090,8 @@ class ExportService:
                                     zoom_direction = trans_props.get("direction", "out")
                                     zoom_filter = self._build_zoom_filter(
                                         trans_duration, clip_duration,
-                                        scaled_clip_width, scaled_clip_height, zoom_direction, fps
+                                        scaled_clip_width, scaled_clip_height, 
+                                        zoom_direction, "end", fps
                                     )
                                     zoom_filters.append(zoom_filter)
 
@@ -1279,7 +1295,8 @@ class ExportService:
                                     if zoom_direction in ["in", "out"]:
                                         zoom_filter = self._build_zoom_filter(
                                             trans_duration, clip_duration,
-                                            final_width, final_height, zoom_direction, fps
+                                            final_width, final_height, 
+                                            zoom_direction, "start", fps
                                         )
                                         zoom_filters.append(zoom_filter)
                             
@@ -1292,7 +1309,8 @@ class ExportService:
                                     if zoom_direction in ["in", "out"]:
                                         zoom_filter = self._build_zoom_filter(
                                             trans_duration, clip_duration,
-                                            final_width, final_height, zoom_direction, fps
+                                            final_width, final_height, 
+                                            zoom_direction, "end", fps
                                         )
                                         zoom_filters.append(zoom_filter)
                         
