@@ -53,9 +53,17 @@ const loadTimelineState = (): Partial<TimelineState> | null => {
 			const parsed = JSON.parse(stored);
 			// Only restore if it matches the current project
 			if (parsed.projectId === projectId) {
+				// Migrate old 120-second duration to new 180-second minimum
+				let duration = parsed.duration || 180;
+				if (duration === 120) {
+					duration = 180;
+				}
+				// Ensure duration is within new limits (180-300 seconds)
+				duration = Math.min(300, Math.max(180, duration));
+
 				return {
 					layers: parsed.layers || [],
-					duration: parsed.duration || 120,
+					duration: duration,
 					zoom: parsed.zoom || 20,
 					canvasSize: parsed.canvasSize || { width: 1080, height: 1920 },
 				};
@@ -104,7 +112,7 @@ export type TimelineAction =
 const initialState: TimelineState = {
 	layers: [],
 	currentTime: 0,
-	duration: 120, // 120 seconds (2 minutes) default duration
+	duration: 180, // 180 seconds (3 minutes) default duration
 	zoom: 20, // 20 pixels per second default
 	selectedClipId: null,
 	isPlaying: false,
@@ -128,9 +136,9 @@ function timelineReducer(state: TimelineState, action: TimelineAction): Timeline
 				clips: [...newLayers[layerIndex].clips, clip],
 			};
 
-			// Update duration if clip extends beyond current duration (minimum 120 seconds)
+			// Update duration if clip extends beyond current duration (minimum 180 seconds, maximum 300 seconds)
 			const clipEndTime = clip.startTime + clip.duration;
-			const newDuration = Math.max(120, state.duration, clipEndTime);
+			const newDuration = Math.min(300, Math.max(180, state.duration, clipEndTime));
 
 			return {
 				...state,
@@ -270,7 +278,7 @@ function timelineReducer(state: TimelineState, action: TimelineAction): Timeline
 			const { duration } = action.payload;
 			return {
 				...state,
-				duration: Math.max(120, duration), // Minimum 120 seconds (2 minutes)
+				duration: Math.min(300, Math.max(180, duration)), // Minimum 180 seconds (3 minutes), maximum 300 seconds (5 minutes)
 			};
 		}
 

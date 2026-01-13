@@ -48,7 +48,7 @@ describe("TimelineContext", () => {
 
 			expect(result.current.state.layers).toEqual([]);
 			expect(result.current.state.currentTime).toBe(0);
-			expect(result.current.state.duration).toBe(120); // Default minimum duration
+			expect(result.current.state.duration).toBe(180); // Default minimum duration
 			expect(result.current.state.zoom).toBe(20);
 			expect(result.current.state.selectedClipId).toBeNull();
 			expect(result.current.state.isPlaying).toBe(false);
@@ -168,21 +168,21 @@ describe("TimelineContext", () => {
 				result.current.addClip(clip, 0);
 			});
 
-			expect(result.current.state.duration).toBe(120); // Max of 120 minimum and 115 (105 + 10)
+			expect(result.current.state.duration).toBe(180); // Max of 180 minimum and 115 (105 + 10)
 		});
 
 		it("should not update duration when clip does not extend beyond current duration", () => {
 			const { result } = renderHook(() => useTimeline(), {
-				wrapper: createWrapper({ layers: [mockLayer], duration: 120 }),
+				wrapper: createWrapper({ layers: [mockLayer], duration: 180 }),
 			});
 
-			const clip = createMockClip({ startTime: 0, duration: 5 });
+			const clip = createMockClip({ startTime: 50, duration: 10 });
 
 			act(() => {
 				result.current.addClip(clip, 0);
 			});
 
-			expect(result.current.state.duration).toBe(120);
+			expect(result.current.state.duration).toBe(180);
 		});
 
 		it("should remove a clip", () => {
@@ -370,10 +370,10 @@ describe("TimelineContext", () => {
 			});
 
 			act(() => {
-				result.current.setDuration(120);
+				result.current.setDuration(180);
 			});
 
-			expect(result.current.state.duration).toBe(120);
+			expect(result.current.state.duration).toBe(180);
 		});
 
 		it("should not allow negative duration", () => {
@@ -385,7 +385,19 @@ describe("TimelineContext", () => {
 				result.current.setDuration(-10);
 			});
 
-			expect(result.current.state.duration).toBe(120); // Minimum duration is 120
+			expect(result.current.state.duration).toBe(180); // Minimum duration is 180
+		});
+
+		it("should not allow duration greater than 300 seconds (5 minutes)", () => {
+			const { result } = renderHook(() => useTimeline(), {
+				wrapper: createWrapper(),
+			});
+
+			act(() => {
+				result.current.setDuration(400);
+			});
+
+			expect(result.current.state.duration).toBe(300); // Maximum duration is 300
 		});
 	});
 
@@ -507,7 +519,7 @@ describe("TimelineContext", () => {
 
 			expect(result.current.state.layers[0].clips).toHaveLength(2);
 			expect(result.current.state.layers[1].clips).toHaveLength(1);
-			expect(result.current.state.duration).toBe(120); // Minimum duration is 120
+			expect(result.current.state.duration).toBe(180); // Minimum duration is 180
 		});
 
 		it("should maintain consistency when performing multiple operations", () => {
@@ -538,9 +550,9 @@ describe("TimelineContext", () => {
 			expect(state.isPlaying).toBe(true);
 			expect(state.currentTime).toBe(7);
 			expect(state.zoom).toBe(40);
-			// Duration was initially set to 120 (minimum) when clip was added
+			// Duration was initially set to 180 (minimum) when clip was added
 			// Moving and trimming doesn't auto-recalculate duration (this is correct behavior)
-			expect(state.duration).toBe(120);
+			expect(state.duration).toBe(180);
 		});
 	});
 });

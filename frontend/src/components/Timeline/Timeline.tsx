@@ -58,7 +58,7 @@ const directionOptions: { value: WipeDirection; label: string }[] = [
  * Timeline component - Canvas-based timeline visualization
  * Displays multiple layers with clips, time ruler, and playhead
  */
-export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialDuration = 90 }) => {
+export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialDuration = 180 }) => {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const rulerScrollRef = useRef<HTMLDivElement>(null);

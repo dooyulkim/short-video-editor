@@ -199,6 +199,12 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 		setExportTask(null);
 		setDownloadUrl(null);
 
+		// Validate duration - maximum 3 minutes for export
+		if (timeline.duration > 180) {
+			setError("Cannot export videos longer than 3 minutes. Please trim your timeline.");
+			return;
+		}
+
 		// Create export settings with effective resolution
 		const exportSettings: ExportSettings = {
 			...settings,
@@ -278,6 +284,7 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 	);
 
 	const canStartExport = !isExporting && settings.filename.trim().length > 0;
+	const isTimelineTooLong = timeline.duration > 180;
 
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
@@ -291,6 +298,14 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 				</DialogHeader>
 
 				<div className="space-y-6 py-4">
+					{/* Duration Warning - shown at the top when timeline is too long */}
+					{isTimelineTooLong && (
+						<div className="rounded-md bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
+							<strong>Warning:</strong> Timeline duration is {Math.floor(timeline.duration / 60)}m{" "}
+							{Math.floor(timeline.duration % 60)}s. Export is limited to 3 minutes maximum. Please trim your timeline.
+						</div>
+					)}
+
 					{/* Filename Input */}
 					<div className="space-y-2">
 						<Label htmlFor="filename">Filename</Label>
@@ -427,8 +442,7 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 								</>
 							) : (
 								<>
-									<StopCircle className="size-4 mr-2" />
-									Cancel Export
+									<StopCircle className="size-4 mr-2" /> || isTimelineTooLong Cancel Export
 								</>
 							)}
 						</Button>
