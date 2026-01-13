@@ -9,12 +9,18 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
 type WipeDirection = "left" | "right" | "up" | "down";
+type ZoomDirection = "in" | "out";
 
 const directionOptions: { value: WipeDirection; label: string }[] = [
 	{ value: "left", label: "← Left" },
 	{ value: "right", label: "→ Right" },
 	{ value: "up", label: "↑ Up" },
 	{ value: "down", label: "↓ Down" },
+];
+
+const zoomDirectionOptions: { value: ZoomDirection; label: string }[] = [
+	{ value: "in", label: "⭐ Zoom In" },
+	{ value: "out", label: "⭕ Zoom Out" },
 ];
 
 interface TransitionIndicatorProps {
@@ -66,13 +72,20 @@ const transitionConfig = {
 export const TransitionIndicator: React.FC<TransitionIndicatorProps> = ({ transition, position, onEdit, onRemove }) => {
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const [duration, setDuration] = useState(transition.duration);
-	const [direction, setDirection] = useState<WipeDirection>(
-		(transition.properties?.direction as WipeDirection) || "left"
-	);
+
+	// Get default direction based on transition type
+	const getDefaultDirection = () => {
+		if (transition.properties?.direction) {
+			return transition.properties.direction as WipeDirection | ZoomDirection;
+		}
+		return transition.type === "zoom" ? "in" : "left";
+	};
+
+	const [direction, setDirection] = useState<WipeDirection | ZoomDirection>(getDefaultDirection());
 
 	const config = transitionConfig[transition.type];
 	const Icon = config.icon;
-	const hasDirection = transition.type === "wipe" || transition.type === "slide";
+	const hasDirection = transition.type === "wipe" || transition.type === "slide" || transition.type === "zoom";
 
 	// Handle click to open editor dialog
 	const handleClick = (e: React.MouseEvent) => {
@@ -179,16 +192,18 @@ export const TransitionIndicator: React.FC<TransitionIndicatorProps> = ({ transi
 								<span>3.0s</span>
 							</div>
 						</div>
-						{/* Direction Control - Only for wipe/slide */}
+						{/* Direction Control - Only for wipe/slide/zoom */}
 						{hasDirection && (
 							<div className="space-y-2">
 								<Label htmlFor="transition-direction">Direction</Label>
-								<Select value={direction} onValueChange={(value) => setDirection(value as WipeDirection)}>
+								<Select
+									value={direction as string}
+									onValueChange={(value) => setDirection(value as WipeDirection | ZoomDirection)}>
 									<SelectTrigger id="transition-direction" className="w-full">
 										<SelectValue placeholder="Select direction" />
 									</SelectTrigger>
 									<SelectContent>
-										{directionOptions.map((opt) => (
+										{(transition.type === "zoom" ? zoomDirectionOptions : directionOptions).map((opt) => (
 											<SelectItem key={opt.value} value={opt.value}>
 												{opt.label}
 											</SelectItem>

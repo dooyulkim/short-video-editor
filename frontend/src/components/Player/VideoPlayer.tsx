@@ -590,31 +590,39 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	const calculateZoomScale = (clip: Clip, localTime: number): number => {
 		let zoomScale = 1.0;
 
-		// Apply zoom in transition
+		// Apply zoom transition at clip start
 		if (clip.transitions?.in?.type === "zoom") {
 			const transition = clip.transitions.in;
+			const direction = transition.properties?.direction || "in"; // Default to "in" if not specified
+
 			if (localTime < transition.duration) {
 				const progress = localTime / transition.duration;
-				// Zoom in: goes from 1.0x (full view) to 2.0x (zoomed in)
-				zoomScale = 1.0 + progress;
-			} else {
-				// After transition completes, stay at 2.0x zoom
-				zoomScale = 2.0;
+				if (direction === "in") {
+					// Zoom in: content gets bigger - goes from 0.5x (small) to 1.0x (normal view)
+					zoomScale = 0.5 + progress * 0.5;
+				} else {
+					// Zoom out: content gets smaller - goes from 2.0x (large) to 1.0x (normal view)
+					zoomScale = 2.0 - progress;
+				}
 			}
+			// After transition completes, scale returns to 1.0 (normal)
 		}
 
-		// Apply zoom out transition
+		// Apply zoom transition at clip end
 		if (clip.transitions?.out?.type === "zoom") {
 			const transition = clip.transitions.out;
+			const direction = transition.properties?.direction || "out"; // Default to "out" if not specified
 			const fadeOutStart = clip.duration - transition.duration;
 
 			if (localTime > fadeOutStart) {
 				const progress = (localTime - fadeOutStart) / transition.duration;
-				// Zoom out: goes from 2.0x (zoomed in) to 1.0x (full view)
-				zoomScale = 2.0 - progress;
-			} else if (!clip.transitions?.in || clip.transitions.in.type !== "zoom") {
-				// Before zoom out starts, and no zoom in, stay at 2.0x
-				zoomScale = 2.0;
+				if (direction === "in") {
+					// Zoom in: content gets bigger - goes from 1.0x (normal) to 2.0x (large)
+					zoomScale = 1.0 + progress;
+				} else {
+					// Zoom out: content gets smaller - goes from 1.0x (normal) to 0.5x (small)
+					zoomScale = 1.0 - progress * 0.5;
+				}
 			}
 		}
 
@@ -843,6 +851,14 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			let x = position.x !== 0 ? position.x : (canvasSizeRef.current.width - videoWidth) / 2;
 			let y = position.y !== 0 ? position.y : (canvasSizeRef.current.height - videoHeight) / 2;
 
+			// Adjust position for zoom to keep centered (zoom from center, not top-left)
+			if (zoomScale !== 1.0) {
+				const baseWidth = videoWidth * (typeof scale === "number" ? scale : scale.x);
+				const baseHeight = videoHeight * (typeof scale === "number" ? scale : scale.y);
+				x -= (scaledWidth - baseWidth) / 2;
+				y -= (scaledHeight - baseHeight) / 2;
+			}
+
 			// Apply slide transition offset (push effect)
 			const slideOffset = calculateSlideOffset(
 				clip,
@@ -922,6 +938,14 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			// Calculate position (center image if not specified)
 			let x = position.x !== 0 ? position.x : (canvasSizeRef.current.width - imgWidth) / 2;
 			let y = position.y !== 0 ? position.y : (canvasSizeRef.current.height - imgHeight) / 2;
+
+			// Adjust position for zoom to keep centered (zoom from center, not top-left)
+			if (zoomScale !== 1.0) {
+				const baseWidth = imgWidth * (typeof scale === "number" ? scale : scale.x);
+				const baseHeight = imgHeight * (typeof scale === "number" ? scale : scale.y);
+				x -= (scaledWidth - baseWidth) / 2;
+				y -= (scaledHeight - baseHeight) / 2;
+			}
 
 			// Apply slide transition offset (push effect)
 			const slideOffset = calculateSlideOffset(
