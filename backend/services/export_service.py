@@ -310,15 +310,22 @@ class ExportService:
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
 
-            # Use provided position or center
+            # Position text
+            # When pos_x/pos_y are provided, they represent the CENTER POINT of the text
+            # (matching the canvas translate behavior in the preview)
+            # Not the top-left corner of the text box
             if pos_x is not None:
-                x = pos_x
+                # Center text at the given x position
+                x = pos_x - text_width // 2
             else:
+                # Default: center horizontally on canvas
                 x = (width - text_width) // 2
             
             if pos_y is not None:
-                y = pos_y
+                # Center text at the given y position
+                y = pos_y - text_height // 2
             else:
+                # Default: center vertically on canvas
                 y = (height - text_height) // 2
 
             # Draw text with alpha
@@ -451,6 +458,114 @@ class ExportService:
         # No escaping needed when using subprocess with list args (no shell)
         return f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='{alpha_expr}'"
 
+    def _build_combined_wipe_filter(
+        self,
+        in_duration: Optional[float],
+        in_direction: Optional[str],
+        out_duration: Optional[float],
+        out_direction: Optional[str],
+        clip_duration: float,
+        clip_width: int,
+        clip_height: int,
+        fps: int = 30
+    ) -> str:
+        """
+        Build a combined FFmpeg geq filter for both in and out wipe transitions.
+        This is necessary because multiple geq filters can't be chained - the second
+        one would overwrite the alpha channel set by the first.
+        
+        Args:
+            in_duration: Duration of in transition (None if no in transition)
+            in_direction: Direction of in transition
+            out_duration: Duration of out transition (None if no out transition)
+            out_direction: Direction of out transition
+            clip_duration: Total clip duration in seconds
+            clip_width: Width of the clip in pixels
+            clip_height: Height of the clip in pixels
+            fps: Frames per second
+            
+        Returns:
+            FFmpeg geq filter string combining both transitions
+        """
+        # Build alpha expression that handles both transitions
+        # We need to construct the expression carefully to handle both transitions independently
+        
+        # Build separate alpha expressions for in and out transitions
+        in_alpha_expr = None
+        out_alpha_expr = None
+        
+        if in_duration and in_duration > 0:
+            in_frames = int(in_duration * fps)
+            if in_frames < 1:
+                in_frames = 1
+            in_progress = f"min(N/{in_frames},1)"
+            
+            # Build in wipe condition based on direction
+            if in_direction == "left":
+                in_condition = f"lt(X,{in_progress}*{clip_width})"
+            elif in_direction == "right":
+                in_condition = f"gt(X,(1-{in_progress})*{clip_width})"
+            elif in_direction == "up":
+                in_condition = f"lt(Y,{in_progress}*{clip_height})"
+            elif in_direction == "down":
+                in_condition = f"gt(Y,(1-{in_progress})*{clip_height})"
+            else:
+                in_condition = f"lt(X,{in_progress}*{clip_width})"
+            
+            # For in transition: if within in period, apply wipe condition, else fully visible
+            in_alpha_expr = f"if(lt(N,{in_frames}),if({in_condition},255,0),255)"
+        
+        if out_duration and out_duration > 0:
+            out_frames = int(out_duration * fps)
+            if out_frames < 1:
+                out_frames = 1
+            fade_start_frame = int((clip_duration - out_duration) * fps)
+            if fade_start_frame < 0:
+                fade_start_frame = 0
+            out_progress = f"max(0,min((N-{fade_start_frame})/{out_frames},1))"
+            
+            # Build out wipe condition based on direction
+            # For out transitions, the logic is inverted compared to in transitions:
+            # We show pixels (255) where the condition is true, and hide (0) where it's false
+            # As progress increases, more area becomes hidden
+            if out_direction == "left":
+                # Wipe out left to right: show if X >= progress * width (hide from left)
+                out_condition = f"gte(X,{out_progress}*{clip_width})"
+            elif out_direction == "right":
+                # Wipe out right to left: show if X <= (1-progress) * width (hide from right)
+                out_condition = f"lte(X,(1-{out_progress})*{clip_width})"
+            elif out_direction == "up":
+                # Wipe out from top to bottom: show if Y <= (1-progress) * height (hide from bottom upward)
+                out_condition = f"lte(Y,(1-{out_progress})*{clip_height})"
+            elif out_direction == "down":
+                # Wipe out from bottom to top: show if Y >= progress * height (hide from top downward)
+                out_condition = f"gte(Y,{out_progress}*{clip_height})"
+            else:
+                # Default to left
+                out_condition = f"gte(X,{out_progress}*{clip_width})"
+            
+            # For out transition: if within out period, apply wipe condition (255=visible, 0=hidden), else fully visible
+            out_alpha_expr = f"if(gte(N,{fade_start_frame}),if({out_condition},255,0),255)"
+        
+        # Combine the expressions using multiplication (both must allow visibility)
+        # This way both transitions are evaluated independently
+        if in_alpha_expr and out_alpha_expr:
+            # Both transitions: multiply their alpha values (0-255 range)
+            # But we need to normalize: (in_alpha/255) * (out_alpha/255) * 255
+            # Simplified: min(in_alpha, out_alpha)
+            alpha_expr = f"min(({in_alpha_expr}),({out_alpha_expr}))"
+        elif in_alpha_expr:
+            # Only in transition
+            alpha_expr = in_alpha_expr
+        elif out_alpha_expr:
+            # Only out transition
+            alpha_expr = out_alpha_expr
+        else:
+            # No transitions - fully visible
+            alpha_expr = "255"
+        
+        return f"geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='{alpha_expr}'"
+
     def _build_slide_position_expr(
         self,
         trans_duration: float,
@@ -571,15 +686,17 @@ class ExportService:
         trans_frames = int(trans_duration * fps)
         
         if mode == "in":
-            # Zoom in: scale from 1.0 to 2.0 over transition duration
-            # After transition: maintain 2.0 zoom
-            zoom_expr = f"if(lte(on,{trans_frames}),1+on/{trans_frames},2)"
+            # Zoom in: scale from 0.5 to 1.0 over transition duration (content gets bigger)
+            # Matches preview: zoomScale = 0.5 + progress * 0.5
+            # After transition: maintain 1.0 scale (normal)
+            zoom_expr = f"if(lte(on,{trans_frames}),0.5+on/{trans_frames}*0.5,1)"
         else:  # mode == "out"
-            # Zoom out: scale from 2.0 to 1.0 during last trans_duration seconds
+            # Zoom out: scale from 1.0 to 0.5 during last trans_duration seconds (content gets smaller)
+            # Matches preview: zoomScale = 1.0 - progress * 0.5
             fade_start_frame = max(0, total_frames - trans_frames)
-            # Before fade: maintain 2.0 zoom
-            # During fade: zoom from 2.0 to 1.0
-            zoom_expr = f"if(lt(on,{fade_start_frame}),2,2-(on-{fade_start_frame})/{trans_frames})"
+            # Before fade: maintain 1.0 scale (normal)
+            # During fade: zoom from 1.0 to 0.5
+            zoom_expr = f"if(lt(on,{fade_start_frame}),1,1-(on-{fade_start_frame})/{trans_frames}*0.5)"
         
         # Use zoompan filter with centered zoom
         # d=1 means process one frame at a time (no panning effect)
@@ -830,20 +947,30 @@ class ExportService:
                     filter_parts.append(f"scale={scaled_clip_width}:{scaled_clip_height}")
                     
                     # Calculate overlay position
+                    # IMPORTANT: Preview centers based on ORIGINAL dimensions (before user scale),
+                    # not the scaled dimensions. This ensures consistent positioning.
                     # Frontend logic: if position is (0,0), center the clip
                     # x = position.x !== 0 ? position.x : (canvas.width - imgWidth) / 2
                     # y = position.y !== 0 ? position.y : (canvas.height - imgHeight) / 2
+                    # Where imgWidth is the ORIGINAL width, not scaled
+                    
+                    # Calculate original dimensions in export space (with canvas scale only, no user scale)
+                    export_original_width = int(original_width * canvas_scale_x)
+                    export_original_height = int(original_height * canvas_scale_y)
+                    
                     if pos_x != 0:
+                        # Non-zero position: scale it to export resolution
                         overlay_x = int(pos_x * canvas_scale_x)
                     else:
-                        # Center horizontally: (canvas_width - scaled_clip_width) / 2
-                        overlay_x = int((width - scaled_clip_width) / 2)
+                        # Zero position means center based on ORIGINAL dimensions (like preview)
+                        overlay_x = int((width - export_original_width) / 2)
                     
                     if pos_y != 0:
+                        # Non-zero position: scale it to export resolution
                         overlay_y = int(pos_y * canvas_scale_y)
                     else:
-                        # Center vertically: (canvas_height - scaled_clip_height) / 2
-                        overlay_y = int((height - scaled_clip_height) / 2)
+                        # Zero position means center based on ORIGINAL dimensions (like preview)
+                        overlay_y = int((height - export_original_height) / 2)
                     
                     # Determine if this clip fills canvas exactly (for optimization)
                     is_full_canvas = (
@@ -866,6 +993,12 @@ class ExportService:
                     
                     # Track zoom transitions (need to be applied early before other filters)
                     zoom_filters = []
+                    
+                    # Track wipe transitions (need to be combined into single filter)
+                    wipe_in_duration = None
+                    wipe_in_direction = None
+                    wipe_out_duration = None
+                    wipe_out_direction = None
 
                     # Apply transitions
                     if transitions:
@@ -897,11 +1030,8 @@ class ExportService:
                                 elif trans_type == "wipe":
                                     # Wipe uses alpha animation (reveal effect)
                                     needs_alpha_for_transition = True
-                                    wipe_filter = self._build_wipe_filter(
-                                        trans_duration, direction, clip_duration, 
-                                        scaled_clip_width, scaled_clip_height, "in", fps
-                                    )
-                                    wipe_slide_filters.append(wipe_filter)
+                                    wipe_in_duration = trans_duration
+                                    wipe_in_direction = direction
                                 elif trans_type == "slide":
                                     # Slide uses position animation (push effect)
                                     slide_in_info = {
@@ -909,9 +1039,9 @@ class ExportService:
                                         'direction': direction
                                     }
                                 elif trans_type == "zoom":
-                                    # Zoom transition - collect for insertion after scale
-                                    # Use direction property: "in" or "out"
-                                    zoom_direction = direction if direction in ["in", "out"] else "in"
+                                    # Zoom transition - use direction property: "in" or "out"
+                                    # Default to "in" for in-transition
+                                    zoom_direction = trans_props.get("direction", "in")
                                     zoom_filter = self._build_zoom_filter(
                                         trans_duration, clip_duration,
                                         scaled_clip_width, scaled_clip_height, zoom_direction, fps
@@ -931,11 +1061,8 @@ class ExportService:
                                 elif trans_type == "wipe":
                                     # Wipe uses alpha animation (hide effect)
                                     needs_alpha_for_transition = True
-                                    wipe_filter = self._build_wipe_filter(
-                                        trans_duration, direction, clip_duration, 
-                                        scaled_clip_width, scaled_clip_height, "out", fps
-                                    )
-                                    wipe_slide_filters.append(wipe_filter)
+                                    wipe_out_duration = trans_duration
+                                    wipe_out_direction = direction
                                 elif trans_type == "slide":
                                     # Slide uses position animation (push effect)
                                     slide_out_info = {
@@ -943,18 +1070,27 @@ class ExportService:
                                         'direction': direction
                                     }
                                 elif trans_type == "zoom":
-                                    # Zoom transition - collect for insertion after scale
-                                    # Use direction property: "in" or "out"
-                                    zoom_direction = direction if direction in ["in", "out"] else "out"
+                                    # Zoom transition - use direction property: "in" or "out"
+                                    # Default to "out" for out-transition
+                                    zoom_direction = trans_props.get("direction", "out")
                                     zoom_filter = self._build_zoom_filter(
                                         trans_duration, clip_duration,
                                         scaled_clip_width, scaled_clip_height, zoom_direction, fps
                                     )
                                     zoom_filters.append(zoom_filter)
 
-                    # Apply zoom filters (must be applied before fps/format changes)
+                    # Build combined wipe filter if we have any wipe transitions
+                    if wipe_in_duration or wipe_out_duration:
+                        combined_wipe_filter = self._build_combined_wipe_filter(
+                            wipe_in_duration, wipe_in_direction,
+                            wipe_out_duration, wipe_out_direction,
+                            clip_duration, scaled_clip_width, scaled_clip_height, fps
+                        )
+                        wipe_slide_filters.append(combined_wipe_filter)
+                    
+                    # Apply zoom filters AFTER scale (must be applied before fps/format changes)
+                    # Note: zoom filters already specify output dimensions to maintain size
                     if zoom_filters:
-                        # Zoom filters already include scale to maintain dimensions
                         filter_parts.extend(zoom_filters)
 
                     # Set fps and format
@@ -1090,8 +1226,8 @@ class ExportService:
                     
                     # Get text position from clip data
                     text_position = clip_data.get("position", {})
-                    text_pos_x = text_position.get("x", None) if text_position else None
-                    text_pos_y = text_position.get("y", None) if text_position else None
+                    text_pos_x = text_position.get("x", 0) if text_position else 0
+                    text_pos_y = text_position.get("y", 0) if text_position else 0
 
                     # Scale font and position for export
                     canvas_scale_x = final_width / source_width if source_width > 0 else 1.0
@@ -1100,8 +1236,19 @@ class ExportService:
                     scaled_font_size = int(font_size * canvas_scale)
                     
                     # Scale position for export (if position is provided)
-                    scaled_pos_x = int(text_pos_x * canvas_scale_x) if text_pos_x is not None else None
-                    scaled_pos_y = int(text_pos_y * canvas_scale_y) if text_pos_y is not None else None
+                    # IMPORTANT: Preview centers text at canvas center (width/2, height/2) when pos is 0
+                    # Frontend logic: x = position.x !== 0 ? position.x : canvasWidth / 2
+                    if text_pos_x != 0:
+                        scaled_pos_x = int(text_pos_x * canvas_scale_x)
+                    else:
+                        # Center at canvas center, not based on text dimensions
+                        scaled_pos_x = final_width // 2
+                    
+                    if text_pos_y != 0:
+                        scaled_pos_y = int(text_pos_y * canvas_scale_y)
+                    else:
+                        # Center at canvas center, not based on text dimensions
+                        scaled_pos_y = final_height // 2
 
                     # Create text overlay image with text at the correct position
                     text_image_path = self._create_text_image(

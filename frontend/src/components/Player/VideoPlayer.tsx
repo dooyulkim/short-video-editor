@@ -693,6 +693,8 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			const transitionIn = clip.transitions?.in;
 			const transitionOut = clip.transitions?.out;
 
+			let appliedClipping = false;
+
 			// Check if we're in the "in" transition period (wipe only)
 			if (transitionIn && transitionIn.type === "wipe") {
 				if (localTime < transitionIn.duration) {
@@ -700,23 +702,25 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 					const direction = (transitionIn.properties?.direction as string) || "left";
 
 					applyClipPath(ctx, direction, progress, canvasWidth, canvasHeight, "in");
-					return true;
+					appliedClipping = true;
 				}
 			}
 
 			// Check if we're in the "out" transition period (wipe only)
-			if (transitionOut && transitionOut.type === "wipe") {
+			// Note: Only check this if we didn't already apply "in" transition
+			// (clip can't be in both transition periods simultaneously)
+			if (!appliedClipping && transitionOut && transitionOut.type === "wipe") {
 				const outStart = clip.duration - transitionOut.duration;
 				if (localTime > outStart) {
 					const progress = (localTime - outStart) / transitionOut.duration;
 					const direction = (transitionOut.properties?.direction as string) || "left";
 
 					applyClipPath(ctx, direction, progress, canvasWidth, canvasHeight, "out");
-					return true;
+					appliedClipping = true;
 				}
 			}
 
-			return false;
+			return appliedClipping;
 		},
 		[applyClipPath]
 	);
