@@ -1,0 +1,7 @@
+# Generated test artifacts
+report.html
+junit.xml
+screenshots/
+videos/
+*.png
+*.mp4
