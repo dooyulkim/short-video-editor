@@ -1,487 +1,509 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { TimelineClip } from '@/components/Timeline/TimelineClip';
-import type { Clip, Transition } from '@/types/timeline';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { TimelineClip } from "@/components/Timeline/TimelineClip";
+import type { Clip, Transition } from "@/types/timeline";
 
-describe('TimelineClip - Transition Features', () => {
-  const mockClip: Clip = {
-    id: 'clip-1',
-    resourceId: 'resource-1',
-    startTime: 0,
-    duration: 5,
-    trimStart: 0,
-    trimEnd: 0,
-  };
+describe("TimelineClip - Transition Features", () => {
+	const mockClip: Clip = {
+		id: "clip-1",
+		resourceId: "resource-1",
+		startTime: 0,
+		duration: 5,
+		trimStart: 0,
+		trimEnd: 0,
+	};
 
-  const mockClipWithTransitions: Clip = {
-    ...mockClip,
-    transitions: {
-      in: {
-        type: 'fade',
-        duration: 1.0,
-      },
-      out: {
-        type: 'dissolve',
-        duration: 1.5,
-      },
-    },
-  };
+	const mockClipWithTransitions: Clip = {
+		...mockClip,
+		transitions: {
+			in: {
+				type: "fade",
+				duration: 1.0,
+			},
+			out: {
+				type: "dissolve",
+				duration: 1.5,
+			},
+		},
+	};
 
-  let mockOnSelect: ReturnType<typeof vi.fn>;
-  let mockOnMove: ReturnType<typeof vi.fn>;
-  let mockOnTrim: ReturnType<typeof vi.fn>;
-  let mockOnTransitionEdit: ReturnType<typeof vi.fn>;
-  let mockOnTransitionRemove: ReturnType<typeof vi.fn>;
+	let mockOnSelect: (clipId: string) => void;
+	let mockOnMove: (clipId: string, newStartTime: number) => void;
+	let mockOnTrim: (clipId: string, newDuration: number, newTrimStart: number) => void;
+	let mockOnTransitionEdit: (clipId: string, position: "in" | "out", transition: Transition) => void;
+	let mockOnTransitionRemove: (clipId: string, position: "in" | "out") => void;
 
-  beforeEach(() => {
-    mockOnSelect = vi.fn();
-    mockOnMove = vi.fn();
-    mockOnTrim = vi.fn();
-    mockOnTransitionEdit = vi.fn();
-    mockOnTransitionRemove = vi.fn();
-  });
+	beforeEach(() => {
+		mockOnSelect = vi.fn() as (clipId: string) => void;
+		mockOnMove = vi.fn() as (clipId: string, newStartTime: number) => void;
+		mockOnTrim = vi.fn() as (clipId: string, newDuration: number, newTrimStart: number) => void;
+		mockOnTransitionEdit = vi.fn() as (clipId: string, position: "in" | "out", transition: Transition) => void;
+		mockOnTransitionRemove = vi.fn() as (clipId: string, position: "in" | "out") => void;
+	});
 
-  describe('Rendering with Transitions', () => {
-    it('should render clip without transitions', () => {
-      const { container } = render(
-        <TimelineClip
-          clip={mockClip}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      expect(container.querySelector('.absolute.top-1.bottom-1')).toBeInTheDocument();
-    });
+	describe("Rendering with Transitions", () => {
+		it("should render clip without transitions", () => {
+			const { container } = render(
+				<TimelineClip
+					clip={mockClip}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
 
-    it('should not render transition indicators when no transitions exist', () => {
-      const { container } = render(
-        <TimelineClip
-          clip={mockClip}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      // Check that TransitionIndicator is not rendered
-      expect(container.querySelector('.absolute.left-0[title*="Fade"]')).not.toBeInTheDocument();
-    });
+			expect(container.querySelector(".absolute.top-1.bottom-1")).toBeInTheDocument();
+		});
 
-    it('should render transition in indicator when present', () => {
-      const clipWithInTransition: Clip = {
-        ...mockClip,
-        transitions: {
-          in: {
-            type: 'fade',
-            duration: 1.0,
-          },
-        },
-      };
+		it("should not render transition indicators when no transitions exist", () => {
+			const { container } = render(
+				<TimelineClip
+					clip={mockClip}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
 
-      const { container } = render(
-        <TimelineClip
-          clip={clipWithInTransition}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      // Check for transition indicator (it should have specific styling)
-      const indicators = container.querySelectorAll('.absolute.top-0.bottom-0');
-      expect(indicators.length).toBeGreaterThan(0);
-    });
+			// Check that TransitionIndicator is not rendered
+			expect(container.querySelector('.absolute.left-0[title*="Fade"]')).not.toBeInTheDocument();
+		});
 
-    it('should render transition out indicator when present', () => {
-      const clipWithOutTransition: Clip = {
-        ...mockClip,
-        transitions: {
-          out: {
-            type: 'dissolve',
-            duration: 1.5,
-          },
-        },
-      };
+		it("should render transition in indicator when present", () => {
+			const clipWithInTransition: Clip = {
+				...mockClip,
+				transitions: {
+					in: {
+						type: "fade",
+						duration: 1.0,
+					},
+				},
+			};
 
-      const { container } = render(
-        <TimelineClip
-          clip={clipWithOutTransition}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      const indicators = container.querySelectorAll('.absolute.top-0.bottom-0');
-      expect(indicators.length).toBeGreaterThan(0);
-    });
+			const { container } = render(
+				<TimelineClip
+					clip={clipWithInTransition}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
 
-    it('should render both transition indicators when both present', () => {
-      const { container } = render(
-        <TimelineClip
-          clip={mockClipWithTransitions}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      const indicators = container.querySelectorAll('.absolute.top-0.bottom-0');
-      // Should have trim handles (2) + transition indicators (2) + possible border indicators
-      expect(indicators.length).toBeGreaterThanOrEqual(2);
-    });
-  });
+			// Check for transition indicator (it should have specific styling)
+			const indicators = container.querySelectorAll(".absolute.top-0.bottom-0");
+			expect(indicators.length).toBeGreaterThan(0);
+		});
 
-  describe('Transition Editing', () => {
-    it('should call onTransitionEdit when in transition is edited', async () => {
-      const { container } = render(
-        <TimelineClip
-          clip={mockClipWithTransitions}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-          onTransitionEdit={mockOnTransitionEdit}
-        />
-      );
-      
-      // Find and click the start transition indicator
-      const indicators = container.querySelectorAll('.cursor-pointer');
-      if (indicators.length > 0) {
-        await userEvent.click(indicators[0]);
-        
-        // Simulate editing in the dialog (would need more complex setup)
-        // For now, we're testing that the handler exists and would be called
-      }
-      
-      // The component should be set up to handle edits
-      expect(mockOnTransitionEdit).toBeDefined();
-    });
+		it("should render transition out indicator when present", () => {
+			const clipWithOutTransition: Clip = {
+				...mockClip,
+				transitions: {
+					out: {
+						type: "dissolve",
+						duration: 1.5,
+					},
+				},
+			};
 
-    it('should call onTransitionEdit with correct parameters', () => {
-      const { container } = render(
-        <TimelineClip
-          clip={mockClipWithTransitions}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-          onTransitionEdit={mockOnTransitionEdit}
-        />
-      );
-      
-      // Verify component receives the callback
-      expect(container).toBeInTheDocument();
-    });
+			const { container } = render(
+				<TimelineClip
+					clip={clipWithOutTransition}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
 
-    it('should work without onTransitionEdit callback', () => {
-      expect(() => {
-        render(
-          <TimelineClip
-            clip={mockClipWithTransitions}
-            zoom={100}
-            isSelected={false}
-            onSelect={mockOnSelect}
-            onMove={mockOnMove}
-            onTrim={mockOnTrim}
-          />
-        );
-      }).not.toThrow();
-    });
-  });
+			const indicators = container.querySelectorAll(".absolute.top-0.bottom-0");
+			expect(indicators.length).toBeGreaterThan(0);
+		});
 
-  describe('Transition Removal', () => {
-    it('should call onTransitionRemove when transition is removed', () => {
-      const { container } = render(
-        <TimelineClip
-          clip={mockClipWithTransitions}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-          onTransitionRemove={mockOnTransitionRemove}
-        />
-      );
-      
-      // Verify component receives the callback
-      expect(container).toBeInTheDocument();
-    });
+		it("should render both transition indicators when both present", () => {
+			const { container } = render(
+				<TimelineClip
+					clip={mockClipWithTransitions}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
 
-    it('should work without onTransitionRemove callback', () => {
-      expect(() => {
-        render(
-          <TimelineClip
-            clip={mockClipWithTransitions}
-            zoom={100}
-            isSelected={false}
-            onSelect={mockOnSelect}
-            onMove={mockOnMove}
-            onTrim={mockOnTrim}
-          />
-        );
-      }).not.toThrow();
-    });
-  });
+			const indicators = container.querySelectorAll(".absolute.top-0.bottom-0");
+			// Should have trim handles (2) + transition indicators (2) + possible border indicators
+			expect(indicators.length).toBeGreaterThanOrEqual(2);
+		});
+	});
 
-  describe('Clip Behavior with Transitions', () => {
-    it('should maintain selection behavior with transitions present', async () => {
-      const { container } = render(
-        <TimelineClip
-          clip={mockClipWithTransitions}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      const clipElement = container.querySelector('.absolute.top-1.bottom-1');
-      await userEvent.click(clipElement!);
-      
-      expect(mockOnSelect).toHaveBeenCalledWith('clip-1');
-    });
+	describe("Transition Editing", () => {
+		it("should call onTransitionEdit when in transition is edited", async () => {
+			const { container } = render(
+				<TimelineClip
+					clip={mockClipWithTransitions}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+					onTransitionEdit={mockOnTransitionEdit}
+				/>
+			);
 
-    it('should allow dragging clip with transitions', () => {
-      const { container } = render(
-        <TimelineClip
-          clip={mockClipWithTransitions}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      const clipElement = container.querySelector('.absolute.top-1.bottom-1');
-      
-      fireEvent.mouseDown(clipElement!);
-      fireEvent.mouseMove(clipElement!, { clientX: 200 });
-      fireEvent.mouseUp(clipElement!);
-      
-      // Clip should still be draggable
-      expect(container).toBeInTheDocument();
-    });
+			// Find and click the start transition indicator
+			const indicators = container.querySelectorAll(".cursor-pointer");
+			if (indicators.length > 0) {
+				await userEvent.click(indicators[0]);
 
-    it('should allow trimming clip with transitions', () => {
-      const { container } = render(
-        <TimelineClip
-          clip={mockClipWithTransitions}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      // Find trim handles
-      const trimHandles = container.querySelectorAll('.cursor-ew-resize');
-      expect(trimHandles.length).toBeGreaterThanOrEqual(2);
-    });
-  });
+				// Simulate editing in the dialog (would need more complex setup)
+				// For now, we're testing that the handler exists and would be called
+			}
 
-  describe('Visual Appearance with Transitions', () => {
-    it('should apply selected styling when clip is selected', () => {
-      const { container } = render(
-        <TimelineClip
-          clip={mockClipWithTransitions}
-          zoom={100}
-          isSelected={true}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      const clipElement = container.querySelector('.ring-2.ring-yellow-400');
-      expect(clipElement).toBeInTheDocument();
-    });
+			// The component should be set up to handle edits
+			expect(mockOnTransitionEdit).toBeDefined();
+		});
 
-    it('should display clip width based on zoom and duration', () => {
-      const { container } = render(
-        <TimelineClip
-          clip={mockClipWithTransitions}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      const clipElement = container.querySelector('.absolute.top-1.bottom-1') as HTMLElement;
-      expect(clipElement?.style.width).toBe('500px'); // 5 seconds * 100 px/s
-    });
+		it("should call onTransitionEdit with correct parameters", () => {
+			const { container } = render(
+				<TimelineClip
+					clip={mockClipWithTransitions}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+					onTransitionEdit={mockOnTransitionEdit}
+				/>
+			);
 
-    it('should position clip based on start time', () => {
-      const clipWithStartTime: Clip = {
-        ...mockClipWithTransitions,
-        startTime: 10,
-      };
+			// Verify component receives the callback
+			expect(container).toBeInTheDocument();
+		});
 
-      const { container } = render(
-        <TimelineClip
-          clip={clipWithStartTime}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      const clipElement = container.querySelector('.absolute.top-1.bottom-1') as HTMLElement;
-      expect(clipElement?.style.left).toBe('1000px'); // 10 seconds * 100 px/s
-    });
-  });
+		it("should work without onTransitionEdit callback", () => {
+			expect(() => {
+				render(
+					<TimelineClip
+						clip={mockClipWithTransitions}
+						zoom={100}
+						isSelected={false}
+						onSelect={mockOnSelect}
+						onMove={mockOnMove}
+						onTrim={mockOnTrim}
+						currentTime={0}
+					/>
+				);
+			}).not.toThrow();
+		});
+	});
 
-  describe('Different Transition Types', () => {
-    const transitionTypes: Transition['type'][] = ['fade', 'dissolve', 'wipe', 'slide'];
+	describe("Transition Removal", () => {
+		it("should call onTransitionRemove when transition is removed", () => {
+			const { container } = render(
+				<TimelineClip
+					clip={mockClipWithTransitions}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+					onTransitionRemove={mockOnTransitionRemove}
+				/>
+			);
 
-    transitionTypes.forEach(type => {
-      it(`should handle ${type} transition type`, () => {
-        const clipWithSpecificTransition: Clip = {
-          ...mockClip,
-          transitions: {
-            in: { type, duration: 1.0 },
-          },
-        };
+			// Verify component receives the callback
+			expect(container).toBeInTheDocument();
+		});
 
-        const { container } = render(
-          <TimelineClip
-            clip={clipWithSpecificTransition}
-            zoom={100}
-            isSelected={false}
-            onSelect={mockOnSelect}
-            onMove={mockOnMove}
-            onTrim={mockOnTrim}
-          />
-        );
-        
-        expect(container).toBeInTheDocument();
-      });
-    });
-  });
+		it("should work without onTransitionRemove callback", () => {
+			expect(() => {
+				render(
+					<TimelineClip
+						clip={mockClipWithTransitions}
+						zoom={100}
+						isSelected={false}
+						onSelect={mockOnSelect}
+						onMove={mockOnMove}
+						onTrim={mockOnTrim}
+						currentTime={0}
+					/>
+				);
+			}).not.toThrow();
+		});
+	});
 
-  describe('Edge Cases', () => {
-    it('should handle clips with very short durations', () => {
-      const shortClip: Clip = {
-        ...mockClipWithTransitions,
-        duration: 0.5,
-      };
+	describe("Clip Behavior with Transitions", () => {
+		it("should maintain selection behavior with transitions present", async () => {
+			const { container } = render(
+				<TimelineClip
+					clip={mockClipWithTransitions}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
 
-      const { container } = render(
-        <TimelineClip
-          clip={shortClip}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      const clipElement = container.querySelector('.absolute.top-1.bottom-1') as HTMLElement;
-      expect(clipElement?.style.width).toBe('50px');
-    });
+			const clipElement = container.querySelector(".absolute.top-1.bottom-1");
+			await userEvent.click(clipElement!);
 
-    it('should handle clips with very long durations', () => {
-      const longClip: Clip = {
-        ...mockClipWithTransitions,
-        duration: 300,
-      };
+			expect(mockOnSelect).toHaveBeenCalledWith("clip-1");
+		});
 
-      const { container } = render(
-        <TimelineClip
-          clip={longClip}
-          zoom={100}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      const clipElement = container.querySelector('.absolute.top-1.bottom-1') as HTMLElement;
-      expect(clipElement?.style.width).toBe('30000px');
-    });
+		it("should allow dragging clip with transitions", () => {
+			const { container } = render(
+				<TimelineClip
+					clip={mockClipWithTransitions}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
 
-    it('should handle different zoom levels', () => {
-      const { container } = render(
-        <TimelineClip
-          clip={mockClipWithTransitions}
-          zoom={50}
-          isSelected={false}
-          onSelect={mockOnSelect}
-          onMove={mockOnMove}
-          onTrim={mockOnTrim}
-        />
-      );
-      
-      const clipElement = container.querySelector('.absolute.top-1.bottom-1') as HTMLElement;
-      expect(clipElement?.style.width).toBe('250px'); // 5 seconds * 50 px/s
-    });
+			const clipElement = container.querySelector(".absolute.top-1.bottom-1");
 
-    it('should handle transition with only in transition', () => {
-      const clipWithOnlyIn: Clip = {
-        ...mockClip,
-        transitions: {
-          in: { type: 'fade', duration: 1.0 },
-        },
-      };
+			fireEvent.mouseDown(clipElement!);
+			fireEvent.mouseMove(clipElement!, { clientX: 200 });
+			fireEvent.mouseUp(clipElement!);
 
-      expect(() => {
-        render(
-          <TimelineClip
-            clip={clipWithOnlyIn}
-            zoom={100}
-            isSelected={false}
-            onSelect={mockOnSelect}
-            onMove={mockOnMove}
-            onTrim={mockOnTrim}
-          />
-        );
-      }).not.toThrow();
-    });
+			// Clip should still be draggable
+			expect(container).toBeInTheDocument();
+		});
 
-    it('should handle transition with only out transition', () => {
-      const clipWithOnlyOut: Clip = {
-        ...mockClip,
-        transitions: {
-          out: { type: 'dissolve', duration: 1.5 },
-        },
-      };
+		it("should allow trimming clip with transitions", () => {
+			const { container } = render(
+				<TimelineClip
+					clip={mockClipWithTransitions}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
 
-      expect(() => {
-        render(
-          <TimelineClip
-            clip={clipWithOnlyOut}
-            zoom={100}
-            isSelected={false}
-            onSelect={mockOnSelect}
-            onMove={mockOnMove}
-            onTrim={mockOnTrim}
-          />
-        );
-      }).not.toThrow();
-    });
-  });
+			// Find trim handles
+			const trimHandles = container.querySelectorAll(".cursor-ew-resize");
+			expect(trimHandles.length).toBeGreaterThanOrEqual(2);
+		});
+	});
+
+	describe("Visual Appearance with Transitions", () => {
+		it("should apply selected styling when clip is selected", () => {
+			const { container } = render(
+				<TimelineClip
+					clip={mockClipWithTransitions}
+					zoom={100}
+					isSelected={true}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
+
+			const clipElement = container.querySelector(".ring-2.ring-yellow-400");
+			expect(clipElement).toBeInTheDocument();
+		});
+
+		it("should display clip width based on zoom and duration", () => {
+			const { container } = render(
+				<TimelineClip
+					clip={mockClipWithTransitions}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
+
+			const clipElement = container.querySelector(".absolute.top-1.bottom-1") as HTMLElement;
+			expect(clipElement?.style.width).toBe("500px"); // 5 seconds * 100 px/s
+		});
+
+		it("should position clip based on start time", () => {
+			const clipWithStartTime: Clip = {
+				...mockClipWithTransitions,
+				startTime: 10,
+			};
+
+			const { container } = render(
+				<TimelineClip
+					clip={clipWithStartTime}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
+
+			const clipElement = container.querySelector(".absolute.top-1.bottom-1") as HTMLElement;
+			expect(clipElement?.style.left).toBe("1000px"); // 10 seconds * 100 px/s
+		});
+	});
+
+	describe("Different Transition Types", () => {
+		const transitionTypes: Transition["type"][] = ["fade", "dissolve", "wipe", "slide"];
+
+		transitionTypes.forEach((type) => {
+			it(`should handle ${type} transition type`, () => {
+				const clipWithSpecificTransition: Clip = {
+					...mockClip,
+					transitions: {
+						in: { type, duration: 1.0 },
+					},
+				};
+
+				const { container } = render(
+					<TimelineClip
+						clip={clipWithSpecificTransition}
+						zoom={100}
+						isSelected={false}
+						onSelect={mockOnSelect}
+						onMove={mockOnMove}
+						onTrim={mockOnTrim}
+						currentTime={0}
+					/>
+				);
+
+				expect(container).toBeInTheDocument();
+			});
+		});
+	});
+
+	describe("Edge Cases", () => {
+		it("should handle clips with very short durations", () => {
+			const shortClip: Clip = {
+				...mockClipWithTransitions,
+				duration: 0.5,
+			};
+
+			const { container } = render(
+				<TimelineClip
+					clip={shortClip}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
+
+			const clipElement = container.querySelector(".absolute.top-1.bottom-1") as HTMLElement;
+			expect(clipElement?.style.width).toBe("50px");
+		});
+
+		it("should handle clips with very long durations", () => {
+			const longClip: Clip = {
+				...mockClipWithTransitions,
+				duration: 300,
+			};
+
+			const { container } = render(
+				<TimelineClip
+					clip={longClip}
+					zoom={100}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
+
+			const clipElement = container.querySelector(".absolute.top-1.bottom-1") as HTMLElement;
+			expect(clipElement?.style.width).toBe("30000px");
+		});
+
+		it("should handle different zoom levels", () => {
+			const { container } = render(
+				<TimelineClip
+					clip={mockClipWithTransitions}
+					zoom={50}
+					isSelected={false}
+					onSelect={mockOnSelect}
+					onMove={mockOnMove}
+					onTrim={mockOnTrim}
+					currentTime={0}
+				/>
+			);
+
+			const clipElement = container.querySelector(".absolute.top-1.bottom-1") as HTMLElement;
+			expect(clipElement?.style.width).toBe("250px"); // 5 seconds * 50 px/s
+		});
+
+		it("should handle transition with only in transition", () => {
+			const clipWithOnlyIn: Clip = {
+				...mockClip,
+				transitions: {
+					in: { type: "fade", duration: 1.0 },
+				},
+			};
+
+			expect(() => {
+				render(
+					<TimelineClip
+						clip={clipWithOnlyIn}
+						zoom={100}
+						isSelected={false}
+						onSelect={mockOnSelect}
+						onMove={mockOnMove}
+						onTrim={mockOnTrim}
+						currentTime={0}
+					/>
+				);
+			}).not.toThrow();
+		});
+
+		it("should handle transition with only out transition", () => {
+			const clipWithOnlyOut: Clip = {
+				...mockClip,
+				transitions: {
+					out: { type: "dissolve", duration: 1.5 },
+				},
+			};
+
+			expect(() => {
+				render(
+					<TimelineClip
+						clip={clipWithOnlyOut}
+						zoom={100}
+						isSelected={false}
+						onSelect={mockOnSelect}
+						onMove={mockOnMove}
+						onTrim={mockOnTrim}
+						currentTime={0}
+					/>
+				);
+			}).not.toThrow();
+		});
+	});
 });

@@ -68,6 +68,7 @@ export function ProjectManager() {
 					zoom: projectData.timeline.zoom,
 					selectedClipId: null,
 					isPlaying: false,
+					canvasSize: { width: 1920, height: 1080 },
 				});
 
 				setProjectName(projectData.name);

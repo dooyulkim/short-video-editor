@@ -153,6 +153,8 @@ export function ExportTimelineExample() {
 				},
 				{
 					resolution: "1080p",
+					customResolution: { width: 1920, height: 1080 },
+					aspectRatio: "16:9",
 					format: "MP4",
 					quality: "high",
 					filename: "exported-video.mp4",

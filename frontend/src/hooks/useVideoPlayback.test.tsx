@@ -17,13 +17,13 @@ const mockLayers: TimelineLayer[] = [
 				resourceId: "resource-1",
 				startTime: 0,
 				duration: 10,
-				layer: "layer-1",
-				inPoint: 0,
-				outPoint: 10,
+				trimStart: 0,
+				trimEnd: 0,
 			},
 		],
 		visible: true,
 		locked: false,
+		muted: false,
 	},
 ];
 

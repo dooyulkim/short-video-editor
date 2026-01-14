@@ -13,11 +13,11 @@ vi.mock("@/services/api", () => ({
 }));
 
 describe("ExportDialog Component", () => {
-	let mockOnOpenChange: ReturnType<typeof vi.fn>;
+	let mockOnOpenChange: (open: boolean) => void;
 	let mockTimeline: Timeline;
 
 	beforeEach(() => {
-		mockOnOpenChange = vi.fn();
+		mockOnOpenChange = vi.fn() as (open: boolean) => void;
 		mockTimeline = {
 			id: "test-timeline",
 			name: "Test Timeline",
@@ -28,12 +28,11 @@ describe("ExportDialog Component", () => {
 					clips: [],
 					locked: false,
 					visible: true,
+					muted: false,
 					name: "Video Layer 1",
 				},
 			],
 			duration: 10,
-			currentTime: 0,
-			zoom: 10,
 			fps: 30,
 			resolution: {
 				width: 1920,

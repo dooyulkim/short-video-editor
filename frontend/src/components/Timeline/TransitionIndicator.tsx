@@ -127,7 +127,7 @@ export const TransitionIndicator: React.FC<TransitionIndicatorProps> = ({ transi
 					"flex items-center justify-center",
 					"hover:opacity-100 opacity-80 transition-opacity",
 					"group",
-					position === "start" ? "left-0" : "right-0"
+					position === "start" ? "left-2" : "right-2"
 				)}
 				title={`${config.name} ${position === "start" ? "In" : "Out"} (${transition.duration}s)`}>
 				{/* Background gradient */}
@@ -155,7 +155,7 @@ export const TransitionIndicator: React.FC<TransitionIndicatorProps> = ({ transi
 
 				{/* Edge border indicator */}
 				<div
-					className={cn("absolute top-0 bottom-0 w-0.5", config.color, position === "start" ? "left-0" : "right-0")}
+					className={cn("absolute top-0 bottom-0 w-0.5", config.color, position === "start" ? "left-2" : "right-2")}
 				/>
 			</div>
 

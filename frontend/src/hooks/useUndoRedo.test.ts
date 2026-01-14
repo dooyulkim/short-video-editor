@@ -11,6 +11,7 @@ describe("useUndoRedo", () => {
 			clips: [],
 			locked: false,
 			visible: true,
+			muted: false,
 			name: `Layer ${i}`,
 		})),
 		currentTime: 0,
@@ -18,6 +19,7 @@ describe("useUndoRedo", () => {
 		zoom: 20,
 		selectedClipId: null,
 		isPlaying: false,
+		canvasSize: { width: 1920, height: 1080 },
 	});
 
 	it("should initialize with no undo/redo available", () => {

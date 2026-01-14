@@ -12,6 +12,7 @@ import { Plus, ZoomIn, ZoomOut } from "lucide-react";
 export const TimelineLayerTest: React.FC = () => {
 	const [zoom, setZoom] = useState<number>(50); // pixels per second
 	const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+	const [currentTime, setCurrentTime] = useState<number>(0);
 	const [layers, setLayers] = useState<TimelineLayerType[]>([
 		{
 			id: "layer-1",

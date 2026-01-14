@@ -155,7 +155,7 @@ describe("useAudioWaveform", () => {
 		});
 
 		// Set audioId to null
-		rerender({ audioId: null });
+		rerender({ audioId: null as unknown as string });
 
 		expect(result.current.waveformData).toBeNull();
 		expect(result.current.error).toBeNull();
@@ -166,7 +166,12 @@ describe("useAudioWaveform", () => {
 		const audioId = "audio-123";
 		const invalidData = { invalid: "format" }; // Not an array
 
-		mockedGetWaveform.mockResolvedValueOnce({ id: "test-id", waveform: invalidData, duration: 5.0, sampleRate: 44100 });
+		mockedGetWaveform.mockResolvedValueOnce({
+			id: "test-id",
+			waveform: invalidData as unknown as number[],
+			duration: 5.0,
+			sampleRate: 44100,
+		});
 
 		const { result } = renderHook(() => useAudioWaveform(mockProjectId, audioId));
 
@@ -198,7 +203,13 @@ describe("useAudioWaveform", () => {
 
 		// Delay the response
 		mockedGetWaveform.mockImplementation(
-			() => new Promise((resolve) => setTimeout(() => resolve({ data: mockWaveformData }), 100))
+			() =>
+				new Promise((resolve) =>
+					setTimeout(
+						() => resolve({ id: "test-id", waveform: mockWaveformData, duration: 5.0, sampleRate: 44100 }),
+						100
+					)
+				)
 		);
 
 		const { result, unmount } = renderHook(() => useAudioWaveform(mockProjectId, audioId));

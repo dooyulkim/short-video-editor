@@ -26,7 +26,7 @@ function renderTextOnCanvas(
 	relativeTime: number,
 	clip: Clip,
 	canvasWidth: number,
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	 
 	_canvasHeight: number
 ) {
 	const { text, fontFamily, fontSize, color, animation } = textData;
@@ -74,7 +74,8 @@ function renderTextOnCanvas(
 		const centerX = position.x + xOffset;
 		const centerY = position.y + yOffset;
 		ctx.translate(centerX, centerY);
-		ctx.scale(clip.scale, clip.scale);
+		const scaleValue = typeof clip.scale === "number" ? clip.scale : clip.scale.x;
+		ctx.scale(scaleValue, typeof clip.scale === "number" ? clip.scale : clip.scale.y);
 		ctx.translate(-centerX, -centerY);
 	}
 

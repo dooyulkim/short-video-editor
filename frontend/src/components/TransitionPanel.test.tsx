@@ -2,12 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TransitionPanel } from "@/components/TransitionPanel";
+import type { Transition } from "@/types/timeline";
 
 describe("TransitionPanel Component", () => {
-	let mockOnTransitionSelect: ReturnType<typeof vi.fn>;
+	let mockOnTransitionSelect: (transition: Transition) => void;
 
 	beforeEach(() => {
-		mockOnTransitionSelect = vi.fn();
+		mockOnTransitionSelect = vi.fn() as (transition: Transition) => void;
 	});
 
 	describe("Rendering", () => {

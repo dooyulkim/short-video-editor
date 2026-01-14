@@ -97,7 +97,7 @@ export function duplicateClip(clip: Clip): Clip {
 			  }
 			: undefined,
 		effects: clip.effects ? clip.effects.map((effect) => ({ ...effect })) : undefined,
-		keyframes: clip.keyframes ? clip.keyframes.map((kf) => ({ ...kf, value: { ...kf.value } })) : undefined,
+		keyframes: clip.keyframes ? clip.keyframes.map((kf) => ({ ...kf, properties: { ...kf.properties } })) : undefined,
 	};
 }
 

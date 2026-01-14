@@ -1,11 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TextEditor } from "@/components/TextTool/TextEditor";
 import type { Clip } from "@/types/timeline";
 
 describe("TextEditor Component", () => {
-	let mockOnAddText: ReturnType<typeof vi.fn>;
+	let mockOnAddText: Mock<(clip: Clip) => void>;
 
 	beforeEach(() => {
 		mockOnAddText = vi.fn();
