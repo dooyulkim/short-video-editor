@@ -1,9 +1,17 @@
+# -*- coding: utf-8 -*-
 """Test runner script to execute all E2E tests with reporting."""
 from pathlib import Path
 import subprocess
 import sys
+import os
 from datetime import datetime
 from typing import List, Tuple
+import io
+
+# Reconfigure stdout to handle UTF-8 encoding on Windows
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 
 # Test files to run (in order)
@@ -43,21 +51,30 @@ def run_test(test_file: str) -> Tuple[str, bool, str]:
     print(f"{'=' * 60}")
     
     try:
+        # Set environment to use UTF-8 for subprocess
+        env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'utf-8'
+        
         result = subprocess.run(
             [sys.executable, str(test_path)],
             capture_output=True,
-            text=True,
+            text=False,  # Get bytes instead of text
+            env=env,
             timeout=300  # 5 minute timeout per test
         )
         
+        # Decode output with UTF-8, replacing errors
+        stdout = result.stdout.decode('utf-8', errors='replace') if result.stdout else ''
+        stderr = result.stderr.decode('utf-8', errors='replace') if result.stderr else ''
+        
         # Print output
-        if result.stdout:
-            print(result.stdout)
-        if result.stderr:
-            print(result.stderr, file=sys.stderr)
+        if stdout:
+            print(stdout)
+        if stderr:
+            print(stderr, file=sys.stderr)
         
         passed = result.returncode == 0
-        output = result.stdout + result.stderr
+        output = stdout + stderr
         
         return (test_file, passed, output)
         

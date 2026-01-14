@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Critical flow E2E test - Core user journey.
 
 This test validates the most important user journey:
@@ -12,6 +13,12 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 import sys
 import os
+import io
+
+# Reconfigure stdout to handle UTF-8 encoding on Windows
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
