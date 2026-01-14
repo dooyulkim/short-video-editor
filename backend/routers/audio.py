@@ -3,7 +3,6 @@ Example usage of AudioService in API endpoints
 """
 from fastapi import APIRouter, HTTPException, Path as PathParam
 from services.audio_service import AudioService
-from typing import List
 import os
 
 router = APIRouter(prefix="/audio", tags=["audio"])
