@@ -753,20 +753,20 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				// progress 0 = fully off-screen, progress 1 = at final position
 				switch (direction) {
 					case "left":
-						// Enter from right side: start at canvasWidth, end at 0
+						// Slide left: enter from right side (start at canvasWidth, end at 0)
 						offsetX = canvasWidth * (1 - progress);
 						break;
 					case "right":
-						// Enter from left side: start at -clipWidth, end at 0
-						offsetX = -clipWidth - (canvasWidth - clipWidth) * (1 - progress);
+						// Slide right: enter from left side (start at -clipWidth, end at 0)
+						offsetX = -clipWidth * (1 - progress);
 						break;
 					case "up":
-						// Enter from bottom: start at canvasHeight, end at 0
+						// Slide up: enter from bottom (start at canvasHeight, end at 0)
 						offsetY = canvasHeight * (1 - progress);
 						break;
 					case "down":
-						// Enter from top: start at -clipHeight, end at 0
-						offsetY = -clipHeight - (canvasHeight - clipHeight) * (1 - progress);
+						// Slide down: enter from top (start at -clipHeight, end at 0)
+						offsetY = -clipHeight * (1 - progress);
 						break;
 				}
 			}
@@ -783,19 +783,19 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				// progress 0 = at current position, progress 1 = fully off-screen
 				switch (direction) {
 					case "left":
-						// Exit to left: end at -clipWidth
-						offsetX = -(clipWidth + canvasWidth) * progress;
+						// Slide left exit: move to left (end at -clipWidth)
+						offsetX = -clipWidth * progress;
 						break;
 					case "right":
-						// Exit to right: end at canvasWidth
+						// Slide right exit: move to right (end at canvasWidth)
 						offsetX = canvasWidth * progress;
 						break;
 					case "up":
-						// Exit to top: end at -clipHeight
-						offsetY = -(clipHeight + canvasHeight) * progress;
+						// Slide up exit: move to top (end at -clipHeight)
+						offsetY = -clipHeight * progress;
 						break;
 					case "down":
-						// Exit to bottom: end at canvasHeight
+						// Slide down exit: move to bottom (end at canvasHeight)
 						offsetY = canvasHeight * progress;
 						break;
 				}

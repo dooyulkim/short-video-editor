@@ -1507,13 +1507,13 @@ class ExportService:
                                     x_expr = f"if(lt(n,{in_frames}),{canvas_w}-n*{(canvas_w - overlay_x) / in_frames},{overlay_x})"
                                 elif in_dir == 'right':
                                     # Enter from left
-                                    x_expr = f"if(lt(n,{in_frames}),{-clip_width}+n*{(overlay_x + clip_width) / in_frames},{overlay_x})"
+                                    x_expr = f"if(lt(n,{in_frames}),(0-{clip_width})+n*{clip_width / in_frames},{overlay_x})"
                                 elif in_dir == 'up':
                                     # Enter from bottom
                                     y_expr = f"if(lt(n,{in_frames}),{canvas_h}-n*{(canvas_h - overlay_y) / in_frames},{overlay_y})"
                                 elif in_dir == 'down':
                                     # Enter from top
-                                    y_expr = f"if(lt(n,{in_frames}),{-clip_height}+n*{(overlay_y + clip_height) / in_frames},{overlay_y})"
+                                    y_expr = f"if(lt(n,{in_frames}),(0-{clip_height})+n*{clip_height / in_frames},{overlay_y})"
                                     
                             elif slide_out:
                                 # Only slide out
@@ -1524,13 +1524,13 @@ class ExportService:
                                 
                                 if out_dir == 'left':
                                     # Exit to left
-                                    x_expr = f"if(lt(n,{out_start}),{overlay_x},{overlay_x}-(n-{out_start})*{(overlay_x + clip_width) / out_frames})"
+                                    x_expr = f"if(lt(n,{out_start}),{overlay_x},{overlay_x}-(n-{out_start})*{clip_width / out_frames})"
                                 elif out_dir == 'right':
                                     # Exit to right
                                     x_expr = f"if(lt(n,{out_start}),{overlay_x},{overlay_x}+(n-{out_start})*{(canvas_w - overlay_x) / out_frames})"
                                 elif out_dir == 'up':
                                     # Exit to top
-                                    y_expr = f"if(lt(n,{out_start}),{overlay_y},{overlay_y}-(n-{out_start})*{(overlay_y + clip_height) / out_frames})"
+                                    y_expr = f"if(lt(n,{out_start}),{overlay_y},{overlay_y}-(n-{out_start})*{clip_height / out_frames})"
                                 elif out_dir == 'down':
                                     # Exit to bottom
                                     y_expr = f"if(lt(n,{out_start}),{overlay_y},{overlay_y}+(n-{out_start})*{(canvas_h - overlay_y) / out_frames})"
