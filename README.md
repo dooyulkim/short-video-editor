@@ -81,7 +81,7 @@ pip install -r requirements.txt
 
 ```bash
 cd backend
-uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --port 8000 or python main.py
 ```
 
 2. **Start Frontend Development Server**
