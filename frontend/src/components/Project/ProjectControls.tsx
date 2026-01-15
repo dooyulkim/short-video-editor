@@ -1,4 +1,3 @@
-import React, { useState, useCallback, useTransition, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -12,25 +11,25 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
-	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useTimeline } from "@/context/TimelineContext";
 import { useToast } from "@/components/ui/use-toast";
-import {
-	serializeProject,
-	saveProjectToFile,
-	loadProjectFromFile,
-	addToRecentProjects,
-	getRecentProjects,
-	removeFromRecentProjects,
-	formatProjectDate,
-} from "@/utils/projectUtils";
-import type { RecentProject } from "@/types/project";
+import { useTimeline } from "@/context/TimelineContext";
 import { deleteProject } from "@/services/api";
-import { Save, FolderOpen, FileDown, FilePlus, Loader2, ChevronDown, Pencil, FolderCog, Trash2 } from "lucide-react";
+import type { RecentProject } from "@/types/project";
+import {
+	addToRecentProjects,
+	formatProjectDate,
+	getRecentProjects,
+	loadProjectFromFile,
+	removeFromRecentProjects,
+	saveProjectToFile,
+	serializeProject,
+} from "@/utils/projectUtils";
+import { ChevronDown, FileDown, FilePlus, FolderCog, FolderOpen, Loader2, Pencil, Save, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 
 // LocalStorage key for persisting current project
 const CURRENT_PROJECT_KEY = "videoEditor_currentProject";
