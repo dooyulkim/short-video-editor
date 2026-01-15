@@ -45,6 +45,7 @@ const LAYER_HEIGHT = 40;
 const MIN_ZOOM = 5; // pixels per second
 const MAX_ZOOM = 200; // pixels per second
 const DEFAULT_ZOOM = 50; // pixels per second
+const TRANSITION_EDGE_PADDING = 6; // pixels to inset transition visuals from clip edges
 
 type WipeDirection = "left" | "right" | "up" | "down";
 type ZoomDirection = "in" | "out";
@@ -382,11 +383,13 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 					const transitionWidth = Math.min(clip.transitions.in.duration * effectiveZoom, width * 0.4);
 					const transitionColor = getTransitionColor(clip.transitions.in.type);
 					ctx.fillStyle = transitionColor;
-					ctx.fillRect(x + 2, transitionY, transitionWidth, transitionHeight);
-					// Small icon/label
+					// Draw inset from left edge by TRANSITION_EDGE_PADDING
+					const inX = x + TRANSITION_EDGE_PADDING;
+					ctx.fillRect(inX, transitionY, transitionWidth, transitionHeight);
+					// Small icon/label (offset a bit from inset)
 					ctx.fillStyle = "#fff";
 					ctx.font = "8px sans-serif";
-					ctx.fillText("▶", x + 4, transitionY + transitionHeight - 1);
+					ctx.fillText("🔍", inX + 4, transitionY + transitionHeight - 1);
 				}
 
 				// Transition out indicator (right side)
@@ -394,11 +397,13 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 					const transitionWidth = Math.min(clip.transitions.out.duration * effectiveZoom, width * 0.4);
 					const transitionColor = getTransitionColor(clip.transitions.out.type);
 					ctx.fillStyle = transitionColor;
-					ctx.fillRect(x + width - transitionWidth - 2, transitionY, transitionWidth, transitionHeight);
-					// Small icon/label
+					// Draw inset from right edge by TRANSITION_EDGE_PADDING
+					const outX = x + width - transitionWidth - TRANSITION_EDGE_PADDING;
+					ctx.fillRect(outX, transitionY, transitionWidth, transitionHeight);
+					// Small icon/label (right-aligned slightly inside)
 					ctx.fillStyle = "#fff";
 					ctx.font = "8px sans-serif";
-					ctx.fillText("◀", x + width - transitionWidth, transitionY + transitionHeight - 1);
+					ctx.fillText("🔍", outX - 8 + transitionWidth - 2, transitionY + transitionHeight - 1);
 				}
 			}
 		};
@@ -605,14 +610,17 @@ export const Timeline: React.FC<TimelineProps> = ({ initialLayers = [], initialD
 		const clipStartX = clip.startTime * effectiveZoom;
 		const clipEndX = (clip.startTime + clip.duration) * effectiveZoom;
 		const transitionClickWidth = 24; // Width of clickable transition area
+		// Inset the clickable region by TRANSITION_EDGE_PADDING so the active area starts 10px inside the clip
+		const insetStartX = clipStartX + TRANSITION_EDGE_PADDING;
+		const insetEndX = clipEndX - TRANSITION_EDGE_PADDING;
 
 		// Check if clicking on transition in (left side)
-		if (clip.transitions.in && x >= clipStartX && x <= clipStartX + transitionClickWidth) {
+		if (clip.transitions.in && x >= insetStartX && x <= insetStartX + transitionClickWidth) {
 			return { clip, position: "in", transition: clip.transitions.in };
 		}
 
 		// Check if clicking on transition out (right side)
-		if (clip.transitions.out && x >= clipEndX - transitionClickWidth && x <= clipEndX) {
+		if (clip.transitions.out && x >= insetEndX - transitionClickWidth && x <= insetEndX) {
 			return { clip, position: "out", transition: clip.transitions.out };
 		}
 
