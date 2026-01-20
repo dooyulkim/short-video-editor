@@ -14,21 +14,21 @@ When uncertain about requirements or implementation:
 
 ### 1.2 Testing Requirements
 
-Whenever code is modified:
+Whenever code is added, modified or removed:
 
 1. **Run existing tests** to ensure no regressions are introduced
 2. **Create new tests** for any new functionality or bug fixes
-3. **Update existing tests** if the behavior of the code has changed
+3. **update tests** if the behavior of the code has changed
 4. Ensure all tests pass before considering the modification complete
 
 ### 1.3 Documentation Requirements
 
 Whenever code modifications change architecture or functionality:
 
-1. **Update relevant documentation** in the `docs/` folder to reflect the changes
-2. **Update API documentation** if endpoints are added, modified, or removed
-3. **Update the README** if setup steps, dependencies, or usage instructions change
-4. **Update CLAUDE.md** if development workflows or project conventions change
+1. **Create or update relevant documentation** in the `docs/` folder to reflect the changes
+2. **Create or update API documentation** if endpoints are added, modified, or removed
+3. **Create or update the README** if setup steps, dependencies, or usage instructions change
+4. **Create or update CLAUDE.md** if development workflows or project conventions change
 5. Ensure documentation stays in sync with the actual implementation
 
 ---
