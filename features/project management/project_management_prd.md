@@ -1,28 +1,30 @@
-# Backend-Managed Projects with OAuth Accounts
+# Backend-Managed Projects with Firestore
 
 ## One-Page Summary
 
-- **Title:** Backend-Managed Projects with OAuth Accounts
-- **Summary:** Move project creation/load/save from frontend localStorage and file downloads to backend APIs tied to OAuth (Google, Facebook) accounts with Firebase/Firestore persistence. Unsaved edits remain ephemeral—refresh discards them unless explicitly saved.
-- **Target user:** Web video creators who need reliable, account-bound projects across sessions/devices.
-- **Problem:** Local-only storage causes loss on refresh/device change and lacks authenticated ownership.
+- **Title:** Backend-Managed Projects with Firestore
+- **Summary:** Move project creation/load/save from frontend localStorage and file downloads to Firestore backend APIs tied to authenticated user accounts (prerequisite: User Management feature). Unsaved edits remain ephemeral—refresh discards them unless explicitly saved.
+- **Target user:** Authenticated web video creators who need reliable, account-bound projects across sessions/devices.
+- **Problem:** Local-only storage causes loss on refresh/device change; no persistent project ownership.
 - **Key goals & metrics:**
-  - Auth success rate (Google/Facebook) 98% within 7 days post-launch
   - Project save success rate 99% (2xx) with p95 save latency 800 ms
   - Project load success rate 99% with p95 load latency 600 ms
-- **Timeline:** M0 Auth + schema (1w); M1 Project CRUD APIs (2w); M2 Frontend integration + QA (2w)
-- **Risks / Open questions:** OAuth app approvals/redirects; project payload size; optional soft-delete; Firebase security rules complexity; manual vs automated import of existing local files.
+  - List projects success rate 99% with pagination support
+- **Timeline:** M0 Schema + Security Rules (1w); M1 Project CRUD service layer (1w); M2 Frontend integration + QA (1.5w)
+- **Prerequisites:** User Management feature (user authentication) must be completed first
+- **Risks / Open questions:** Project payload size; soft-delete vs hard-delete; import/export strategy; pagination performance at scale.
 
 ## Full PRD
 
 ### Summary
 
-Introduce backend-managed user accounts (OAuth) and project CRUD over HTTP backed by Firebase/Firestore. Replace localStorage persistence patterns (timeline state, recent projects, project controls) with authenticated, durable storage. Unsaved edits are lost on refresh unless saved; UI must communicate this.
+Implement Firestore-based project storage with CRUD operations and ownership enforcement via Security Rules. Projects tied to authenticated users (Firebase UID). Requires User Management feature to be completed first for authentication layer.
 
 ### Background & Context
 
 - Current state: Projects saved to local JSON downloads; recent projects and timeline state persisted in localStorage.
-- Pain points: Data loss on refresh, no identity or ownership, no cross-session continuity.
+- Prerequisite: User Management feature (Firebase Authentication with OAuth) must be implemented first.
+- Pain points: Data loss on refresh, no persistent project ownership, no cross-device continuity.
 
 ### Target Users & Personas
 
@@ -30,7 +32,7 @@ Web-based short-form video creators who expect authenticated, reliable project s
 
 ### Problem Statement
 
-Local-only persistence causes loss and prevents authenticated ownership and continuity across sessions/devices.
+Local-only persistence causes loss and prevents persistent project ownership across sessions/devices. Assumes authenticated user accounts already exist (User Management feature prerequisite).
 
 ### Goals & Success Metrics
 
@@ -40,8 +42,8 @@ Local-only persistence causes loss and prevents authenticated ownership and cont
 
 ### Scope
 
-- **In-scope:** Firebase Authentication (Google, Facebook); Firestore collections for users/projects; project CRUD/list; ownership enforcement via Security Rules; project import/export via JSON; frontend wiring to Firebase SDK via abstraction layer; remove localStorage reliance for projects/recent lists; explicit unsaved-loss rule on refresh.
-- **Out-of-scope:** Team sharing/collaboration; autosave/drafts; offline mode; mobile/native clients; granular ACL beyond owner-only; asset storage changes (Firebase Storage considered for future); backend API proxy (can be added later without breaking changes).
+- **In-scope:** Firestore project collections and schema; project CRUD/list operations; ownership enforcement via Security Rules; project import/export via JSON; frontend service layer abstraction for all Firestore project calls; remove localStorage reliance for projects/recent lists; explicit unsaved-loss rule on refresh.
+- **Out-of-scope:** User authentication (User Management feature handles this); team sharing/collaboration; autosave/drafts; offline mode; granular ACL beyond owner-only; asset storage changes (Firebase Storage considered for future); backend API proxy (can be added later without breaking changes).
 
 ### User Journeys / Use Cases
 
@@ -53,15 +55,15 @@ Local-only persistence causes loss and prevents authenticated ownership and cont
 
 ### Functional Requirements
 
-- **FR1 Auth:** Firebase Authentication with Google and Facebook providers; user record auto-created on first login; Firebase ID tokens for API calls; signOut for logout.
-- **FR2 Project Create:** POST creates Firestore document (name, timeline payload, optional metadata); returns projectId, createdAt, updatedAt, version.
-- **FR3 Project Read:** GET by projectId returns timeline payload from Firestore; enforce ownership via Security Rules.
-- **FR4 Project Update:** PUT/PATCH updates document fields; updates updatedAt; version bump.
-- **FR5 Project List:** GET paginated list of user projects (id, name, createdAt, updatedAt, optional preview/size) ordered by updatedAt desc using Firestore queries.
-- **FR6 Project Delete:** DELETE removes document or sets deleted field (soft-delete optional); Security Rules exclude from queries by default.
-- **FR7 Import/Export:** Upload JSON to create/update Firestore document; download JSON for backup/share.
-- **FR8 Unsaved rule:** If user refreshes without saving, changes are lost; UI shows unsaved indicator/tooltip before refresh/navigation.
-- **FR9 Recent projects:** UI uses Firestore queries; no localStorage dependency for recents.
+- **FR1 Project Create:** POST creates Firestore document (name, timeline payload, optional metadata) tied to authenticated userId; returns projectId, createdAt, updatedAt, version.
+- **FR2 Project Read:** GET by projectId returns timeline payload from Firestore; enforce ownership via Security Rules.
+- **FR3 Project Update:** PUT/PATCH updates document fields; updates updatedAt; version bump.
+- **FR4 Project List:** GET paginated list of user projects (id, name, createdAt, updatedAt, optional preview/size) ordered by updatedAt desc using Firestore queries.
+- **FR5 Project Delete:** DELETE removes document or sets deleted field (soft-delete optional); Security Rules exclude from queries by default.
+- **FR6 Import/Export:** Upload JSON to create/update Firestore document; download JSON for backup/share.
+- **FR7 Unsaved rule:** If user refreshes without saving, changes are lost; UI shows unsaved indicator/tooltip before refresh/navigation.
+- **FR8 Recent projects:** UI uses Firestore queries; no localStorage dependency for recents.
+- **FR9 Ownership Enforcement:** Security Rules ensure users can only CRUD their own projects (userId match); cross-user access is denied.
 
 ### Non-functional Requirements
 
@@ -72,15 +74,10 @@ Local-only persistence causes loss and prevents authenticated ownership and cont
 
 ### Data Model (Firestore Collections)
 
-- **users (collection)**:
-  - Document ID: Firebase UID
-  - Fields: email (string), displayName (string), photoURL (string), provider (string: 'google' | 'facebook'), createdAt (timestamp), updatedAt (timestamp)
-  - Note: Firebase Auth handles core user data; this collection stores supplementary info
-
 - **projects (collection)**:
   - Document ID: auto-generated Firestore ID
   - Fields:
-    - userId (string, indexed) - Firebase UID of owner
+    - userId (string, indexed) - Firebase UID of owner (from User Management)
     - name (string)
     - payloadJson (map/object) - timeline data
     - version (string)
@@ -88,6 +85,7 @@ Local-only persistence causes loss and prevents authenticated ownership and cont
     - updatedAt (timestamp)
     - deleted (boolean, default false) - for soft-delete
   - Indexes: userId + updatedAt (desc) for efficient querying
+  - Note: Users collection managed by User Management feature; projects collection tied to userId
 
 ### Firebase Security Rules (draft)
 
@@ -95,10 +93,6 @@ Local-only persistence causes loss and prevents authenticated ownership and cont
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-
     match /projects/{projectId} {
       allow read: if request.auth != null &&
                      resource.data.userId == request.auth.uid &&
@@ -111,6 +105,8 @@ service cloud.firestore {
   }
 }
 ```
+
+Note: Users collection rules managed by User Management feature.
 
 ### API Endpoints (draft)
 
@@ -138,31 +134,37 @@ service cloud.firestore {
 
 ### Implementation Plan (rough estimates, medium confidence)
 
-- **M0 Firebase Setup & Auth (1w):**
-  - Firebase project creation (free Spark plan)
-  - Enable Google & Facebook authentication providers
-  - Initialize Firestore database
-  - Set up Security Rules
-  - Frontend Firebase SDK integration for auth flows
-  - Environment-based configuration (dev/staging/prod)
-- **M1 Project Domain (1.5w):**
-  - Define Firestore collections and indexes
-  - Implement project service layer (src/firebase/firestoreService.js) with abstraction
+- **M0 Firestore & Schema (1w):**
+  - Define Firestore projects collection schema and indexes
+  - Implement project Security Rules
+  - Test Security Rules with Firebase Emulator
+  - Environment-based Firestore configuration (dev/staging/prod)
+
+- **M1 Project Service Layer (1w):**
+  - Implement project service layer (`src/firebase/firestoreProjectService.ts`) with abstraction
+  - createProject(userId, name, payloadJson, version)
+  - getProject(projectId)
+  - updateProject(projectId, updates)
+  - deleteProject(projectId)
+  - listProjects(userId, limit, startAfter)
   - Client-side payload validation (schema, size limits)
-  - Security Rules implementation and testing
+  - Error handling for Firestore operations
   - Soft-delete logic (deleted field)
+
 - **M2 Frontend Integration (1.5w):**
   - Replace localStorage project persistence with service layer calls
-  - Firebase Auth UI integration (login/logout)
   - Adapt timeline load/save to use service layer
   - Recent list from Firestore queries via service layer
   - Handle offline states and errors
   - Unsaved changes warning
   - Import/export UI
+  - Loading states and error handling
+  - Pagination support for project lists
+
 - **M3 QA & Hardening (0.5w):**
   - Security Rules unit tests (Firebase Emulator)
   - Frontend integration tests
-  - Auth flow testing
+  - Project CRUD operation testing
   - Performance checks (document size limits)
   - Error handling validation
   - Firebase quota monitoring setup
@@ -182,29 +184,28 @@ Dev with Firebase Emulator → staging Firebase project → prod Firebase projec
 
 ### Risks & Mitigations
 
-- **OAuth app review/redirect issues** → Start Firebase Auth provider setup early; test redirect URLs in dev/staging.
 - **Large payloads** → Enforce 1 MB Firestore document limit; consider chunking or Firebase Storage for large assets if needed.
-- **Free tier limits** → Monitor quota usage; upgrade to Blaze (pay-as-you-go) if needed; typical usage should stay within free tier for MVP.
+- **Free tier limits exceeded** → Monitor quota usage; upgrade to Blaze (pay-as-you-go) if needed; typical usage should stay within free tier for MVP.
 - **Data loss by design on refresh without save** → Clear UX warnings; optional confirm-before-exit.
-- **Security Rules complexity** → Use Firebase Emulator for testing; start with simple owner-only rules.
-- **Client-side vs server-side architecture** → **DECISION: Start with direct Firebase SDK for MVP**
-  - Faster to market, lower complexity, leverages Firebase strengths
-  - Design service layer abstraction to enable backend proxy later
-  - Migration path: backend API mirrors service layer interface
-  - Frontend components never call Firebase directly (only via service layer)
+- **Security Rules complexity** → Use Firebase Emulator for testing; coordinate with User Management feature rules.
+- **Pagination performance at scale** → Test with large project lists; Firestore indexes handle ordering efficiently.
+- **Soft-delete vs hard-delete decision** → Start with soft-delete for recovery and audit trail; can add hard-delete cleanup task later.
+- **Service layer abstraction** → Design carefully to enable future backend API migration without component changes.
+
+Note: Authentication-related risks (OAuth approval, redirect URLs) handled by User Management feature.
 
 ### Open Questions
 
-- ~~Client-side Firestore SDK vs backend API layer with Firebase Admin SDK?~~ **DECIDED: Client-side for MVP, backend optional for Phase 2**
 - Soft-delete (deleted field) vs hard-delete (document removal)? **RECOMMEND: Soft-delete for MVP (easier recovery)**
 - Manual-only import for existing local files, or prompt users to import on first login? **RECOMMEND: Manual with optional first-login prompt**
 - Firebase Storage for large video assets in future phases? **Yes, plan for Phase 3 when asset storage becomes bottleneck**
 - Enable Firestore offline persistence for better UX? **Future - adds complexity with conflict resolution**
 
+Note: Authentication-related questions (OAuth strategy, token management) addressed in User Management feature.
+
 ### Acceptance Criteria
 
-- New user signs in with Google/Facebook → Firebase Auth user created; Firestore user document created; receives ID token for subsequent calls.
-- Authenticated user creates project → Firestore document created with projectId, createdAt, updatedAt, version; project appears in list query.
+- Authenticated user (from User Management feature) creates project → Firestore document created with projectId, createdAt, updatedAt, version; project appears in list query.
 - Project list query returns only caller's projects (userId match), ordered by updatedAt desc, excluding deleted projects.
 - Cross-user access is blocked by Security Rules (permission denied error).
 - Loading a saved project reads Firestore document and restores timeline payload; p95 load ≤600 ms for typical payloads.
@@ -213,3 +214,4 @@ Dev with Firebase Emulator → staging Firebase project → prod Firebase projec
 - Refresh without save discards unsaved changes; UI surfaces unsaved status before refresh/navigation.
 - Import with valid schema creates/updates Firestore document; invalid schema returns clear error.
 - Firebase free tier limits are monitored and not exceeded during normal usage.
+- Service layer abstraction is complete; no Firebase Firestore calls in UI components (all via firestoreProjectService).
