@@ -1,2 +1,9 @@
 #!/usr/bin/env sh
-cd frontend && npx lint-staged
+
+if [ "$(find frontend -type f | wc -l)" -gt 0 ]; then
+    cd frontend && npx lint-staged
+fi
+
+if [ "$(find backend -type f | wc -l)" -gt 0 ]; then
+    cd ../backend && python -m black --check . && python -m flake8 .
+fi
