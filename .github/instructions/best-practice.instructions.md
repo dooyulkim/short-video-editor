@@ -62,3 +62,48 @@ Whenever code modifications change architecture or functionality:
 2. **Provide feedback** - Indicate what worked and what didn't
 3. **Use markdown** - Format requests with code blocks and lists for clarity
 4. **Reference errors** - Include full error messages when debugging
+
+---
+
+## Part 3: Project Coding Guidelines
+
+### Tech Stack
+
+- Frontend: React 19, TypeScript, Vite, Tailwind CSS, shadcn/ui
+- Backend: Python, FastAPI, FFmpeg
+- Testing: Vitest (frontend), Pytest (backend)
+
+### Code Style
+
+- **TypeScript/React**: Functional components with hooks; prefer `const` over `let`; avoid `any`; PascalCase components; `use` prefix for hooks; keep components small and focused.
+- **Python**: Follow PEP 8; use type hints; prefer async for I/O; routers handle HTTP, services handle business logic.
+
+### Commands
+
+```bash
+# Frontend
+cd frontend && npm run dev      # Start dev server
+cd frontend && npm run test     # Run tests
+
+# Backend
+cd backend && uvicorn main:app --reload  # Start API
+cd backend && pytest            # Run tests
+```
+
+### Clean Code Patterns
+
+- **Early return** to avoid deep nesting.
+- **Avoid deep nesting**: keep to 2-3 levels; extract helpers.
+- **Single responsibility**: one function = one task.
+- **Naming**: verb+noun functions; `is/has/can` booleans; UPPER_SNAKE_CASE constants.
+- **Avoid magic numbers**: extract descriptive constants.
+- **Prefer declarative** over imperative array/object handling.
+- **Error handling**: fail fast with meaningful messages; place try/catch at boundaries.
+
+### SOLID Principles
+
+- **Single Responsibility**: one reason to change per module.
+- **Open/Closed**: extend via configuration, avoid modifying core logic for new types.
+- **Liskov Substitution**: subtypes must work anywhere the base type is expected.
+- **Interface Segregation**: keep interfaces small and focused.
+- **Dependency Inversion**: depend on abstractions, inject concrete implementations.

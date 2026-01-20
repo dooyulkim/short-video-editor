@@ -70,7 +70,6 @@ pip install -r requirements.txt
    The backend automatically adds `backend/bin` to PATH on startup.
 
    **Option B: System-wide installation**
-
    - **Windows**: Download from [ffmpeg.org](https://ffmpeg.org/download.html) and add to PATH
    - **macOS**: `brew install ffmpeg`
    - **Linux**: `sudo apt-get install ffmpeg`

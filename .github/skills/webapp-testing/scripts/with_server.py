@@ -20,6 +20,7 @@ import time
 import sys
 import argparse
 
+
 def is_server_ready(port, timeout=30):
     """Wait for server to be ready by polling the port."""
     start_time = time.time()
