@@ -305,30 +305,30 @@ class ExportService:
             img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
             draw = ImageDraw.Draw(img)
 
-            # Get text bounding box
-            bbox = draw.textbbox((0, 0), text, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-
             # Position text
-            # When pos_x/pos_y are provided, they represent the CENTER POINT of the text
-            # (matching the canvas translate behavior in the preview)
-            # Not the top-left corner of the text box
+            # In preview: ctx.textAlign = "left", ctx.textBaseline = "top"
+            # Then ctx.translate(x, y) and ctx.fillText(line, 0, lineY)
+            # This means text starts at position (x,y), not centered
+            # However, when position is None (default center), we center the text
             if pos_x is not None:
-                # Center text at the given x position
-                x = pos_x - text_width // 2
+                # Use provided x position as-is (left edge of text)
+                x = pos_x
             else:
                 # Default: center horizontally on canvas
+                bbox = draw.textbbox((0, 0), text, font=font)
+                text_width = bbox[2] - bbox[0]
                 x = (width - text_width) // 2
             
             if pos_y is not None:
-                # Center text at the given y position
-                y = pos_y - text_height // 2
+                # Use provided y position as-is (top edge of text)
+                y = pos_y
             else:
                 # Default: center vertically on canvas
+                bbox = draw.textbbox((0, 0), text, font=font)
+                text_height = bbox[3] - bbox[1]
                 y = (height - text_height) // 2
 
-            # Draw text with alpha
+            # Draw text with alpha (left-top aligned)
             draw.text((x, y), text, font=font, fill=rgb_color + (255,))
 
             # Save to temp file
@@ -1268,6 +1268,15 @@ class ExportService:
                     font_size = data.get("fontSize", 50)
                     color = data.get("color", "white")
                     
+                    # Get text scale from clip data (like video/image clips)
+                    user_scale = clip_data.get("scale", 1)
+                    if isinstance(user_scale, dict):
+                        user_scale_x = user_scale.get("x", 1)
+                        user_scale_y = user_scale.get("y", 1)
+                    else:
+                        user_scale_x = user_scale
+                        user_scale_y = user_scale
+                    
                     # Get text position from clip data
                     text_position = clip_data.get("position", {})
                     text_pos_x = text_position.get("x", 0) if text_position else 0
@@ -1276,8 +1285,11 @@ class ExportService:
                     # Scale font and position for export
                     canvas_scale_x = final_width / source_width if source_width > 0 else 1.0
                     canvas_scale_y = final_height / source_height if source_height > 0 else 1.0
-                    canvas_scale = (canvas_scale_x + canvas_scale_y) / 2
-                    scaled_font_size = int(font_size * canvas_scale)
+                    
+                    # Apply both canvas scale AND user scale to font size
+                    # User scale_y affects the height/fontSize
+                    final_scale_y = canvas_scale_y * user_scale_y
+                    scaled_font_size = int(font_size * final_scale_y)
                     
                     # Scale position for export (if position is provided)
                     # IMPORTANT: Preview centers text at canvas center (width/2, height/2) when pos is 0
