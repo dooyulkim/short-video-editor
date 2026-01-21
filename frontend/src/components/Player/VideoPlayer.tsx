@@ -296,6 +296,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 					target.closest("button") ||
 					target.closest('[role="button"]') ||
 					target.closest('[role="menu"]') ||
+					target.closest('[role="dialog"]') ||
 					target.closest('[class*="context-menu"]') ||
 					target.closest('[class*="ContextMenu"]') ||
 					(target.tagName === "CANVAS" && !containerRef.current?.contains(target));
