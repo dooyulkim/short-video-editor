@@ -128,7 +128,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 	const playbackSyncKey = useMemo(() => {
 		return layers
 			.flatMap((layer) =>
-				layer.clips.map((clip) => `${clip.id}:${clip.resourceId}:${clip.startTime}:${clip.duration}:${clip.trimStart}`)
+				layer.clips.map((clip) => `${clip.id}:${clip.resourceId}:${clip.startTime}:${clip.duration}:${clip.trimStart}`),
 			)
 			.join("|");
 	}, [layers]);
@@ -147,7 +147,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			console.log("Calling updateClip with:", clipId, updates);
 			updateClip(clipId, updates);
 		},
-		[updateClip]
+		[updateClip],
 	);
 
 	// Get selected clip for resize overlay, along with its layer type
@@ -192,7 +192,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 
 			// Find all video clips (check both layer type and clip data type)
 			const videoClips = layers.flatMap((layer) =>
-				layer.clips.filter((clip) => layer.type === "video" || clip.data?.type === "video")
+				layer.clips.filter((clip) => layer.type === "video" || clip.data?.type === "video"),
 			);
 
 			if (videoClips.length > 0) {
@@ -295,6 +295,9 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 					target.closest('[class*="Toolbar"]') ||
 					target.closest("button") ||
 					target.closest('[role="button"]') ||
+					target.closest('[role="menu"]') ||
+					target.closest('[class*="context-menu"]') ||
+					target.closest('[class*="ContextMenu"]') ||
 					(target.tagName === "CANVAS" && !containerRef.current?.contains(target));
 
 				if (!isInteractiveArea) {
@@ -318,13 +321,13 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			const currentLayers = layersRef.current;
 			// Check both layer type and clip data type for proper media detection
 			const videoClips = currentLayers.flatMap((layer) =>
-				layer.clips.filter((clip) => layer.type === "video" || clip.data?.type === "video")
+				layer.clips.filter((clip) => layer.type === "video" || clip.data?.type === "video"),
 			);
 			const audioClips = currentLayers.flatMap((layer) =>
-				layer.clips.filter((clip) => layer.type === "audio" || clip.data?.type === "audio")
+				layer.clips.filter((clip) => layer.type === "audio" || clip.data?.type === "audio"),
 			);
 			const imageClips = currentLayers.flatMap((layer) =>
-				layer.clips.filter((clip) => layer.type === "image" || clip.data?.type === "image")
+				layer.clips.filter((clip) => layer.type === "image" || clip.data?.type === "image"),
 			);
 
 			// Create video elements for clips that don't have them
@@ -361,12 +364,12 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 										new Map(prev).set(clip.resourceId, {
 											width: video.videoWidth,
 											height: video.videoHeight,
-										})
+										}),
 									);
 								}
 								resolve();
 							},
-							{ once: true }
+							{ once: true },
 						);
 					});
 				}
@@ -400,7 +403,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 								console.log(`🔊 Audio element loaded for resource: ${clip.resourceId}`);
 								resolve();
 							},
-							{ once: true }
+							{ once: true },
 						);
 						audio.addEventListener(
 							"error",
@@ -408,7 +411,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 								console.error(`Failed to load audio for resource: ${clip.resourceId}`);
 								resolve();
 							},
-							{ once: true }
+							{ once: true },
 						);
 					});
 				}
@@ -434,11 +437,11 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 									new Map(prev).set(clip.resourceId, {
 										width: img.naturalWidth,
 										height: img.naturalHeight,
-									})
+									}),
 								);
 								resolve();
 							},
-							{ once: true }
+							{ once: true },
 						);
 						img.addEventListener("error", () => reject(new Error("Failed to load image")), { once: true });
 					}).catch((err) => console.error("Image load error:", err));
@@ -546,7 +549,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 
 			return visibleClips;
 		},
-		[] // Stable callback - uses ref for layers
+		[], // Stable callback - uses ref for layers
 	);
 
 	/**
@@ -639,7 +642,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			progress: number,
 			canvasWidth: number,
 			canvasHeight: number,
-			transitionMode: "in" | "out"
+			transitionMode: "in" | "out",
 		): void => {
 			ctx.beginPath();
 
@@ -675,7 +678,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 
 			ctx.clip();
 		},
-		[]
+		[],
 	);
 
 	/**
@@ -688,7 +691,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			clip: Clip,
 			localTime: number,
 			canvasWidth: number,
-			canvasHeight: number
+			canvasHeight: number,
 		): boolean => {
 			const transitionIn = clip.transitions?.in;
 			const transitionOut = clip.transitions?.out;
@@ -722,7 +725,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 
 			return appliedClipping;
 		},
-		[applyClipPath]
+		[applyClipPath],
 	);
 
 	/**
@@ -735,7 +738,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 		canvasWidth: number,
 		canvasHeight: number,
 		clipWidth: number,
-		clipHeight: number
+		clipHeight: number,
 	): { x: number; y: number } => {
 		let offsetX = 0;
 		let offsetY = 0;
@@ -870,7 +873,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				canvasSizeRef.current.width,
 				canvasSizeRef.current.height,
 				scaledWidth,
-				scaledHeight
+				scaledHeight,
 			);
 			x += slideOffset.x;
 			y += slideOffset.y;
@@ -897,7 +900,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			// Restore canvas state
 			ctx.restore();
 		},
-		[applyTransitionClipping]
+		[applyTransitionClipping],
 	);
 
 	/**
@@ -958,7 +961,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				canvasSizeRef.current.width,
 				canvasSizeRef.current.height,
 				scaledWidth,
-				scaledHeight
+				scaledHeight,
 			);
 			x += slideOffset.x;
 			y += slideOffset.y;
@@ -985,7 +988,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			// Restore canvas state
 			ctx.restore();
 		},
-		[applyTransitionClipping]
+		[applyTransitionClipping],
 	);
 
 	/**
@@ -1023,7 +1026,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 				canvasSizeRef.current.width,
 				canvasSizeRef.current.height,
 				estimatedWidth,
-				estimatedHeight
+				estimatedHeight,
 			);
 			x += slideOffset.x;
 			y += slideOffset.y;
@@ -1119,7 +1122,7 @@ export function VideoPlayer({ width: initialWidth, height: initialHeight, classN
 			// Restore canvas state
 			ctx.restore();
 		},
-		[applyTransitionClipping]
+		[applyTransitionClipping],
 	);
 
 	/**

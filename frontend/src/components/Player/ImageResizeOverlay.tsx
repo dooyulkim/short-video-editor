@@ -30,7 +30,7 @@ interface ImageResizeOverlayProps {
 		clipId: string,
 		scale: { x: number; y: number },
 		position?: { x: number; y: number },
-		rotation?: number
+		rotation?: number,
 	) => void;
 	onUpdateClip?: (clipId: string, updates: Partial<Clip>) => void;
 	imageWidth: number;
@@ -131,15 +131,7 @@ export const ImageResizeOverlay: React.FC<ImageResizeOverlayProps> = ({
 			const y = currentPosition.y !== 0 ? currentPosition.y : (canvasSizeHeight - imageHeight) / 2;
 			return { x, y };
 		}
-	}, [
-		currentPosition.x,
-		currentPosition.y,
-		canvasSizeWidth,
-		canvasSizeHeight,
-		imageWidth,
-		imageHeight,
-		centerAtPoint,
-	]);
+	}, [currentPosition.x, currentPosition.y, canvasSizeWidth, canvasSizeHeight, imageWidth, imageHeight, centerAtPoint]);
 
 	// Calculate bounding box position in display coordinates
 	const boxX = actualCanvasPosition.x * scaleRatio;
@@ -169,7 +161,7 @@ export const ImageResizeOverlay: React.FC<ImageResizeOverlayProps> = ({
 			// Check if shift is pressed for aspect ratio toggle
 			setMaintainAspectRatio(!e.shiftKey);
 		},
-		[scaleX, scaleY, actualCanvasPosition, currentWidth, currentHeight]
+		[scaleX, scaleY, actualCanvasPosition, currentWidth, currentHeight],
 	);
 
 	const handleMouseMove = useCallback(
@@ -274,7 +266,7 @@ export const ImageResizeOverlay: React.FC<ImageResizeOverlayProps> = ({
 
 			onResize(clip.id, { x: newScaleX, y: newScaleY }, { x: newX, y: newY });
 		},
-		[isDragging, activeHandle, imageWidth, imageHeight, maintainAspectRatio, clip.id, onResize, scaleRatio]
+		[isDragging, activeHandle, imageWidth, imageHeight, maintainAspectRatio, clip.id, onResize, scaleRatio],
 	);
 
 	const handleMouseUp = useCallback(() => {
@@ -302,7 +294,7 @@ export const ImageResizeOverlay: React.FC<ImageResizeOverlayProps> = ({
 				height: currentHeight,
 			};
 		},
-		[scaleX, scaleY, actualCanvasPosition, currentWidth, currentHeight]
+		[scaleX, scaleY, actualCanvasPosition, currentWidth, currentHeight],
 	);
 
 	const handleRotateStart = useCallback(
@@ -324,7 +316,7 @@ export const ImageResizeOverlay: React.FC<ImageResizeOverlayProps> = ({
 				centerY,
 			};
 		},
-		[boxX, boxY, displayWidth, displayHeight, currentRotation]
+		[boxX, boxY, displayWidth, displayHeight, currentRotation],
 	);
 
 	const handleMove = useCallback(
@@ -341,7 +333,7 @@ export const ImageResizeOverlay: React.FC<ImageResizeOverlayProps> = ({
 			// Update position without changing scale
 			onResize(clip.id, { x: scaleX, y: scaleY }, { x: newX, y: newY });
 		},
-		[isDraggingMove, scaleRatio, clip.id, onResize, scaleX, scaleY]
+		[isDraggingMove, scaleRatio, clip.id, onResize, scaleX, scaleY],
 	);
 
 	const handleRotate = useCallback(
@@ -356,7 +348,7 @@ export const ImageResizeOverlay: React.FC<ImageResizeOverlayProps> = ({
 			// Calculate angle from center to start mouse position
 			const startAngle = Math.atan2(
 				rotationStartRef.current.mouseY - centerY,
-				rotationStartRef.current.mouseX - centerX
+				rotationStartRef.current.mouseX - centerX,
 			);
 
 			// Calculate rotation delta in degrees
@@ -366,7 +358,7 @@ export const ImageResizeOverlay: React.FC<ImageResizeOverlayProps> = ({
 			// Update rotation
 			onResize(clip.id, { x: scaleX, y: scaleY }, actualCanvasPosition, newRotation);
 		},
-		[isRotating, clip.id, onResize, scaleX, scaleY, actualCanvasPosition]
+		[isRotating, clip.id, onResize, scaleX, scaleY, actualCanvasPosition],
 	);
 
 	// Add/remove event listeners
@@ -427,7 +419,7 @@ export const ImageResizeOverlay: React.FC<ImageResizeOverlayProps> = ({
 				setIsEditingText(true);
 			}
 		},
-		[isTextClip, clip.data?.text]
+		[isTextClip, clip.data?.text],
 	);
 
 	// Handle text input change
@@ -460,7 +452,7 @@ export const ImageResizeOverlay: React.FC<ImageResizeOverlayProps> = ({
 				handleTextBlur();
 			}
 		},
-		[clip.data?.text, handleTextBlur]
+		[clip.data?.text, handleTextBlur],
 	);
 
 	// Handle opening properties dialog
@@ -600,7 +592,7 @@ export const ImageResizeOverlay: React.FC<ImageResizeOverlayProps> = ({
 								)}
 							</div>
 						</ContextMenuTrigger>
-						<ContextMenuContent className="w-48">
+						<ContextMenuContent className="w-48 z-1000">
 							<ContextMenuItem onClick={handleDoubleClick}>✏️ Edit Text</ContextMenuItem>
 							<ContextMenuItem onClick={handleOpenProperties}>⚙️ Text Properties</ContextMenuItem>
 							<ContextMenuSeparator />
@@ -753,12 +745,12 @@ export const ImageResizeOverlay: React.FC<ImageResizeOverlayProps> = ({
 					{isEditingText
 						? "📝 Editing text (Enter to save, Esc to cancel)"
 						: isRotating
-						? `🔄 Rotation: ${Math.round(currentRotation)}°`
-						: isTextClip
-						? "💡 Double-click to edit text, Right-click for properties"
-						: maintainAspectRatio
-						? "🔒 Aspect Ratio Locked (Hold Shift to unlock)"
-						: "🔓 Free Resize (Hold Shift to lock)"}
+							? `🔄 Rotation: ${Math.round(currentRotation)}°`
+							: isTextClip
+								? "💡 Double-click to edit text, Right-click for properties"
+								: maintainAspectRatio
+									? "🔒 Aspect Ratio Locked (Hold Shift to unlock)"
+									: "🔓 Free Resize (Hold Shift to lock)"}
 				</div>
 			</div>
 
