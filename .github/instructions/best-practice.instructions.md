@@ -19,7 +19,7 @@ Whenever code is added, modified or removed:
 1. **Run existing tests** to ensure no regressions are introduced
 2. **Create new tests** for any new functionality or bug fixes
 3. **update tests** if the behavior of the code has changed
-4. Ensure all tests pass before considering the modification complete
+4. **Critical Note** Ensure all tests pass before considering the modification complete
 
 ### 1.3 Documentation Requirements
 
@@ -29,7 +29,7 @@ Whenever code modifications change architecture or functionality:
 2. **Create or update API documentation** if endpoints are added, modified, or removed
 3. **Create or update the README** if setup steps, dependencies, or usage instructions change
 4. **Create or update CLAUDE.md** if development workflows or project conventions change
-5. Ensure documentation stays in sync with the actual implementation
+5. **Critical Note** Ensure documentation stays in sync with the actual implementation
 
 ---
 
