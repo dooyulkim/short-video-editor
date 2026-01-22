@@ -26,7 +26,7 @@ if errorlevel 1 (
 
 echo Starting Backend...
 REM Open new terminal for backend
-start cmd /k "cd backend && python -m venv venv & venv\Scripts\activate.bat & pip install -q -r requirements.txt & uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+start cmd /k "cd backend && python -m venv .venv & .venv\Scripts\activate.bat & pip install -q -r requirements.txt & uvicorn main:app --reload --host 0.0.0.0 --port 8000"
 
 REM Wait a bit for backend to start
 timeout /t 3 /nobreak

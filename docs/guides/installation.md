@@ -33,7 +33,6 @@ This guide will walk you through setting up the Video Editor application on your
 ### Required Software
 
 1. **Node.js and npm**
-
    - Version: Node.js 18.0 or higher
    - Download from: https://nodejs.org/
 
@@ -44,7 +43,6 @@ This guide will walk you through setting up the Video Editor application on your
    ```
 
 2. **Python**
-
    - Version: Python 3.9 or higher
    - Download from: https://python.org/downloads/
 
@@ -148,13 +146,13 @@ cd "Video editor"
 cd backend
 
 # Create virtual environment
-python -m venv venv
+python -m venv .venv
 
 # Activate virtual environment
 # On Windows:
-venv\Scripts\activate
+.venv\Scripts\activate
 # On macOS/Linux:
-source venv/bin/activate
+source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
@@ -193,9 +191,9 @@ chmod 755 uploads thumbnails temp_audio temp_video exports
 #### Start Backend Server
 
 ```bash
-# From backend directory with venv activated
+# From backend directory with .venv activated
 cd backend
-source venv/bin/activate  # or venv\Scripts\activate on Windows
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 uvicorn main:app --reload --port 8000
 ```
 
@@ -324,7 +322,7 @@ The application will be available at:
 
 ```bash
 cd backend
-source venv/bin/activate
+source .venv/bin/activate
 pytest tests/ -v
 
 # Expected output: All tests passing
@@ -421,13 +419,11 @@ uvicorn main:app --port 8001
 If you encounter issues not covered here:
 
 1. **Check Logs**
-
    - Backend: Look at terminal where uvicorn is running
    - Frontend: Check browser console (F12)
    - System: Check system logs for FFmpeg errors
 
 2. **Documentation**
-
    - [README.md](README.md) - General overview
    - [USER_GUIDE.md](USER_GUIDE.md) - User guide
    - [API_DOCUMENTATION.md](API_DOCUMENTATION.md) - API reference
