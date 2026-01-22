@@ -1,7 +1,6 @@
 import uuid
 from pathlib import Path
 import ffmpeg
-import numpy as np
 
 
 class TransitionService:
@@ -498,56 +497,80 @@ class TransitionService:
         try:
             # Get video info
             probe = ffmpeg.probe(video_path)
-            video_stream = next((s for s in probe['streams'] if s['codec_type'] == 'video'), None)
+            
+            # Find the actual video stream (not attached pictures)
+            video_stream = None
+            for s in probe['streams']:
+                if s['codec_type'] == 'video':
+                    # Skip attached pictures (album art)
+                    disposition = s.get('disposition', {})
+                    if disposition.get('attached_pic', 0) == 1:
+                        continue
+                    video_stream = s
+                    break
+            
             video_duration = float(probe['format']['duration'])
+            
+            # Check for audio stream
+            audio_stream = next((s for s in probe['streams'] if s['codec_type'] == 'audio'), None)
+            has_audio = audio_stream is not None
             
             if video_stream:
                 width = int(video_stream['width'])
                 height = int(video_stream['height'])
+                # Get frame rate for proper timing
+                fps_parts = video_stream.get('r_frame_rate', '30/1').split('/')
+                fps = float(fps_parts[0]) / float(fps_parts[1]) if len(fps_parts) == 2 and float(fps_parts[1]) != 0 else 30.0
             else:
                 width, height = 640, 480
+                fps = 30.0
             
             # Generate output path
             output_path = self._generate_output_path("zoom_in")
             
-            # Create zoompan filter that matches preview behavior exactly
-            # During transition: scale changes, but viewport stays centered
-            if direction == "in":
-                # Zoom in: scale from 0.5x to 1.0x (content grows from small to normal)
-                # Formula: scale = 0.5 + 0.5 * (t / duration)
-                # x and y need to be adjusted to keep content centered as it grows
-                filter_complex = (
-                    f"[0:v]zoompan="
-                    f"z='if(lt(t,{duration}),1/(0.5+0.5*t/{duration}),1)':"
-                    f"x='(iw-iw*zoom)/2':"
-                    f"y='(ih-ih*zoom)/2':"
-                    f"d=1:"
-                    f"s={width}x{height}[vout]"
-                )
-            else:  # direction == "out"
-                # Zoom out: scale from 2.0x to 1.0x (content shrinks from large to normal)
-                # Formula: scale = 2.0 - (t / duration)
-                filter_complex = (
-                    f"[0:v]zoompan="
-                    f"z='if(lt(t,{duration}),1/(2.0-t/{duration}),1)':"
-                    f"x='(iw-iw*zoom)/2':"
-                    f"y='(ih-ih*zoom)/2':"
-                    f"d=1:"
-                    f"s={width}x{height}[vout]"
-                )
+            # Use zoompan filter configured for video
+            # zoompan works with video when fps and duration are set correctly
+            total_frames = int(video_duration * fps)
+            transition_frames = int(duration * fps)
             
-            # Use subprocess for complex filter
+            if direction == "in":
+                # Zoom in: start zoomed out (z>1 = zoomed out), end at z=1 (normal)
+                # z goes from 2 to 1 over transition_frames, then stays at 1
+                zoom_expr = f"if(lt(on,{transition_frames}),2-on/{transition_frames},1)"
+            else:  # direction == "out"
+                # Start zoomed in (z<1), end at normal (z=1)
+                zoom_expr = f"if(lt(on,{transition_frames}),0.5+0.5*on/{transition_frames},1)"
+            
+            video_filter = (
+                f"zoompan=z='{zoom_expr}':"
+                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                f"d=1:s={width}x{height}:fps={fps}"
+            )
+            
+            # Use subprocess with explicit stream selection
             import subprocess
-            cmd = [
-                'ffmpeg', '-y',
-                '-i', video_path,
-                '-filter_complex', filter_complex,
-                '-map', '[vout]',
-                '-map', '0:a?',
-                '-c:v', 'libx264',
-                '-c:a', 'copy',
-                str(output_path)
-            ]
+            
+            if has_audio:
+                cmd = [
+                    'ffmpeg', '-y',
+                    '-i', video_path,
+                    '-vf', video_filter,
+                    '-map', '0:v:0',
+                    '-map', '0:a:0?',
+                    '-c:v', 'libx264',
+                    '-c:a', 'aac',
+                    '-shortest',
+                    str(output_path)
+                ]
+            else:
+                cmd = [
+                    'ffmpeg', '-y',
+                    '-i', video_path,
+                    '-vf', video_filter,
+                    '-map', '0:v:0',
+                    '-c:v', 'libx264',
+                    str(output_path)
+                ]
             
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
@@ -576,54 +599,77 @@ class TransitionService:
             video_duration = float(probe['format']['duration'])
             start_time = max(0, video_duration - duration)
             
-            video_stream = next((s for s in probe['streams'] if s['codec_type'] == 'video'), None)
+            # Find the actual video stream (not attached pictures)
+            video_stream = None
+            for s in probe['streams']:
+                if s['codec_type'] == 'video':
+                    # Skip attached pictures (album art)
+                    disposition = s.get('disposition', {})
+                    if disposition.get('attached_pic', 0) == 1:
+                        continue
+                    video_stream = s
+                    break
+            
+            # Check for audio stream
+            audio_stream = next((s for s in probe['streams'] if s['codec_type'] == 'audio'), None)
+            has_audio = audio_stream is not None
             
             if video_stream:
                 width = int(video_stream['width'])
                 height = int(video_stream['height'])
+                # Get frame rate
+                fps_parts = video_stream.get('r_frame_rate', '30/1').split('/')
+                fps = float(fps_parts[0]) / float(fps_parts[1]) if len(fps_parts) == 2 and float(fps_parts[1]) != 0 else 30.0
             else:
                 width, height = 640, 480
+                fps = 30.0
             
             # Generate output path
             output_path = self._generate_output_path("zoom_out")
             
-            # Create zoompan filter that matches preview behavior exactly
-            # During transition at the end: scale changes, but viewport stays centered
-            if direction == "in":
-                # Zoom in: scale from 1.0x to 2.0x (content grows from normal to large)
-                # Formula: scale = 1.0 + (t - start_time) / duration
-                filter_complex = (
-                    f"[0:v]zoompan="
-                    f"z='if(gte(t,{start_time}),1/(1.0+(t-{start_time})/{duration}),1)':"
-                    f"x='(iw-iw*zoom)/2':"
-                    f"y='(ih-ih*zoom)/2':"
-                    f"d=1:"
-                    f"s={width}x{height}[vout]"
-                )
-            else:  # direction == "out"
-                # Zoom out: scale from 1.0x to 0.5x (content shrinks from normal to small)
-                # Formula: scale = 1.0 - 0.5 * (t - start_time) / duration
-                filter_complex = (
-                    f"[0:v]zoompan="
-                    f"z='if(gte(t,{start_time}),1/(1.0-0.5*(t-{start_time})/{duration}),1)':"
-                    f"x='(iw-iw*zoom)/2':"
-                    f"y='(ih-ih*zoom)/2':"
-                    f"d=1:"
-                    f"s={width}x{height}[vout]"
-                )
+            # Calculate frame numbers
+            total_frames = int(video_duration * fps)
+            start_frame = int(start_time * fps)
+            transition_frames = int(duration * fps)
             
-            # Use subprocess for complex filter
+            if direction == "in":
+                # Zoom in at end: z goes from 1 to 0.5 (zooming into center)
+                # Before start_frame: z=1, after: z decreases
+                zoom_expr = f"if(lt(on,{start_frame}),1,0.5+0.5*(1-(on-{start_frame})/{transition_frames}))"
+            else:  # direction == "out"
+                # Zoom out at end: z goes from 1 to 2 (zooming out)
+                zoom_expr = f"if(lt(on,{start_frame}),1,1+(on-{start_frame})/{transition_frames})"
+            
+            video_filter = (
+                f"zoompan=z='{zoom_expr}':"
+                f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                f"d=1:s={width}x{height}:fps={fps}"
+            )
+            
+            # Use subprocess with explicit stream selection
             import subprocess
-            cmd = [
-                'ffmpeg', '-y',
-                '-i', video_path,
-                '-filter_complex', filter_complex,
-                '-map', '[vout]',
-                '-map', '0:a?',
-                '-c:v', 'libx264',
-                '-c:a', 'copy',
-                str(output_path)
-            ]
+            
+            if has_audio:
+                cmd = [
+                    'ffmpeg', '-y',
+                    '-i', video_path,
+                    '-vf', video_filter,
+                    '-map', '0:v:0',
+                    '-map', '0:a:0?',
+                    '-c:v', 'libx264',
+                    '-c:a', 'aac',
+                    '-shortest',
+                    str(output_path)
+                ]
+            else:
+                cmd = [
+                    'ffmpeg', '-y',
+                    '-i', video_path,
+                    '-vf', video_filter,
+                    '-map', '0:v:0',
+                    '-c:v', 'libx264',
+                    str(output_path)
+                ]
             
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:

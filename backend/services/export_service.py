@@ -692,8 +692,8 @@ class ExportService:
             FFmpeg filter string for the zoom effect
         """
         total_frames = int(clip_duration * fps)
-        in_trans_frames = int(in_trans_duration * fps)
-        out_trans_frames = int(out_trans_duration * fps)
+        in_trans_frames = max(1, int(in_trans_duration * fps))  # Prevent division by zero
+        out_trans_frames = max(1, int(out_trans_duration * fps))  # Prevent division by zero
         out_start_frame = max(0, total_frames - out_trans_frames)
         
         # Build scale expression that handles both transitions
@@ -740,8 +740,10 @@ class ExportService:
         # For scale > 1: scale up then crop to maintain canvas size (zoom in effect)
         # For scale = 1: no change
         # For scale < 1: scale down then pad to maintain canvas size (zoom out effect)
+        # IMPORTANT: eval=frame is required for frame-based expressions (n, t, pos) in scale filter
+        # Note: crop filter doesn't support eval option, but it evaluates expressions per-frame by default
         return (
-            f"scale='iw*({scale_expr})':'ih*({scale_expr})',"
+            f"scale='iw*({scale_expr})':'ih*({scale_expr})':eval=frame,"
             f"crop='min(iw,{clip_width})':'min(ih,{clip_height})':"
             f"'max(0,(iw-{clip_width})/2)':'max(0,(ih-{clip_height})/2)',"
             f"pad={clip_width}:{clip_height}:'(ow-iw)/2':'(oh-ih)/2'"
