@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { startExport, getExportStatus, downloadExport, cancelExport } from "@/services/api";
+import { calculateContentDuration } from "@/utils/clipOperations";
 import type { ExportSettings, ExportTask, AspectRatio, ResolutionPreset, Resolution } from "@/types/export";
 import type { Timeline } from "@/types/timeline";
 import { FileVideo, Loader2, X, StopCircle } from "lucide-react";
@@ -199,9 +200,10 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 		setExportTask(null);
 		setDownloadUrl(null);
 
-		// Validate duration - maximum 3 minutes for export
-		if (timeline.duration > 180) {
-			setError("Cannot export videos longer than 3 minutes. Please trim your timeline.");
+		// Validate duration based on actual export content duration (end of last clip)
+		const exportContentDuration = calculateContentDuration(timeline.layers || []);
+		if (exportContentDuration > 300) {
+			setError("Cannot export videos longer than 5 minutes. Please trim your timeline.");
 			return;
 		}
 
@@ -280,11 +282,12 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 			}
 			onOpenChange(open);
 		},
-		[isExporting, exportTask, downloadUrl, onOpenChange]
+		[isExporting, exportTask, downloadUrl, onOpenChange],
 	);
 
 	const canStartExport = !isExporting && settings.filename.trim().length > 0;
-	const isTimelineTooLong = timeline.duration > 180;
+	const exportContentDurationForUI = calculateContentDuration(timeline.layers || []);
+	const isTimelineTooLong = exportContentDurationForUI > 300;
 
 	return (
 		<Dialog open={open} onOpenChange={handleClose}>
@@ -301,8 +304,9 @@ export function ExportDialog({ open, onOpenChange, timeline }: ExportDialogProps
 					{/* Duration Warning - shown at the top when timeline is too long */}
 					{isTimelineTooLong && (
 						<div className="rounded-md bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
-							<strong>Warning:</strong> Timeline duration is {Math.floor(timeline.duration / 60)}m{" "}
-							{Math.floor(timeline.duration % 60)}s. Export is limited to 3 minutes maximum. Please trim your timeline.
+							<strong>Warning:</strong> Timeline duration is {Math.floor(exportContentDurationForUI / 60)}m{" "}
+							{Math.floor(exportContentDurationForUI % 60)}s. Export is limited to 5 minutes maximum. Please trim your
+							timeline.
 						</div>
 					)}
 
